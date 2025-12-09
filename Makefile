@@ -11,7 +11,9 @@ LOG_DIR			:= $(ROOT)/logs
 SRC				:= $(shell find $(SRC_DIR) -path '*/test' -prune -o -name '*.cpp' -print)
 OBJ				:= $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRC))
 
-# --- COMPILER ---
+# ================================
+# C++ Compiler rules
+# ================================
 NAME		:= bin
 CXX			:= c++
 CXXFLAG		:= -Wall -Wextra -Werror -std=c++23
@@ -46,10 +48,7 @@ $(LOG_DIR):
 	@mkdir -p $(LOG_DIR)
 
 # ============= Run Targets =============
-.PHONY: run test activate
-
-run: $(NAME)
-
+.PHONY: test activate
 
 test: $(PYTHON_LOCAL)
 	@. $(VENV)/bin/activate && $(UV) run pytest -q
@@ -122,9 +121,6 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 # ================================
 .PHONY: init setuphooks pysync purge
 
-# --- PYTHON VERSION ---
-PY_VERSION := 3.13
-
 # --- Local Binaries ---
 UV_LOCAL     := $(VENV)/bin/uv
 PIP_LOCAL    := $(VENV)/bin/pip
@@ -147,12 +143,12 @@ setuphooks:
 
 # Python setup target. Creates venv and installs base dependencies only.
 pysync: $(PYTHON_LOCAL)
-	@$(UV) sync
+	@$(UV) sync --all-extras
 
 # Ensure the virtual environment exists
 $(PYTHON_LOCAL):
 	@if [ -n "$(UV_GLOBAL)" ]; then \
-		"$(UV_GLOBAL)" venv --python "$(PY_VERSION)" "$(VENV)"; \
+		"$(UV_GLOBAL)" venv "$(VENV)"; \
 	else \
 		echo "[Venv] Global 'uv' not found. Using 'python3 -m venv' as fallback..."; \
 		python3 -m venv "$(VENV)"; \
@@ -164,6 +160,7 @@ $(PYTHON_LOCAL):
 # Clean up the environment
 purge: f
 	$(RM) $(VENV)
+	$(RM) uv.lock
 	@echo "🧹 Clean up complete."
 
 # ================================
@@ -206,7 +203,6 @@ help:
 	@echo "  r                Alias for 're' (fclean + all) and 'clog'"
 	@echo ""
 	@echo "Run Targets:"
-	@echo "  run              Run the program"
 	@echo "  test             Run Python tests using pytest"
 	@echo "  activate         Activate the Python virtual environment"
 	@echo ""
@@ -220,7 +216,7 @@ help:
 	@echo "Environment Setup"
 	@echo "  init             Initialize the environment"
 	@echo "  setuphooks       Set up git hooks"
-	@echo "  pysync           Initialize Python virtual environment for tests"
+	@echo "  pysync           Initialize Python virtual environment with all extras"
 	@echo "  purge            Purge the environment"
 	@echo ""
 	@echo "Misc:"

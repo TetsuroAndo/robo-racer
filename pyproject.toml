@@ -5,15 +5,50 @@ build-backend = "hatchling.build"
 [project]
 name = "robo-racer"
 version = "0.1.0"
-description = "Robo Racer project"
-requires-python = ">=3.13"
+description = "Robo Racer project with Pi5, ESP32 and Simulator"
+requires-python = ">=3.10"
 dependencies = [
-    "pytest",
+    "numpy",
+    "pyyaml",
 ]
 
 [project.optional-dependencies]
+# ------------------------------------------------------------------
+# [実機用] Raspberry Pi 5 で実行する際に必要なライブラリ
+# ------------------------------------------------------------------
+runtime = [
+    "pyserial",                 # ESP32との通信
+    "opencv-python-headless",   # GUI機能なしのOpenCV (軽量)
+    # "tflite-runtime",         # 必要に応じて有効化 (Pi専用など)
+]
+
+# ------------------------------------------------------------------
+# [学習・シミュレーション用] PC/サーバーで実行する際に必要なライブラリ
+# ------------------------------------------------------------------
+train = [
+    # --- シミュレータ接続 ---
+    "gym-donkeycar",            # シミュレータ通信用ラッパー
+    "pygame",                   # gym-donkeycarが一部依存、またはデバッグ操作用
+
+    # --- 強化学習 (RL) ---
+    "stable-baselines3[extra]", # RLアルゴリズム (PPO, SAC等)
+    "shimmy>=0.2.1",            # 古いGymと新しいGymnasiumの互換用
+
+    # --- 数値計算・深層学習 ---
+    "torch",                    # PyTorch
+    "pandas",                   # ログ解析
+    "matplotlib",               # グラフ描画
+    "opencv-python",            # GUI機能ありのOpenCV (画像確認用)
+    "jupyterlab",               # 実験用ノートブック
+    "ipympl",                   # Jupyterでのインタラクティブプロット
+]
+
+# ------------------------------------------------------------------
+# [開発用] テスト、フォーマッタなど
+# ------------------------------------------------------------------
 dev = [
     "pytest",
+    "ruff",                     # 高速なlinter/formatter
 ]
 
 [tool.pytest.ini_options]
@@ -21,3 +56,6 @@ testpaths = ["test"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/common", "src/control", "src/perception", "src/driver"]

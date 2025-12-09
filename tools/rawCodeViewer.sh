@@ -153,7 +153,8 @@ NAME_PATTERNS=(
 	"*.json"
 	"*.yaml"
 	"*.yml"
-	"*.sh"
+	"*.md"
+	"*.ini"
 	"Makefile"
 )
 
@@ -182,18 +183,28 @@ if [[ "$SHOW_VIEW" == true ]]; then
 					"$file_ext" == "yml" ]]; then
 					# 's/#.*$//' は # 以降を削除
 					sed 's/#.*$//' "$input_file" | awk 'NF'
-				
+
 				elif [[ "$file_ext" == "py" ]]; then
-					sed '
-						# 1行の docstring/複数行文字列 を削除
-						s/""".*"""//g;
-						s/''''.*''''//g;
-						# 複数行の docstring/複数行文字列 を削除
-						/"""/,/"""/d;
-						/'''/,/'''/d;
-						# 通常の # コメントを削除
-						s/#.*$//
-					' "$input_file" | awk 'NF'
+					# Pythonのdocstringとコメントを削除
+					# sedでは複数行docstringの処理が難しいため、Pythonを使用
+					python3 -c "
+import re
+import sys
+with open('$input_file', 'r') as f:
+    content = f.read()
+# 複数行docstringを削除（先に処理）
+content = re.sub(r'\"\"\".*?\"\"\"', '', content, flags=re.DOTALL)
+content = re.sub(r\"'''.*?'''\", '', content, flags=re.DOTALL)
+# 1行docstringを削除
+content = re.sub(r'\"\"\".*?\"\"\"', '', content)
+content = re.sub(r\"'''.*?'''\", '', content)
+# コメントを削除して空行を削除
+for line in content.split('\n'):
+    if '#' in line:
+        line = line[:line.index('#')]
+    if line.strip():
+        print(line)
+" 2>/dev/null || cat "$input_file"
 
 				elif [[ "$file_ext" == "c" || \
 						"$file_ext" == "h" || \
@@ -219,7 +230,7 @@ if [[ "$SHOW_VIEW" == true ]]; then
 						# 行末コメント // ... を削除（コード部分は残す）
 						s/\/\/.*$//
 					' "$input_file" | awk 'NF'
-				
+
 				elif [[ "$file_ext" == "html" || \
 						"$file_ext" == "xml" || \
 						"$file_ext" == "svg" ]]; then
