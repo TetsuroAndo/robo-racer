@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include <Stream.h>
 #include <stdint.h>
 #include "comm/protocol/Protocol.h"
 #include <common/Result.h>
@@ -29,7 +30,8 @@ struct HostCommand {
 class Comm {
  public:
   Comm();
-  mc::Result begin(HardwareSerial& serial);
+  mc::Result begin(Stream& stream);
+  mc::Result begin(HardwareSerial& serial, uint32_t baud);
 
   // Call frequently from loop()
   void poll();
@@ -45,6 +47,7 @@ class Comm {
 
  private:
   void onPacket(const uint8_t* buf, size_t len);
+  static void handlePacketThunk(const void* sender, const uint8_t* buf, size_t len);
 
   HostCommand _pending;
   uint32_t _lastHostSeenMs = 0;
@@ -52,7 +55,7 @@ class Comm {
   uint8_t _rxSeq = 0;
   uint8_t _txSeq = 0;
 
-  HardwareSerial* _ser = nullptr;
+  Stream* _io = nullptr;
 
   // Implementation detail: we wrap with PacketSerial if enabled.
   void* _packetSerial = nullptr;

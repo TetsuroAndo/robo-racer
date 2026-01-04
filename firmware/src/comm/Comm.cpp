@@ -19,39 +19,51 @@
 
 namespace mc {
 
+#if MC_USE_PACKET_SERIAL
+namespace {
+struct CommPacketSerial : public PacketSerial_< COBS, 0, 512 > {
+	Comm *owner = nullptr;
+};
+} // namespace
+#endif
+
 static uint16_t crc16_ccitt(const uint8_t *data, size_t len) {
 	// AceCRC provides multiple CRCs; we use CRC16-CCITT (XModem/CCITT variants
-	// exist). For interoperability, *fix the variant*. Here we use crc16ccitt()
-	// (poly 0x1021, init 0xFFFF) as implemented by AceCRC. If you need a
+	// exist). For interoperability, *fix the variant*. Here we use
+	// crc16ccitt_nibble (poly 0x1021, init 0x1D0F) from AceCRC. If you need a
 	// different init/xor, change both ends consistently.
-	AceCRC crc;
-	return crc.crc16ccitt(data, (int)len);
+	return ace_crc::crc16ccitt_nibble::crc_calculate(data, len);
 }
 
 Comm::Comm() {}
 
-Result Comm::begin(HardwareSerial &serial) {
-	_ser = &serial;
-	_ser->begin(115200);
+Result Comm::begin(Stream &stream) {
+	_io = &stream;
 	_lastHostSeenMs = 0;
 
 #if MC_USE_PACKET_SERIAL
-	// PacketSerial uses templates internally; store concrete type.
-	typedef PacketSerial_< COBS, 0, 512 > PacketSerialType;
-	static PacketSerialType ps;
-	_packetSerial = (void *)&ps;
-	ps.setStream(_ser);
-	ps.setPacketHandler([this](const uint8_t *buffer, size_t size) {
-		this->onPacket(buffer, size);
-	});
+	auto *ps = reinterpret_cast< CommPacketSerial * >(_packetSerial);
+	if (!ps) {
+		ps = new CommPacketSerial();
+		_packetSerial = (void *)ps;
+	}
+	ps->owner = this;
+	ps->setStream(_io);
+	ps->setPacketHandler(&Comm::handlePacketThunk);
 #endif
 	return Result::Ok();
 }
 
+Result Comm::begin(HardwareSerial &serial, uint32_t baud) {
+	serial.begin(baud);
+	return begin(static_cast< Stream & >(serial));
+}
+
 void Comm::poll() {
 #if MC_USE_PACKET_SERIAL
-	auto *ps =
-		reinterpret_cast< PacketSerial_< COBS, 0, 512 > * >(_packetSerial);
+	auto *ps = reinterpret_cast< CommPacketSerial * >(_packetSerial);
+	if (!ps)
+		return;
 	ps->update();
 #else
 	// Fallback (not framed): do nothing
@@ -65,7 +77,7 @@ HostCommand Comm::consumeCommand() {
 }
 
 void Comm::sendStatus(const proto::StatusPayload &st) {
-	if (!_ser)
+	if (!_io)
 		return;
 
 	proto::Header h{};
@@ -87,12 +99,13 @@ void Comm::sendStatus(const proto::StatusPayload &st) {
 	reinterpret_cast< proto::Header * >(buf)->crc16 = crc;
 
 #if MC_USE_PACKET_SERIAL
-	auto *ps =
-		reinterpret_cast< PacketSerial_< COBS, 0, 512 > * >(_packetSerial);
+	auto *ps = reinterpret_cast< CommPacketSerial * >(_packetSerial);
+	if (!ps)
+		return;
 	ps->send(buf, sizeof(buf));
 #else
-	_ser->write(buf, sizeof(buf));
-	_ser->write('\n');
+	_io->write(buf, sizeof(buf));
+	_io->write('\n');
 #endif
 }
 
@@ -158,6 +171,20 @@ void Comm::onPacket(const uint8_t *buf, size_t len) {
 		_pending.steer = mc::clamp((float)st_m / 1000.0f, -1.0f, 1.0f);
 		return;
 	}
+}
+
+void Comm::handlePacketThunk(const void *sender, const uint8_t *buf,
+							 size_t len) {
+#if MC_USE_PACKET_SERIAL
+	const auto *ps = reinterpret_cast< const CommPacketSerial * >(sender);
+	if (!ps || !ps->owner)
+		return;
+	ps->owner->onPacket(buf, len);
+#else
+	(void)sender;
+	(void)buf;
+	(void)len;
+#endif
 }
 
 } // namespace mc

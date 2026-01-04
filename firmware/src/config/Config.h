@@ -23,7 +23,11 @@ static const int PIN_REN  = 27;  // enable forward side (HIGH enable)
 static const int PIN_LEN  = 14;  // enable reverse side (HIGH enable)
 
 // Servo signal pin
-static const int PIN_SERVO = 18;
+static const int PIN_SERVO = 12;
+// Servo pulse widths (microseconds)
+static const uint16_t SERVO_MIN_US = 1000;
+static const uint16_t SERVO_MAX_US = 2000;
+static const uint16_t SERVO_CENTER_US = 1500;
 
 // =======================
 // Sensors
@@ -61,5 +65,12 @@ static const bool PREFER_RIGHT_TURN_DEFAULT = true;
 
 // RPi watchdog
 static const uint32_t HOST_HEARTBEAT_TIMEOUT_MS = 700;
+
+// =======================
+// BLE (Nordic UART Service)
+// =======================
+static const bool BLE_ENABLED = true;
+static const char* BLE_DEVICE_NAME = "RoboRacer";
+static const uint16_t BLE_MTU = 185;
 
 } // namespace mc::cfg

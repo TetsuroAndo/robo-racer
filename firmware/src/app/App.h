@@ -9,6 +9,7 @@
 #include "hardware/ServoSteering.h"
 #include "hardware/Sensors.h"
 #include "comm/Comm.h"
+#include "comm/BleUart.h"
 #include "control/State.h"
 #include "control/MotionController.h"
 #include "control/Strategy.h"
@@ -39,7 +40,9 @@ class App {
   MotorDriver _motor{cfg::PIN_RPWM, cfg::PIN_LPWM, cfg::PIN_REN, cfg::PIN_LEN};
   ServoSteering _servo{cfg::PIN_SERVO};
 
-  Comm _comm{};
+  Comm _commSerial{};
+  Comm _commBle{};
+  BleUart _ble{};
   MotionController _motion{cfg::YAW_KP, cfg::THROTTLE_MAX, cfg::THROTTLE_SLEW_UP, cfg::THROTTLE_SLEW_DN};
   Strategy _strategy{};
 

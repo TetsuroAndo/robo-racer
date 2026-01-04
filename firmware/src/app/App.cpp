@@ -16,9 +16,14 @@ void App::begin() {
 	Wire.begin(cfg::PIN_I2C_SDA, cfg::PIN_I2C_SCL, cfg::I2C_FREQ_HZ);
 
 	_motor.begin();
-	_servo.begin(1000, 2000, 1500);
+	_servo.begin(cfg::SERVO_MIN_US, cfg::SERVO_MAX_US, cfg::SERVO_CENTER_US);
 
-	_comm.begin(Serial);
+	_commSerial.begin(Serial);
+	if (cfg::BLE_ENABLED) {
+		_ble.begin(cfg::BLE_DEVICE_NAME, cfg::BLE_MTU);
+		_commBle.begin(_ble);
+		Serial.println("BLE UART ready");
+	}
 
 	// Sensors
 	auto r1 = _tsd.begin(Wire);
@@ -66,35 +71,63 @@ void App::updateSensors() {
 }
 
 void App::applyHostCommands(uint32_t nowMs) {
-	_comm.poll();
-	const HostCommand c = _comm.consumeCommand();
+	_commSerial.poll();
+	const HostCommand cSerial = _commSerial.consumeCommand();
 
-	if (c.heartbeat) {
-		// The Comm layer already tracks lastHostSeenMs.
+	HostCommand cBle{};
+	uint32_t lastBle = 0;
+	if (cfg::BLE_ENABLED) {
+		_ble.poll();
+		_commBle.poll();
+		cBle = _commBle.consumeCommand();
+		lastBle = _commBle.lastHostSeenMs();
 	}
-	if (c.estop) {
+
+	const uint32_t lastSerial = _commSerial.lastHostSeenMs();
+
+	if (cSerial.estop || cBle.estop) {
 		_rs.estop = EstopState::Active;
 	}
-	if (c.clearEstop) {
+	if (cSerial.clearEstop || cBle.clearEstop) {
 		_rs.estop = EstopState::Clear;
 		_motion.reset();
 	}
-	if (c.hasPrefer) {
-		_rs.preferRight = c.preferRight;
-	}
-	if (c.hasMode) {
-		_rs.mode = c.mode;
-		_rs.hasHeadingRef = false;
-		_motion.reset();
-	}
-	if (c.hasManual) {
-		// Keep mode as Manual if the host is driving; but we don't force it.
-		_target.throttle = c.throttle;
-		_target.steer = c.steer;
+
+	const bool serialAlive =
+		(lastSerial != 0) &&
+		((nowMs - lastSerial) <= cfg::HOST_HEARTBEAT_TIMEOUT_MS);
+	const bool bleAlive =
+		(lastBle != 0) && ((nowMs - lastBle) <= cfg::HOST_HEARTBEAT_TIMEOUT_MS);
+
+	const HostCommand *active = nullptr;
+	if (bleAlive && (!serialAlive || lastBle >= lastSerial)) {
+		active = &cBle;
+	} else if (serialAlive) {
+		active = &cSerial;
 	}
 
+	if (active) {
+		if (active->hasPrefer) {
+			_rs.preferRight = active->preferRight;
+		}
+		if (active->hasMode) {
+			_rs.mode = active->mode;
+			_rs.hasHeadingRef = false;
+			_motion.reset();
+		}
+		if (active->hasManual) {
+			// Keep mode as Manual if the host is driving; but we don't force
+			// it.
+			_target.throttle = active->throttle;
+			_target.steer = active->steer;
+		}
+	}
+
+	uint32_t lastHost = lastSerial;
+	if (lastBle > lastHost)
+		lastHost = lastBle;
+
 	// Host watchdog: if host selected Manual but stopped talking, stop.
-	const uint32_t lastHost = _comm.lastHostSeenMs();
 	const bool hostTimedOut =
 		(lastHost != 0) &&
 		((nowMs - lastHost) > cfg::HOST_HEARTBEAT_TIMEOUT_MS);
@@ -162,7 +195,10 @@ void App::sendTelemetry(uint32_t nowMs) {
 
 	st.loop_hz = _loopHz;
 
-	_comm.sendStatus(st);
+	_commSerial.sendStatus(st);
+	if (cfg::BLE_ENABLED) {
+		_commBle.sendStatus(st);
+	}
 }
 
 void App::loop() {
