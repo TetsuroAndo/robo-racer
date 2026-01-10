@@ -1,7 +1,6 @@
 #pragma once
 #include <Arduino.h>
 #include <common/Math.h>
-#include <common/SlewRateLimiter.h>
 
 namespace mc {
 

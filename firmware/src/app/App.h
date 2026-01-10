@@ -1,18 +1,10 @@
 #pragma once
 #include <Arduino.h>
-#include <Wire.h>
-#include <common/Time.h>
+#include <Stream.h>
 #include "config/Config.h"
-#include "hardware/Tsd20.h"
-#include "hardware/Imu.h"
 #include "hardware/MotorDriver.h"
 #include "hardware/ServoSteering.h"
-#include "hardware/Sensors.h"
-#include "comm/Comm.h"
 #include "comm/BleUart.h"
-#include "control/State.h"
-#include "control/MotionController.h"
-#include "control/Strategy.h"
 
 namespace mc {
 
@@ -24,39 +16,35 @@ class App {
   void loop();
 
  private:
-  // Timing
-  uint32_t _lastLoopMs = 0;
-  uint16_t _loopHz = 0;
-  uint32_t _loopCounter = 0;
-  uint32_t _loopCounterTs = 0;
+  struct RcCommand {
+    float throttle = 0.0f;
+    float steer = 0.0f;
+  };
 
-  // Core state
-  RuntimeState _rs{};
-  SensorData _sensors{};
+  class LineParser {
+   public:
+    bool poll(Stream &stream, RcCommand &out);
 
-  // Subsystems
-  Tsd20 _tsd{cfg::TSD20_I2C_ADDR_7BIT};
-  Imu _imu{};
+   private:
+    static constexpr size_t kBufSize = 64;
+    char _buf[kBufSize]{};
+    size_t _len = 0;
+
+    bool parseLine(const char *line, RcCommand &out);
+  };
+
   MotorDriver _motor{cfg::PIN_RPWM, cfg::PIN_LPWM, cfg::PIN_REN, cfg::PIN_LEN};
   ServoSteering _servo{cfg::PIN_SERVO};
-
-  Comm _commSerial{};
-  Comm _commBle{};
   BleUart _ble{};
-  MotionController _motion{cfg::YAW_KP, cfg::THROTTLE_MAX, cfg::THROTTLE_SLEW_UP, cfg::THROTTLE_SLEW_DN};
-  Strategy _strategy{};
 
-  // Outputs (pre-slew)
-  ControlCommand _target{};
-  ControlCommand _out{};
+  LineParser _serialParser{};
+  LineParser _bleParser{};
 
-  mc::PeriodicTimer _telemetryTimer{50}; // 20Hz
+  RcCommand _cmd{};
+  uint32_t _lastCmdMs = 0;
 
-  void updateSensors();
-  void applyHostCommands(uint32_t nowMs);
-  void runStateMachine(uint32_t nowMs, float dt_s);
-  void writeActuators();
-  void sendTelemetry(uint32_t nowMs);
+  bool readInputs(uint32_t nowMs);
+  void applyOutputs(const RcCommand &cmd);
 };
 
 } // namespace mc
