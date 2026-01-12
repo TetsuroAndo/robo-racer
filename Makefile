@@ -3,42 +3,51 @@ OS			:= $(shell uname -s)
 # --- PATHS ---
 ROOT			:= .
 VENV			:= $(ROOT)/.venv
-SRC_DIR			:= $(ROOT)/src
-OBJ_DIR			:= $(ROOT)/obj
 TEST_DIR		:= $(ROOT)/test
 LOG_DIR			:= $(ROOT)/logs
+PIO_DIR			:= $(ROOT)/.pio
+PIO_ENV			?= esp32dev
+PIO_BUILD_DIR	:= $(PIO_DIR)/build/$(PIO_ENV)
 
-SRC				:= $(shell find $(SRC_DIR) -path '*/test' -prune -o -name '*.cpp' -print)
-OBJ				:= $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRC))
+
+NAME			:= $(PIO_BUILD_DIR)/firmware.elf
+RM				:= rm -rf
 
 # ================================
-# C++ Compiler rules
+# PlatformIO rules
 # ================================
-NAME		:= bin
-CXX			:= c++
-CXXFLAG		:= -Wall -Wextra -Werror -std=c++23
-OPT			:= -O3
-RM			:= rm -rf
-DEFINE		:= -D_GLIBCXX_USE_CXX23_ABI=0
+PIO			?= $(VENV)/bin/pio
+PIO_ARGS	?= -e $(PIO_ENV)
+PIO_RUN		:= $(PIO) run $(PIO_ARGS)
+PIO_CLEAN	:= $(PIO) run -t clean $(PIO_ARGS)
+
+# --- Upload Port ---
+ifeq ($(OS), darwin)
+	UP_PORT	:= /dev/tty.SLAB_USBtoUART
+else ifeq ($(OS), Linux)
+	UP_PORT	:= /dev/ttyUSB0
+endif
 
 # ================================
 # Makefile Target
 # ================================
-.PHONY: all clean fclean re c f r clog
+.PHONY: all clean fclean re upload c f r clog
 
 all:
-	$(MAKE) $(NAME) -j $(shell nproc)
+	$(PIO_RUN)
 clean:
-	$(RM) $(OBJ_DIR)
+	$(PIO_CLEAN)
 fclean: clean
-	$(RM) $(NAME)
+	$(RM) $(PIO_DIR)
 re: fclean all
 
+#
+upload: all
+	$(PIO) run $(PIO_ARGS) -t upload --upload-port #$(UP_PORT)
+
 # Aliases
-c: clog
-	$(RM) $(OBJ_DIR)
-f: c
-	$(RM) $(NAME)
+c: clog clean
+f: clog fclean
 r: f all
 
 # Clean log files
@@ -59,62 +68,10 @@ activate: $(PYTHON_LOCAL)
 # ================================
 # Debugs
 # ================================
-.PHONY: debug debug-fa scan tidy check
+.PHONY: debug
 
-debug: deubg-fa
-
-# FSANITIZE BUILD
-debug-fa: OPT		:= -g -O1 -fno-omit-frame-pointer -fsanitize=address
-debug-fa: DEFINE	:= -DDEBUG_MODE=DEBUG_ALL
-debug-fa: f
-	$(MAKE) $(NAME) -j $(shell nproc)
-
-# SCAN BUILD
-
-
-# ============= STATIC ANALYSIS =============
-
-# clang-tidy rule
-TIDY := clang-tidy
-TIDYFLAGS := --warnings-as-errors=* -checks=*
-
-tidy: $(SRC)
-	$(TIDY) $(TIDYFLAGS) $^ -- -std=c++98 $(CXXFLAG)
-	@echo "================================"
-	@echo "== Static Analysis Complete! =="
-	@echo "================================"
-
-# cppcheck rule
-CPPCHECK := cppcheck
-CPPCHECKFLAGS := --enable=all --inconclusive --std=c++03 --force --quiet
-
-check:
-	@$(CPPCHECK) $(CPPCHECKFLAGS) $(SRC)
-	@echo "================================"
-	@echo "== Static Analysis Complete! =="
-	@echo "================================"
-
-# ================================
-# Build
-# ================================
-
-$(NAME): $(OBJ) | $(LOG_DIR)
-	$(CXX) $(CXXFLAG) $(OPT) $(IDFLAG) $(LFLAG) $(DEFINE) -o  $@ $^
-	@echo "====================="
-	@echo "== Build Complete! =="
-	@echo "====================="
-	@echo "[Executable]: $(NAME)"
-	@echo "[OS/Arch]: $(OS)"
-	@echo "[Include]: $(INC_DIR)"
-	@echo "[Compiler flags/CXXFLAG]: $(CXXFLAG)"
-	@echo "[Linker flags/LFLAG]: $(LFLAG)"
-	@echo "[Optimizer flags/OPT]: $(OPT)"
-	@echo "[DEFINE]: $(DEFINE)"
-	@echo "====================="
-
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAG) $(OPT) $(IDFLAG) $(DEFINE) -fPIC -MMD -MP  -c $< -o $@
+debug:
+	$(PIO) debug $(PIO_ARGS)
 
 # ================================
 # Environment Setup
@@ -174,6 +131,11 @@ nm:
 nmbin:
 	@nm $(NAME) | grep ' U ' | awk '{print $$2}' | sort | uniq
 
+FIRMWARE_DIR	:= $(ROOT)/firmware
+SRC_DIR			:= $(FIRMWARE_DIR)/src
+SRC				:= $(shell find $(SRC_DIR) -path '*/test' -prune -o -name '*.cpp' -print)
+OBJ				:= $(shell find $(PIO_BUILD_DIR) -name '*.o' -print 2>/dev/null)
+
 printsrc:
 	@echo $(SRC) | tr ' ' '\n' | sort
 
@@ -193,13 +155,13 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Build Targets:"
-	@echo "  all              Build all targets"
-	@echo "  clean            Clean object files"
-	@echo "  fclean           Fully clean (clean + remove executable)"
+	@echo "  all              Build firmware with PlatformIO (pio run)"
+	@echo "  clean            Clean PlatformIO build artifacts (pio run -t clean)"
+	@echo "  fclean           Fully clean (clean + remove .pio)"
 	@echo "  re               Rebuild (fclean + all)"
 	@echo "  clog             Clean log files"
-	@echo "  c                Alias for 'clean' and 'clog'"
-	@echo "  f                Alias for 'fclean' and 'clog'"
+	@echo "  c                Alias for 'clog' and 'clean'"
+	@echo "  f                Alias for 'clog' and 'fclean'"
 	@echo "  r                Alias for 're' (fclean + all) and 'clog'"
 	@echo ""
 	@echo "Run Targets:"
@@ -207,11 +169,7 @@ help:
 	@echo "  activate         Activate the Python virtual environment"
 	@echo ""
 	@echo "Debug Targets:"
-	@echo "  debug            Build with debug flags"
-	@echo "  debug-fa         Build with debug flags and fsanitize"
-	@echo "  "
-	@echo "  tidy             Static analysis using clang-tidy"
-	@echo "  check            Static analysis using cppcheck"
+	@echo "  debug            Build firmware with PlatformIO"
 	@echo ""
 	@echo "Environment Setup"
 	@echo "  init             Initialize the environment"
