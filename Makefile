@@ -24,26 +24,29 @@ else ifeq ($(OS), Windows_NT)
 UP_PORT	:= COM3
 endif
 
-PIO			?= $(VENV)/bin/pio
-PIO_ARGS	?= -e $(PIO_ENV)
-PIO_RUN		:= $(PIO) run $(PIO_ARGS)
-PIO_CLEAN	:= $(PIO) run -t clean $(PIO_ARGS)
+PIO				?= $(VENV)/bin/pio
+PIO_ARG_ENV		?= -e $(PIO_ENV)
+PIO_ARG_CLEAN	:= -t clean
+PIO_ARG_UPLOAD	:= $(PIO_ARG_ENV) -t upload --upload-port $(UP_PORT)
+PIO_RUN			:= $(PIO) run
 
 # ================================
 # Makefile Target
 # ================================
-.PHONY: all clean fclean re upload c f r clog
+.PHONY: all clean fclean re upload monitor c f r clog
 
 all:
-	$(PIO_RUN)
+	$(PIO_RUN) $(PIO_ARG_ENV)
 clean:
-	$(PIO_CLEAN)
+	$(PIO_RUN) $(PIO_ARG_CLEAN)
 fclean: clean
 	$(RM) $(PIO_DIR)
 re: fclean all
 
 upload:
-	$(PIO_RUN) -t upload --upload-port $(UP_PORT)
+	$(PIO_RUN) $(PIO_ARG_UPLOAD)
+monitor:
+	$(PIO) device monitor
 
 # Aliases
 c: clog clean
@@ -60,7 +63,7 @@ $(LOG_DIR):
 .PHONY: test activate
 
 test: $(PYTHON_LOCAL)
-	@. $(VENV)/bin/activate && $(UV) run pytest -q
+	$(VENV)/bin/pytest -q
 
 activate: $(PYTHON_LOCAL)
 	@bash -lc 'source "$(VENV)/bin/activate" && exec $$SHELL -l'
@@ -68,10 +71,13 @@ activate: $(PYTHON_LOCAL)
 # ================================
 # Debugs
 # ================================
-.PHONY: debug
+.PHONY: debug debug-gdb
 
 debug:
-	$(PIO) debug $(PIO_ARGS)
+	$(PIO) debug $(PIO_ARGS_ENV)
+
+debug-gdb:
+	$(PIO) debug -s $(PIO_BUILD_DIR) --interface gdb -p
 
 # ================================
 # Environment Setup
