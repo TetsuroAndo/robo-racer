@@ -16,19 +16,18 @@ RM				:= rm -rf
 # ================================
 # PlatformIO rules
 # ================================
+ifeq ($(OS), Darwin)
+UP_PORT	:= /dev/tty.SLAB_USBtoUART
+else ifeq ($(OS), Linux)
+UP_PORT	:= /dev/ttyUSB0
+else ifeq ($(OS), Windows_NT)
+UP_PORT	:= COM3
+endif
+
 PIO			?= $(VENV)/bin/pio
 PIO_ARGS	?= -e $(PIO_ENV)
 PIO_RUN		:= $(PIO) run $(PIO_ARGS)
 PIO_CLEAN	:= $(PIO) run -t clean $(PIO_ARGS)
-
-# --- Upload Port ---
-ifeq ($(OS), darwin)
-	UP_PORT	:= /dev/tty.SLAB_USBtoUART
-else ifeq ($(OS), Linux)
-	UP_PORT	:= /dev/ttyUSB0
-else ifeq ($(OS), Windows_NT)
-	UP_PORT	:= COM3
-endif
 
 # ================================
 # Makefile Target
@@ -43,9 +42,8 @@ fclean: clean
 	$(RM) $(PIO_DIR)
 re: fclean all
 
-#
-upload: all
-	$(PIO) run $(PIO_ARGS) -t upload --upload-port #$(UP_PORT)
+upload:
+	$(PIO_RUN) -t upload --upload-port $(UP_PORT)
 
 # Aliases
 c: clog clean
