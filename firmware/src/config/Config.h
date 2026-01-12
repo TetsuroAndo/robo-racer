@@ -8,9 +8,13 @@ namespace mc::cfg {
 // =======================
 static const uint32_t SERIAL_BAUD = 115200;
 
-// I2C pins (ESP32 default: SDA=21, SCL=22; adjust if you rewired)
-static const int PIN_I2C_SDA = 21;
-static const int PIN_I2C_SCL = 22;
+// I2C pins
+// Bus: TSD20 / PRLIDAR C1
+static const int PIN_I2C_LIDAR_SDA = 32;
+static const int PIN_I2C_LIDAR_SCL = 33;
+// Bus: GY-521 (MPU-6050)
+static const int PIN_I2C_IMU_SDA = 21;
+static const int PIN_I2C_IMU_SCL = 22;
 static const uint32_t I2C_FREQ_HZ = 400000;
 
 // =======================
