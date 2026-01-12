@@ -26,6 +26,8 @@ ifeq ($(OS), darwin)
 	UP_PORT	:= /dev/tty.SLAB_USBtoUART
 else ifeq ($(OS), Linux)
 	UP_PORT	:= /dev/ttyUSB0
+else ifeq ($(OS), Windows_NT)
+	UP_PORT	:= COM3
 endif
 
 # ================================
