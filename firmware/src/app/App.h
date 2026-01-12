@@ -1,10 +1,11 @@
 #pragma once
 #include <Arduino.h>
-#include <Stream.h>
-#include "config/Config.h"
-#include "hardware/MotorDriver.h"
-#include "hardware/ServoSteering.h"
 #include "comm/BleUart.h"
+#include "comm/CommandMux.h"
+#include "config/Config.h"
+#include "control/ActuatorBus.h"
+#include "hils/Hils.h"
+#include "log/LogSinks.h"
 
 namespace mc {
 
@@ -16,35 +17,26 @@ class App {
   void loop();
 
  private:
-  struct RcCommand {
-    float throttle = 0.0f;
-    float steer = 0.0f;
-  };
-
-  class LineParser {
-   public:
-    bool poll(Stream &stream, RcCommand &out);
-
-   private:
-    static constexpr size_t kBufSize = 64;
-    char _buf[kBufSize]{};
-    size_t _len = 0;
-
-    bool parseLine(const char *line, RcCommand &out);
-  };
-
-  MotorDriver _motor{cfg::PIN_RPWM, cfg::PIN_LPWM, cfg::PIN_REN, cfg::PIN_LEN};
-  ServoSteering _servo{cfg::PIN_SERVO};
   BleUart _ble{};
+  comm::CommandMux _commands;
+  ActuatorBus _actuators;
 
-  LineParser _serialParser{};
-  LineParser _bleParser{};
+  log::StreamSink _serialLogSink;
+  log::StreamSink _bleLogSink;
+  log::ProtocolSink _uartProtoLogSink;
+  log::UdpSink _udpLogSink;
+  hils::StreamSink _hilsSerialSink;
+  hils::StreamSink _hilsBleSink;
+  hils::Mux _hilsMux;
 
-  RcCommand _cmd{};
+  comm::RcCommand _cmd{};
   uint32_t _lastCmdMs = 0;
+  bool _timeoutActive = false;
 
+  void configureLogging();
+  void configureHils();
   bool readInputs(uint32_t nowMs);
-  void applyOutputs(const RcCommand &cmd);
+  void applyOutputs(const comm::RcCommand &cmd, uint32_t nowMs);
 };
 
 } // namespace mc

@@ -1,5 +1,5 @@
 #pragma once
-#include <stdint.h>
+#include <cstdint>
 
 namespace mc::cfg {
 
@@ -72,5 +72,37 @@ static const uint32_t HOST_HEARTBEAT_TIMEOUT_MS = 700;
 static const bool BLE_ENABLED = true;
 static const char* BLE_DEVICE_NAME = "RoboRacer";
 static const uint16_t BLE_MTU = 185;
+
+// =======================
+// Logging
+// =======================
+// Levels: 0=Trace, 1=Debug, 2=Info, 3=Warn, 4=Error, 5=Off
+static const uint8_t LOG_LEVEL_DEFAULT = 2;
+static const uint8_t LOG_LEVEL_COMM = 1;
+static const uint8_t LOG_LEVEL_CONTROL = 1;
+static const uint8_t LOG_LEVEL_HARDWARE = 2;
+static const uint8_t LOG_LEVEL_HILS = 2;
+
+static const bool LOG_TO_SERIAL = true; // text logs (disable when using binary framing)
+static const bool LOG_TO_BLE = false;
+// COBS+CRC framed logs over UART (MsgType::Log)
+static const bool LOG_TO_UART_PROTOCOL = false; // binary over UART (COBS+CRC)
+// UDP log streaming (keeps control on UART)
+static const bool LOG_TO_UDP = false;
+
+// UDP logging network settings (use IP address string)
+static const char* WIFI_SSID = "change_me";
+static const char* WIFI_PASS = "change_me";
+static const char* LOG_UDP_HOST = "192.168.0.2";
+static const uint16_t LOG_UDP_PORT = 9000;
+static const uint32_t LOG_UDP_CONNECT_TIMEOUT_MS = 4000;
+
+// =======================
+// HILS / Output
+// =======================
+// Output modes: 0=Hardware, 1=Shadow, 2=Hils
+static const uint8_t OUTPUT_MODE = 0;
+static const bool HILS_REPORT_TO_SERIAL = false;
+static const bool HILS_REPORT_TO_BLE = false;
 
 } // namespace mc::cfg

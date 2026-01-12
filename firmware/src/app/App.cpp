@@ -1,135 +1,147 @@
 #include "app/App.h"
 #include <common/Math.h>
-#include <ctype.h>
-#include <math.h>
-#include <stdlib.h>
 
 namespace mc {
 
-App::App() {}
+App::App()
+	: _ble(), _commands(Serial, cfg::BLE_ENABLED ? &_ble : nullptr),
+	  _actuators(cfg::PIN_RPWM, cfg::PIN_LPWM, cfg::PIN_REN, cfg::PIN_LEN,
+				 cfg::PIN_SERVO),
+	  _serialLogSink(Serial), _bleLogSink(_ble), _uartProtoLogSink(Serial),
+	  _udpLogSink(), _hilsSerialSink(Serial), _hilsBleSink(_ble) {}
 
 void App::begin() {
 	Serial.begin(cfg::SERIAL_BAUD);
 	delay(50);
-	Serial.println("rc firmware boot");
-	Serial.println(
-		"cmd: <throttle> <steer>  (floats -1..1 or ints -1000..1000)");
 
-	_motor.begin();
-	_servo.begin(cfg::SERVO_MIN_US, cfg::SERVO_MAX_US, cfg::SERVO_CENTER_US);
+	configureLogging();
+
+	MC_LOGI(log::Topic::App, "rc firmware boot");
+	MC_LOGI(log::Topic::App,
+			"cmd: <throttle> <steer> (floats -1..1 or ints -1000..1000)");
+
+	_actuators.begin(cfg::SERVO_MIN_US, cfg::SERVO_MAX_US,
+					 cfg::SERVO_CENTER_US);
 
 	if (cfg::BLE_ENABLED) {
 		_ble.begin(cfg::BLE_DEVICE_NAME, cfg::BLE_MTU);
-		Serial.println("BLE UART ready");
+		MC_LOGI(log::Topic::Comm, "BLE UART ready");
 	}
 
-	_motor.stop();
-	_servo.center();
+	_commands.begin();
+	configureHils();
+
+	const uint32_t now = millis();
+	_actuators.apply(0.0f, 0.0f, now);
 	_lastCmdMs = 0;
+	_timeoutActive = false;
 }
 
-static float normalizeInput(float v) {
-	if (fabsf(v) <= 1.2f)
-		return v;
-	return v / 1000.0f;
-}
+void App::configureLogging() {
+	log::Logger &logger = log::Logger::instance();
+	logger.clearSinks();
+	logger.setLevelAll(log::levelFromInt(cfg::LOG_LEVEL_DEFAULT));
+	logger.setLevel(log::Topic::Comm, log::levelFromInt(cfg::LOG_LEVEL_COMM));
+	logger.setLevel(log::Topic::Control,
+					log::levelFromInt(cfg::LOG_LEVEL_CONTROL));
+	logger.setLevel(log::Topic::Hardware,
+					log::levelFromInt(cfg::LOG_LEVEL_HARDWARE));
+	logger.setLevel(log::Topic::Hils, log::levelFromInt(cfg::LOG_LEVEL_HILS));
 
-bool App::LineParser::parseLine(const char *line, RcCommand &out) {
-	float values[2] = {0.0f, 0.0f};
-	int found = 0;
-	const char *p = line;
-
-	while (*p && found < 2) {
-		while (*p && !isdigit((unsigned char)*p) && *p != '+' && *p != '-' &&
-			   *p != '.') {
-			++p;
+	if (cfg::LOG_TO_SERIAL)
+		logger.attachSink(&_serialLogSink);
+	if (cfg::BLE_ENABLED && cfg::LOG_TO_BLE)
+		logger.attachSink(&_bleLogSink);
+	if (cfg::LOG_TO_UART_PROTOCOL)
+		logger.attachSink(&_uartProtoLogSink);
+	if (cfg::LOG_TO_UDP) {
+		if (_udpLogSink.begin(cfg::WIFI_SSID, cfg::WIFI_PASS, cfg::LOG_UDP_HOST,
+							  cfg::LOG_UDP_PORT,
+							  cfg::LOG_UDP_CONNECT_TIMEOUT_MS)) {
+			logger.attachSink(&_udpLogSink);
+		} else {
+			MC_LOGW(log::Topic::Comm, "udp log disabled");
 		}
-		if (!*p)
-			break;
-		char *end = nullptr;
-		const float v = strtof(p, &end);
-		if (end == p)
-			break;
-		values[found++] = v;
-		p = end;
+	}
+}
+
+static OutputMode outputModeFromConfig() {
+	switch (cfg::OUTPUT_MODE) {
+	case 1:
+		return OutputMode::Shadow;
+	case 2:
+		return OutputMode::Hils;
+	default:
+		return OutputMode::Hardware;
+	}
+}
+
+void App::configureHils() {
+	const OutputMode mode = outputModeFromConfig();
+	_actuators.setOutputMode(mode);
+
+	if (mode == OutputMode::Hardware)
+		return;
+
+	bool attached = false;
+	_hilsMux.clear();
+
+	if (cfg::HILS_REPORT_TO_SERIAL) {
+		_hilsMux.attach(&_hilsSerialSink);
+		attached = true;
+	}
+	if (cfg::BLE_ENABLED && cfg::HILS_REPORT_TO_BLE) {
+		_hilsMux.attach(&_hilsBleSink);
+		attached = true;
 	}
 
-	if (found < 2)
-		return false;
+	_actuators.attachHilsSink(&_hilsMux);
 
-	out.throttle = mc::clamp(normalizeInput(values[0]), -1.0f, 1.0f);
-	out.steer = mc::clamp(normalizeInput(values[1]), -1.0f, 1.0f);
-	return true;
-}
-
-bool App::LineParser::poll(Stream &stream, RcCommand &out) {
-	bool updated = false;
-	while (stream.available() > 0) {
-		const int c = stream.read();
-		if (c < 0)
-			break;
-
-		if (c == '\n' || c == '\r') {
-			if (_len > 0) {
-				_buf[_len] = '\0';
-				if (parseLine(_buf, out))
-					updated = true;
-				_len = 0;
-			}
-			continue;
-		}
-
-		if (_len + 1 >= kBufSize) {
-			_len = 0;
-			continue;
-		}
-
-		_buf[_len++] = (char)c;
-	}
-
-	return updated;
+	if (!attached)
+		MC_LOGW(log::Topic::Hils, "HILS mode set but no sink configured");
+	else
+		MC_LOGI(log::Topic::Hils, "HILS output mode active");
 }
 
 bool App::readInputs(uint32_t nowMs) {
-	bool updated = false;
-
-	if (_serialParser.poll(Serial, _cmd)) {
+	const bool updated = _commands.poll(_cmd);
+	if (updated) {
 		_lastCmdMs = nowMs;
-		updated = true;
+		if (_timeoutActive)
+			MC_LOGI(log::Topic::Control, "host recovered");
+		_timeoutActive = false;
 	}
-
-	if (cfg::BLE_ENABLED) {
-		_ble.poll();
-		if (_bleParser.poll(_ble, _cmd)) {
-			_lastCmdMs = nowMs;
-			updated = true;
-		}
-	}
-
 	return updated;
 }
 
-void App::applyOutputs(const RcCommand &cmd) {
+void App::applyOutputs(const comm::RcCommand &cmd, uint32_t nowMs) {
 	const float input = mc::clamp(cmd.throttle, -1.0f, 1.0f);
 	const float scale =
 		(input >= 0.0f) ? cfg::THROTTLE_MAX : -cfg::THROTTLE_REVERSE;
 	const float throttle = input * scale;
 	const float steer = mc::clamp(cmd.steer, -1.0f, 1.0f) * cfg::STEER_MAX;
 
-	_motor.setThrottle(throttle);
-	_servo.setNormalized(steer);
+	_actuators.apply(throttle, steer, nowMs);
 }
 
 void App::loop() {
 	const uint32_t now = millis();
 	const bool updated = readInputs(now);
 
-	if (!updated && _lastCmdMs != 0 &&
-		(now - _lastCmdMs) > cfg::HOST_HEARTBEAT_TIMEOUT_MS) {
-		_cmd = RcCommand{};
+	if (updated) {
+		MC_LOGD(log::Topic::Control, "cmd: %.3f %.3f", _cmd.throttle,
+				_cmd.steer);
 	}
 
-	applyOutputs(_cmd);
+	if (!updated && _lastCmdMs != 0 &&
+		(now - _lastCmdMs) > cfg::HOST_HEARTBEAT_TIMEOUT_MS) {
+		if (!_timeoutActive)
+			MC_LOGW(log::Topic::Control, "host timeout, stopping");
+		_timeoutActive = true;
+		_cmd = comm::RcCommand{};
+	}
+
+	applyOutputs(_cmd, now);
 }
 
 } // namespace mc

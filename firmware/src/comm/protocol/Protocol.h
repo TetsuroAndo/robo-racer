@@ -32,7 +32,10 @@ enum class MsgType : uint8_t {
   ClearEstop  = 0x20, // payload: none
 
   // Telemetry (ESP32 -> RPi)
-  Status      = 0x80  // payload: see StatusPayload
+  Status      = 0x80, // payload: see StatusPayload
+
+  // Logging (ESP32 -> RPi)
+  Log         = 0x90  // payload: LogPayloadHeader + message bytes
 };
 
 enum class Mode : uint8_t {
@@ -69,6 +72,13 @@ struct StatusPayload {
 
   uint16_t loop_hz; // approximate
   uint16_t reserved1;
+};
+
+struct LogPayloadHeader {
+  uint32_t now_ms;
+  uint8_t level;
+  uint8_t topic;
+  uint16_t msg_len;
 };
 
 #pragma pack(pop)
