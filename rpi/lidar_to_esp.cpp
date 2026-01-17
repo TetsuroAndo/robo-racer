@@ -66,7 +66,33 @@ int run_lidar_to_esp(const char* lidar_dev_c, int lidar_baud, const char* esp_de
         return 1;
     }
 
-    // モータ回転
+    // デバイス情報/ヘルス確認（SDKサンプルと同じ順序）
+    sl_lidar_response_device_info_t devinfo;
+    res = lidar->getDeviceInfo(devinfo);
+    if (!SL_IS_OK(res)) {
+        std::fprintf(stderr, "getDeviceInfo failed: %08x\n",
+                     (unsigned int)res);
+        lidar->disconnect();
+        delete lidar;
+        delete channel;
+        close(esp_fd);
+        return 1;
+    }
+
+    sl_lidar_response_device_health_t health;
+    res = lidar->getHealth(health);
+    if (!SL_IS_OK(res) || health.status == SL_LIDAR_STATUS_ERROR) {
+        std::fprintf(stderr, "getHealth failed or unhealthy: %08x status=%u\n",
+                     (unsigned int)res, (unsigned int)health.status);
+        if (SL_IS_OK(res)) lidar->reset();
+        lidar->disconnect();
+        delete lidar;
+        delete channel;
+        close(esp_fd);
+        return 1;
+    }
+
+    // モータ回転（サンプルと同じく開始前に回す）
     res = lidar->setMotorSpeed();
     if (!SL_IS_OK(res)) {
         std::fprintf(stderr, "setMotorSpeed failed: %08x\n",
@@ -81,6 +107,8 @@ int run_lidar_to_esp(const char* lidar_dev_c, int lidar_baud, const char* esp_de
     // スキャン開始
     sl::LidarScanMode scanMode;
     res = lidar->startScan(false, true, 0, &scanMode);
+	std::cerr << "LIDAR startScan result: " << res
+	          << ", mode=" << scanMode.scan_mode << std::endl;
     if (!SL_IS_OK(res)) {
         std::fprintf(stderr, "startScan failed: %08x\n",
                      (unsigned int)res);

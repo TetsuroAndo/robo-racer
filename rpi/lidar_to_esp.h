@@ -1,5 +1,5 @@
-#ifndef RPI_LIDAR_TO_ESP_H
-#define RPI_LIDAR_TO_ESP_H
+#ifndef LIDAR_TO_ESP_H
+#define LIDAR_TO_ESP_H
 
 // LiDAR から取得して ESP に送信するメイン処理
 // lidar_dev : LiDAR のシリアルデバイス
