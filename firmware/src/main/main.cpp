@@ -31,6 +31,7 @@ void setup() {
 	Serial.println("\n=== ESP32 Bluepad32: One-Line Logger ===");
 
 	pad.begin();
+	drive.begin();
 }
 
 void target_update() {
