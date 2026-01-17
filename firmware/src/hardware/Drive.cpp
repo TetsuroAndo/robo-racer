@@ -1,44 +1,28 @@
 #include "Drive.h"
 
+namespace {
+bool isFront(float deg) { return 0 + 45 <= deg || 360 - 45 <= deg; }
+} // namespace
+
+Drive::Drive() : _angle(0), _speed(0) {}
+
+Drive::~Drive() {}
+
 void Drive::begin() {
-  pinMode(PIN_REN, OUTPUT);
-  pinMode(PIN_LEN, OUTPUT);
-
-  digitalWrite(PIN_REN, HIGH);
-  digitalWrite(PIN_LEN, HIGH);
-
-  ledcSetup(CH_RPWM, PWM_FREQ, PWM_RES);
-  ledcSetup(CH_LPWM, PWM_FREQ, PWM_RES);
-
-  ledcAttachPin(PIN_RPWM, CH_RPWM);
-  ledcAttachPin(PIN_LPWM, CH_LPWM);
-
-  stop();
+	_engine.begin();
+	_steer.begin();
 }
 
-void Drive::applyPWM(uint8_t rpwm, uint8_t lpwm) {
-  ledcWrite(CH_RPWM, rpwm);
-  ledcWrite(CH_LPWM, lpwm);
+void Drive::control() {
+	_engine.setSpeed(_speed);
+	_steer.setAngle(_angle);
 }
 
-void Drive::setSpeed(int speed) {
-  speed = constrain(speed, -255, 255);
-
-  // Enable 常時ON（安全のため stop() ではPWM=0にする）
-  digitalWrite(PIN_REN, HIGH);
-  digitalWrite(PIN_LEN, HIGH);
-
-  if (speed > 0) {
-    // 前進: RPWMのみ
-    applyPWM((uint8_t)speed, 0);
-  } else if (speed < 0) {
-    // 後退: LPWMのみ
-    applyPWM(0, (uint8_t)(-speed));
-  } else {
-    stop();
-  }
-}
-
-void Drive::stop() {
-  applyPWM(0, 0);
+void Drive::evalInput(int lidarDeg, int distance) {
+	if (isFront(lidarDeg)) {
+		const int min_val = 500;
+		int tmp_dist = std::min(min_val, distance);
+		float tmp_speed = distance / min_val;
+		_speed = (_speed + tmp_speed * 255) / 2;
+	}
 }
