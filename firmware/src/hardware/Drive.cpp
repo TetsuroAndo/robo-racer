@@ -2,7 +2,7 @@
 
 #define SPEED_MAX 255
 #define AVE_DEG_NUM 1
-#define FRONT_AREA 45
+#define FRONT_AREA 30
 #define CURVE_AREA 70
 
 namespace {
@@ -68,22 +68,15 @@ void Drive::control() {
 
 	_angle = 0.5f + 0.5f * turn;
 
-	if (_angle < 0.0f)
-		_angle = 0.0f;
-	if (_angle > 1.0f)
-		_angle = 1.0f;
-
 	_engine.setSpeed(_speed);
 	_steer.setAngle(_angle);
-	_angles.clear();
 }
 
 void Drive::evalInput(int lidarDeg, int distance) {
 	_angles[lidarDeg] = distance;
 	if (isFront(lidarDeg)) {
 		const int stopDist = 300;  // mm: これ以下は停止
-		const int slowDist = 1200; // mm: ここから先は最大速度
-		distance = clampi(distance, 0, 5000);
+		const int slowDist = 310; // mm: ここから先は最大速度
 
 		int target = 0;
 		if (distance <= stopDist) {
@@ -98,6 +91,7 @@ void Drive::evalInput(int lidarDeg, int distance) {
 		// 平滑化（指数移動平均）
 		_speed = (_speed * 7 + target * 3) / 10;
 	}
+	control();
 }
 
 String Drive::info() {
