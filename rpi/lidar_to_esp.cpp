@@ -13,6 +13,11 @@
 #include <cstdlib>
 #include <string>
 #include <unistd.h>
+#include <iostream>
+#include <csignal>
+
+static volatile sig_atomic_t g_stop = 0;
+static void on_sig(int) { g_stop = 1; }
 
 // 小数点切り捨て / unsigned int
 static inline unsigned int deg_floor_u(const sl_lidar_response_measurement_node_hq_t &n) {
@@ -24,6 +29,9 @@ static inline unsigned int dist_mm_floor_u(const sl_lidar_response_measurement_n
 }
 
 int run_lidar_to_esp(const char* lidar_dev_c, int lidar_baud, const char* esp_dev) {
+    // シグナルハンドラ設定
+    signal(SIGINT,  on_sig);
+    signal(SIGTERM, on_sig);
 
     // ESP送信用UART
     int esp_fd = uart_open_writeonly(esp_dev, 115200);
@@ -124,7 +132,7 @@ int run_lidar_to_esp(const char* lidar_dev_c, int lidar_baud, const char* esp_de
     std::array<unsigned int, 360> dist_mm;
     sl_lidar_response_measurement_node_hq_t nodes[8192];
 
-    while (true) {
+    while (!g_stop) {
         dist_mm.fill(0);
 
         size_t nodeCount = sizeof(nodes) / sizeof(nodes[0]);
@@ -146,11 +154,18 @@ int run_lidar_to_esp(const char* lidar_dev_c, int lidar_baud, const char* esp_de
             char line[32];
             int n = std::snprintf(line, sizeof(line),
                                   "%u,%u\n", dist_mm[deg], deg);
-            if (n > 0) write(esp_fd, line, (size_t)n);
+            if (n > 0) {
+                write(esp_fd, line, (size_t)n);
+                // ログ出力（最初の5行と10度ごと、最後の行）
+                if (deg < 5 || deg % 10 == 0 || deg == 359) {
+                    std::cerr << "  ESP: " << line;
+                }
+            }
         }
     }
 
-    // 実際にはここには来ない（停止制御は main 側でやる）
+    // 停止処理
+    std::cerr << "Stopping LIDAR..." << std::endl;
     lidar->stop();
     lidar->setMotorSpeed(0);
     lidar->disconnect();
