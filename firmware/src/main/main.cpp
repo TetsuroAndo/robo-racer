@@ -2,6 +2,7 @@
 #include "../hardware/Drive.h"
 #include "../log/Logger.h"
 #include <Arduino.h>
+#include <vector>
 
 static ControllerInput pad;
 static Drive drive;
@@ -32,7 +33,30 @@ void setup() {
 	pad.begin();
 }
 
-void target_update() { drive.control(); }
+void target_update() {
+	std::vector< input > inputs;
+	while (Serial2.available() > 0 && inputs.size() < 360) {
+		String line = Serial2.readStringUntil('\n');
+		if (line.length() == 0)
+			continue;
+
+		int commaPos = line.indexOf(',');
+		if (commaPos < 0)
+			continue;
+
+		String sDist = line.substring(0, commaPos);
+		String sDeg = line.substring(commaPos + 1);
+
+		int dist = sDist.toInt();
+		int deg = sDeg.toInt();
+
+		inputs.push_back({dist, deg});
+	}
+	for (const auto &x : inputs) {
+		drive.evalInput(x.dist, x.deg);
+	}
+	drive.control();
+}
 
 void loop() { target_update(); }
 
