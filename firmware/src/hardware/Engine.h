@@ -11,6 +11,7 @@ public:
 	void stop();
 
 private:
+	int _prev_speed;
 	// ESP32 pins -> IBT-2
 	static const int PIN_RPWM = 25; // ESP32 GPIO25 -> IBT2_RPWM
 	static const int PIN_LPWM = 26; // ESP32 GPIO26 -> IBT2_LPWM
@@ -24,4 +25,5 @@ private:
 	static const int PWM_RES = 8;	   // 8bit -> 0..255
 
 	void applyPWM(uint8_t rpwm, uint8_t lpwm);
+	void outputSpeed(int cur);
 };

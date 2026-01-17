@@ -15,8 +15,8 @@ static const int SPEED_MAX = 180;
 static const int SPEED_STEP = 6;
 static const int LOOP_DELAY = 20;
 
-static const int SERIAL_TXD = 16;
-static const int SERIAL_RXD = 17;
+static const int SERIAL_RXD = 16;
+static const int SERIAL_TXD = 17;
 
 struct input {
 	int dist;
@@ -39,7 +39,7 @@ void target_update() {
 	// シリアルから最大360個のデータを受け取ります
 	while (Serial2.available() > 0 && inputs.size() < 360) {
 		String line = Serial2.readStringUntil('\n');
-		Serial.println(line);
+		// Serial.println(line);
 		if (line.length() == 0)
 			continue;
 
@@ -52,6 +52,9 @@ void target_update() {
 
 		int dist = sDist.toInt();
 		int deg = sDeg.toInt();
+		if (dist < 5) {
+			continue;
+		}
 
 		inputs.push_back({dist, deg});
 	}
