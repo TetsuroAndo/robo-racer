@@ -157,9 +157,9 @@ int run_lidar_to_esp(const char* lidar_dev_c, int lidar_baud, const char* esp_de
             if (n > 0) {
                 write(esp_fd, line, (size_t)n);
                 // ログ出力（最初の5行と10度ごと、最後の行）
-                if (deg < 5 || deg % 10 == 0 || deg == 359) {
-                    std::cerr << "  ESP: " << line;
-                }
+                // if (deg < 5 || deg == 0 || deg == 359) {
+                std::cerr << line;
+                // }
             }
         }
     }
