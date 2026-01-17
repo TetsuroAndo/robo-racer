@@ -39,6 +39,7 @@ void target_update() {
 	// シリアルから最大360個のデータを受け取ります
 	while (Serial2.available() > 0 && inputs.size() < 360) {
 		String line = Serial2.readStringUntil('\n');
+		Serial.println(line);
 		if (line.length() == 0)
 			continue;
 
