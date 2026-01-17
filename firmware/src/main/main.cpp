@@ -1,0 +1,90 @@
+#include <Arduino.h>
+#include "../control/ControllerInput.h"
+#include "../hardware/Drive.h"
+#include "../control/Steer.h"
+#include "../log/Logger.h"
+
+static ControllerInput pad;
+static Drive drive;
+static Steer steer;
+static Logger logg;
+
+static bool running = true;
+static int speedNow = 0;
+
+static const int SPEED_MAX  = 180;
+static const int SPEED_STEP = 6;
+static const int LOOP_DELAY = 20; // ログ見やすく少し遅く
+
+void setup() {
+  logg.begin(115200);
+
+  Serial.println("\n=== ESP32 Bluepad32: One-Line Logger ===");
+
+  pad.begin();
+  drive.begin();
+  steer.begin();
+}
+
+void loop() {
+  pad.update();
+
+  bool connected = pad.isConnected();
+
+  if (!connected) {
+    speedNow = 0;
+    drive.stop();
+    steer.center();
+
+    static PadState dummy{};
+    logg.printLine(false, running, dummy, 0, "CENTER");
+
+    delay(LOOP_DELAY);
+    return;
+  }
+
+  // '-' で Pause / Resume
+  if (pad.consumeToggleRunning()) {
+    running = !running;
+    if (!running) {
+      speedNow = 0;
+      drive.stop();
+      steer.center();
+    }
+  }
+
+  const PadState& st = pad.state();
+  const char* steerStr = "CENTER";
+
+  if (running) {
+    // --- ステア ---
+    if (st.dpad & 0x04) {
+      steer.right();
+      steerStr = "RIGHT";
+    } else if (st.dpad & 0x08) {
+      steer.left();
+      steerStr = "LEFT";
+    } else {
+      steer.center();
+    }
+
+    // --- 走行 ---
+    if (st.B) {
+      speedNow -= SPEED_STEP;
+    } else if (st.A) {
+      speedNow += SPEED_STEP;
+    } else {
+      speedNow -= SPEED_STEP;
+    }
+
+    speedNow = constrain(speedNow, 0, SPEED_MAX);
+
+    if (speedNow == 0) drive.stop();
+    else drive.setSpeed(speedNow);
+  }
+
+  // ★ ここが一行ログ本体
+  logg.printLine(true, running, st, speedNow, steerStr);
+
+  delay(LOOP_DELAY);
+}

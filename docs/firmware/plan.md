@@ -12,6 +12,13 @@
 
 本フェーズでは「最速で走る」ではなく **確実に“安全に走る”** を優先します。
 
+## 関連ドキュメント
+
+- LOG 設計: log_plan.md
+- LOG 運用: log_guide.md
+- HILS 設計: hils_plan.md
+- HILS 運用: hils_guide.md
+
 ---
 
 ## 現状の最小機能（本実装が提供するもの）
@@ -51,6 +58,10 @@ firmware/
     external/    … 外部ライブラリをsubmodule/subtreeで固定する場合の置き場
 docs/
   firmware/plan.md
+  firmware/log_plan.md
+  firmware/log_guide.md
+  firmware/hils_plan.md
+  firmware/hils_guide.md
 ```
 
 PlatformIOは `lib_dir` / `lib_extra_dirs` を使ってローカルライブラリを優先的に探索できます。 citeturn16search1turn16search7  
