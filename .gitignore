@@ -290,3 +290,25 @@ poetry.toml
 pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
+
+# KiCad
+# Backup files
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*.kicad_pro-bak
+*.kicad_prl-bak
+# Backup directories
+*-backups/
+# Design rules (user-specific)
+*.kicad_dru
+# Worksheet files (user-specific)
+*.kicad_wks
+# Cache files
+*.cache
+# Temporary files
+*.tmp
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/

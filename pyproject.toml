@@ -9,6 +9,7 @@ description = "Robo Racer project with Pi5, ESP32 and Simulator"
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
+    "platformio>=6.1.18",
     "pyyaml",
 ]
 

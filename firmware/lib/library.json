@@ -1,0 +1,12 @@
+{
+  "name": "mc_common",
+  "version": "0.1.0",
+  "description": "Common utilities for TOYOTA42 mini-car firmware",
+  "keywords": "common, utilities, embedded",
+  "authors": [
+    { "name": "TOYOTA42 team" }
+  ],
+  "license": "MIT",
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"]
+}
