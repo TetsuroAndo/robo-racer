@@ -2,6 +2,7 @@
 
 #include "Engine.h"
 #include "Steer.h"
+#include <map>
 
 class Drive {
 public:
@@ -11,10 +12,13 @@ public:
 	void begin();
 	void control();
 	void evalInput(int lidarDeg, int distance);
+
+	String info();
 private:
 	Engine _engine;
 	Steer _steer;
 
 	int _speed;
-	int _angle;
+	float _angle;
+	std::map<int, int> _angles;
 };

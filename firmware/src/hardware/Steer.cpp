@@ -1,5 +1,11 @@
 #include "Steer.h"
 
+namespace {
+float lerp(float start, float end, float t) {
+	return (1 - t) * start + t * end;
+}
+} // namespace
+
 void Steer::begin() {
 	ledcSetup(CH_SERVO, SERVO_FREQ, SERVO_RES);
 	ledcAttachPin(PIN_SERVO, CH_SERVO);
@@ -15,8 +21,15 @@ void Steer::writePulseUs_(int us) {
 	ledcWrite(CH_SERVO, duty);
 }
 
-void Steer::setAngle(int angle) {
-	angle = constrain(angle, 0, 180);
+void Steer::setAngle(float angle) {
+	if (angle < 0.0)
+		angle = 0.0;
+	if (1.0 < angle)
+		angle = 1.0;
+
+	int tmp_angle = static_cast< int >(lerp(ANGLE_RIGHT, ANGLE_LEFT, angle));
+
+	angle = constrain(tmp_angle, 0, 180);
 	int us = map(angle, 0, 180, PULSE_MIN_US, PULSE_MAX_US);
 	writePulseUs_(us);
 }

@@ -36,6 +36,7 @@ void setup() {
 
 void target_update() {
 	std::vector< input > inputs;
+	// シリアルから最大360個のデータを受け取ります
 	while (Serial2.available() > 0 && inputs.size() < 360) {
 		String line = Serial2.readStringUntil('\n');
 		if (line.length() == 0)
@@ -53,11 +54,13 @@ void target_update() {
 
 		inputs.push_back({dist, deg});
 	}
+	// データを評価
 	for (const auto &x : inputs) {
 		drive.evalInput(x.dist, x.deg);
 	}
+	// スピードとステアを適用
 	drive.control();
-	inputs.clear();
+	Serial.println(drive.info());
 }
 
 void loop() { target_update(); }
