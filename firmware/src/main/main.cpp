@@ -57,6 +57,7 @@ void target_update() {
 		drive.evalInput(x.dist, x.deg);
 	}
 	drive.control();
+	inputs.clear();
 }
 
 void loop() { target_update(); }
