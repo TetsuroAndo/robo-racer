@@ -8,14 +8,13 @@ Process::Process() {}
 Process::~Process() {}
 
 ProcResult Process::proc(const std::vector< LidarData > &lidarData) const {
-
 	float max = 0;
 	int maxDistance = -1;
 	float min = 0;
 	int minDistance = INT32_MAX;
 	// std::cout << lidarData.size() << "\n";
 	for (const auto &i : lidarData) {
-		if (-30 <= i.angle && i.angle <= 30) {
+		if (-70 <= i.angle && i.angle <= 70) {
 			if (maxDistance < i.distance) {
 				max = i.angle;
 				maxDistance = i.distance;
@@ -26,6 +25,5 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData) const {
 			}
 		}
 	}
-
 	return ProcResult(maxDistance / 50, min * -1);
 }
