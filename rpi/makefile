@@ -7,7 +7,7 @@ RPLIDAR_LIB     := $(RPLIDAR_SDK_DIR)/output/Linux/Release
 
 # ===== target / sources =====
 TARGET := lidar_to_esp
-SRCS   := main.cpp lidar_to_esp.cpp uart.c
+SRCS   := main.cpp uart.c Process.cpp Sender.cpp LidarReceiver.cpp
 OBJS   := $(SRCS:.cpp=.o)
 OBJS   := $(OBJS:.c=.o)
 
