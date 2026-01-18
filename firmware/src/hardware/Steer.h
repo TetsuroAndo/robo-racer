@@ -20,8 +20,8 @@ private:
   static const int SERVO_RES  = 16;   // 0..65535
 
   // DS3218想定の一般的なレンジ
-  static const int PULSE_MIN_US = 1000;
-  static const int PULSE_MAX_US = 2000;
+  static const int PULSE_MIN_US = 1200;
+  static const int PULSE_MAX_US = 1800;
 
   // 好みで調整
   static const int ANGLE_RANGE = 30;

@@ -52,24 +52,40 @@ LidarReceiver::~LidarReceiver() {
 }
 
 std::vector< LidarData > LidarReceiver::receive() {
-	std::array< unsigned int, 360 > dist_mm;
 	sl_lidar_response_measurement_node_hq_t nodes[8192];
-	dist_mm.fill(0);
 	size_t nodeCount = sizeof(nodes) / sizeof(nodes[0]);
-	_lidar->ascendScanData(nodes, nodeCount);
+
+	// 1) まずデータ取得（nodeCount が “実データ数” に更新される）
+	sl_result ans = _lidar->grabScanDataHq(nodes, nodeCount);
+	if (!SL_IS_OK(ans) || nodeCount == 0) {
+		return {};
+	}
+
+	// 2) 角度昇順に並べ替え（取得ではない）
+	ans = _lidar->ascendScanData(nodes, nodeCount);
+	if (!SL_IS_OK(ans)) {
+		// 全点無効などで FAIL になることがあるので、ここで捨てる/続行は方針次第
+		return {};
+	}
 
 	std::vector< LidarData > res;
-	for (size_t i = 0; i < std::min(nodeCount, static_cast< size_t >(500));
-		 i++) {
-		float angle = deg_float(nodes[i]);
-		if (angle < 0 || angle >= 360)
+	res.reserve(nodeCount);
+
+	for (size_t i = 0; i < nodeCount; i++) {
+		// 無効点（距離0）を弾くのが定番
+		if (nodes[i].dist_mm_q2 == 0)
 			continue;
+
+		float angle =
+			(static_cast< float >(nodes[i].angle_z_q14) * 90.0f) / 16384.0f;
 		angle = normalize(angle);
-		unsigned int dist = dist_mm_floor_uint(nodes[i]);
+
+		unsigned int dist =
+			static_cast< unsigned int >(nodes[i].dist_mm_q2 >> 2);
 		if (dist < 5)
 			continue;
-		LidarData data(dist, angle);
-		res.push_back(data);
+
+		res.emplace_back(dist, angle);
 	}
 	return res;
 }
