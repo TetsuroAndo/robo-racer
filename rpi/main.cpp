@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
 	while (!g_stop) {
 		const std::vector< LidarData > &res = lidarReceiver.receive();
 		const ProcResult procResult = process.proc(res);
-		usleep(200 * 1000);
+		// usleep(1 * 1000); // 適度に空白を開けて送りすぎないようにする。
 		sender.send(procResult.speed, procResult.angle);
 	}
 	return 0;

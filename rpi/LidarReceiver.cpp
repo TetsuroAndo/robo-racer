@@ -50,7 +50,7 @@ std::vector< LidarData > LidarReceiver::receive() {
 	_lidar->ascendScanData(nodes, nodeCount);
 
 	std::vector< LidarData > res;
-	for (size_t i = 0; i < nodeCount; i++) {
+	for (size_t i = 0; i < std::min(nodeCount, static_cast<size_t>(500)); i++) {
 		float deg = deg_float(nodes[i]);
 		if (deg < 0 || deg >= 360)
 			continue;
