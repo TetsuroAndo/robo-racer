@@ -4,6 +4,7 @@
 #include "lidar_to_esp.h"
 #include <csignal>
 #include <cstdlib>
+#include <unistd.h>
 
 static volatile sig_atomic_t g_stop = 0;
 static void on_sig(int) { g_stop = 1; }
@@ -23,7 +24,8 @@ int main(int argc, char **argv) {
 	while (!g_stop) {
 		const std::vector< LidarData > &res = lidarReceiver.receive();
 		const ProcResult procResult = process.proc(res);
-		sender.send(procResult.speed, procResult.speed);
+		usleep(200 * 1000);
+		sender.send(procResult.speed, procResult.angle);
 	}
 	return 0;
 }
