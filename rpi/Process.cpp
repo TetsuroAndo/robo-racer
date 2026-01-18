@@ -7,17 +7,23 @@ Process::Process() {}
 Process::~Process() {}
 
 ProcResult Process::proc(const std::vector< LidarData > &lidarData) const {
-	(void)lidarData;
-	static float t = 0.0f;
-	const float dt = 0.1f;
 
-	const int speed = static_cast< int >((std::sin(t) + 1.0f) * 0.5f * 255.0f);
-	const int angle = static_cast< int >(std::sin(t * 0.7f) * 30.0f);
-
-	t += dt;
-	if (t > 2.0f * 3.14159265f) {
-		t -= 2.0f * 3.14159265f;
+	float max = 0;
+	int maxDistance = -1;
+	float min = 0;
+	int minDistance = -1;
+	for (const auto &i : lidarData) {
+		if (-30 <= i.distance && i.distance <= 30) {
+			if (maxDistance < i.distance) {
+				max = i.angle;
+				maxDistance = i.distance;
+			}
+			if (i.distance < minDistance) {
+				min = i.angle;
+				minDistance = i.distance;
+			}
+		}
 	}
 
-	return ProcResult(speed, angle);
+	return ProcResult(maxDistance / 50, min * -1);
 }

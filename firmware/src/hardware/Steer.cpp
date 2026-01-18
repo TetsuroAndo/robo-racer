@@ -31,7 +31,8 @@ void Steer::setAngle(float angle) {
 	}
 
 	angle += ANGLE_CENTER;
-	int us = map(angle, ANGLE_CENTER - ANGLE_RANGE, ANGLE_CENTER + ANGLE_RANGE, PULSE_MIN_US, PULSE_MAX_US);
+	int us = map(angle, ANGLE_CENTER - ANGLE_RANGE, ANGLE_CENTER + ANGLE_RANGE,
+				 PULSE_MIN_US, PULSE_MAX_US);
 	writePulseUs_(us);
 }
 void Steer::center() { setAngle(ANGLE_CENTER); }
