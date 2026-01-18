@@ -1,5 +1,6 @@
-// main.cpp
-
+#include "LidarReceiver.h"
+#include "Process.h"
+#include "Sender.h"
 #include "lidar_to_esp.h"
 #include <csignal>
 #include <cstdlib>
@@ -7,13 +8,22 @@
 static volatile sig_atomic_t g_stop = 0;
 static void on_sig(int) { g_stop = 1; }
 
-int main(int argc, char** argv) {
-    signal(SIGINT,  on_sig);
-    signal(SIGTERM, on_sig);
+int main(int argc, char **argv) {
+	signal(SIGINT, on_sig);
+	signal(SIGTERM, on_sig);
 
-    const char* lidar_dev = (argc >= 2) ? argv[1] : "/dev/ttyAMA2";
-    int         lidar_baud = (argc >= 3) ? std::atoi(argv[2]) : 460800;
-    const char* esp_dev   = (argc >= 4) ? argv[3] : "/dev/ttyAMA0";
+	const char *lidar_dev = (argc >= 2) ? argv[1] : "/dev/ttyAMA2";
+	int lidar_baud = (argc >= 3) ? std::atoi(argv[2]) : 460800;
+	const char *esp_dev = (argc >= 4) ? argv[3] : "/dev/ttyAMA0";
 
-    return run_lidar_to_esp(lidar_dev, lidar_baud, esp_dev);
+	LidarReceiver lidarReceiver(lidar_dev, lidar_baud);
+	Process process;
+	Sender sender(esp_dev);
+
+	while (!g_stop) {
+		const std::vector< LidarData > &res = lidarReceiver.receive();
+		const ProcResult procResult = process.proc(res);
+		sender.send(procResult.speed, procResult.speed);
+	}
+	return 0;
 }
