@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cerrno>
+#include <cmath>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -25,6 +26,14 @@ unsigned int
 dist_mm_floor_uint(const sl_lidar_response_measurement_node_hq_t &n) {
 	return static_cast< unsigned int >(n.dist_mm_q2 >> 2);
 }
+
+float normalize(double angle) {
+	double a = fmod(angle + 180.0, 360.0);
+	if (a < 0)
+		a += 360.0;
+	return static_cast< float >(a - 180.0);
+}
+
 } // namespace
 
 LidarReceiver::LidarReceiver(const char *lidar_dev_c, int lidar_baud) {
@@ -50,14 +59,16 @@ std::vector< LidarData > LidarReceiver::receive() {
 	_lidar->ascendScanData(nodes, nodeCount);
 
 	std::vector< LidarData > res;
-	for (size_t i = 0; i < std::min(nodeCount, static_cast<size_t>(500)); i++) {
-		float deg = deg_float(nodes[i]);
-		if (deg < 0 || deg >= 360)
+	for (size_t i = 0; i < std::min(nodeCount, static_cast< size_t >(500));
+		 i++) {
+		float angle = deg_float(nodes[i]);
+		if (angle < 0 || angle >= 360)
 			continue;
+		angle = normalize(angle);
 		unsigned int dist = dist_mm_floor_uint(nodes[i]);
 		if (dist < 5)
 			continue;
-		LidarData data(dist, deg);
+		LidarData data(dist, angle);
 		res.push_back(data);
 	}
 	return res;
