@@ -39,7 +39,6 @@ void Drive::begin() {
 
 void Drive::control() {
 	if (evalTimeout() == false) {
-		// TIMEOUT_MS以上更新がないので止める
 		_speed = 0;
 		_angle = 0;
 	}
