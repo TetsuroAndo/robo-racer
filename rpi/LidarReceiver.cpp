@@ -18,7 +18,7 @@
 namespace {
 // 小数点切り捨て / unsigned int
 float deg_float(const sl_lidar_response_measurement_node_hq_t &n) {
-	return (static_cast< float >(n.angle_z_q14) * 90U) >> 14;
+	return (static_cast< float >(n.angle_z_q14) * 90.0f) / (1U << 14);
 }
 
 unsigned int
@@ -47,7 +47,7 @@ std::vector< LidarData > LidarReceiver::receive() {
 	sl_lidar_response_measurement_node_hq_t nodes[8192];
 	dist_mm.fill(0);
 	size_t nodeCount = sizeof(nodes) / sizeof(nodes[0]);
-	lidar->ascendScanData(nodes, nodeCount);
+	_lidar->ascendScanData(nodes, nodeCount);
 
 	std::vector< LidarData > res;
 	for (size_t i = 0; i < nodeCount; i++) {

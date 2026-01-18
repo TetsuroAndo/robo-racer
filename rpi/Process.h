@@ -11,8 +11,9 @@ struct ProcResult {
 };
 
 class Process {
+public:
 	Process();
 	~Process();
 
-	ProcResult proc(std::vector< LidarData > &lidarData);
+	ProcResult proc(const std::vector< LidarData > &lidarData) const;
 };

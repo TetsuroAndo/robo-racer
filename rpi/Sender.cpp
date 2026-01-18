@@ -12,7 +12,8 @@ void Sender::send(int speed, int angle) {
 	char line[32];
 	int n = std::snprintf(line, sizeof(line), "%u,%u\n", speed, angle);
 	if (n > 0) {
-		write(_espFd, line, (size_t)n);
+		int res = write(_espFd, line, (size_t)n);
+		(void)res;
 		std::cerr << line;
 	}
 }

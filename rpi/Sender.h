@@ -1,6 +1,7 @@
 #pragma once
 
 class Sender {
+public:
 	Sender(const char* esp_dev);
 	~Sender();
 
