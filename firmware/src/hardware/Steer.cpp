@@ -21,19 +21,21 @@ void Steer::writePulseUs_(int us) {
 	ledcWrite(CH_SERVO, duty);
 }
 
+// angle -> -ANGLE_RANGE ~ ANGLE_RANGE
 void Steer::setAngle(float angle) {
-	if (angle < 0.0)
-		angle = 0.0;
-	if (1.0 < angle)
-		angle = 1.0;
+	angle *=
+		-1; // モーターの設置向きが0~1が右左となっているが,LiDARはその逆なので合わせる。
+	if (ANGLE_RANGE < angle) {
+		angle = ANGLE_RANGE;
+	} else if (ANGLE_RANGE * -1 < angle) {
+		angle = ANGLE_RANGE * -1;
+	}
 
-	int tmp_angle = static_cast< int >(lerp(ANGLE_RIGHT, ANGLE_LEFT, angle));
-
-	angle = constrain(tmp_angle, 0, 180);
+	angle += ANGLE_CENTER;
 	int us = map(angle, 0, 180, PULSE_MIN_US, PULSE_MAX_US);
 	writePulseUs_(us);
 }
 
 void Steer::center() { setAngle(ANGLE_CENTER); }
-void Steer::left() { setAngle(ANGLE_LEFT); }
-void Steer::right() { setAngle(ANGLE_RIGHT); }
+void Steer::left() { setAngle(ANGLE_CENTER + ANGLE_RANGE); }
+void Steer::right() { setAngle(ANGLE_CENTER - ANGLE_RANGE); }

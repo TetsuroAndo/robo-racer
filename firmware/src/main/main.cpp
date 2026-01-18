@@ -35,11 +35,9 @@ void setup() {
 }
 
 void target_update() {
-	std::vector< input > inputs;
-	// シリアルから最大360個のデータを受け取ります
-	while (Serial2.available() > 0 && inputs.size() < 360) {
+	// シリアルからデータを受け取ります
+	while (Serial2.available() > 0) {
 		String line = Serial2.readStringUntil('\n');
-		// Serial.println(line);
 		if (line.length() == 0)
 			continue;
 
@@ -47,22 +45,15 @@ void target_update() {
 		if (commaPos < 0)
 			continue;
 
-		String sDist = line.substring(0, commaPos);
-		String sDeg = line.substring(commaPos + 1);
+		String sSpeed = line.substring(0, commaPos);
+		String sAngle = line.substring(commaPos + 1);
 
-		int dist = sDist.toInt();
-		int deg = sDeg.toInt();
-		if (dist < 5) {
-			continue;
-		}
+		int speed = sSpeed.toInt();
+		int angle = sAngle.toInt();
 
-		inputs.push_back({dist, deg});
+		drive.setSpeed(speed);
+		drive.setAngle(angle);
 	}
-	// データを評価
-	for (const auto &x : inputs) {
-		drive.evalInput(x.dist, x.deg);
-	}
-	// スピードとステアを適用
 	drive.control();
 	Serial.println(drive.info());
 }

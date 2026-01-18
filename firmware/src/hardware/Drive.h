@@ -11,7 +11,12 @@ public:
 
 	void begin();
 	void control();
-	void evalInput(int lidarDeg, int distance);
+
+	void setSpeed(int newSpeed);
+	void setAngle(int newAngle);
+
+	void updateTimeout();
+	bool evalTimeout();
 
 	String info();
 private:
@@ -21,4 +26,5 @@ private:
 	int _speed;
 	float _angle;
 	std::map<int, int> _angles;
+	unsigned long _lastUpdate;
 };

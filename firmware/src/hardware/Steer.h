@@ -8,8 +8,7 @@ public:
   void left();
   void right();
 
-  // angle: 0..1
-  // 0.5 center
+  // angle: 0中央, 正: 右, 負: 左
   void setAngle(float angle);
 
 private:
@@ -25,9 +24,8 @@ private:
   static const int PULSE_MAX_US = 2500;
 
   // 好みで調整
+  static const int ANGLE_RANGE = 30;
   static const int ANGLE_CENTER = 90;
-  static const int ANGLE_LEFT   = 120;
-  static const int ANGLE_RIGHT  = 60;
 
   void writePulseUs_(int us);
 };
