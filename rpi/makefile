@@ -1,5 +1,6 @@
 # ===== configurable paths =====
-RPLIDAR_SDK_DIR := rplidar_sdk
+ROOT_DIR        := ./
+RPLIDAR_SDK_DIR := $(ROOT_DIR)/lib/rplidar_sdk
 RPLIDAR_INC     := $(RPLIDAR_SDK_DIR)/sdk/include
 RPLIDAR_SRC     := $(RPLIDAR_SDK_DIR)/sdk/src
 RPLIDAR_LIB     := $(RPLIDAR_SDK_DIR)/output/Linux/Release
