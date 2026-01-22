@@ -1,9 +1,10 @@
 #include "Logger.h"
+#include "../config/Config.h"
 
 void Logger::begin(uint32_t baud) {
 	if (!started_) {
 		Serial.begin(baud);
-		delay(200);
+		delay(cfg::LOG_STARTUP_DELAY_MS);
 		started_ = true;
 	}
 }

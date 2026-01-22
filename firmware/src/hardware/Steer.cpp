@@ -17,8 +17,8 @@ void Steer::begin() {
 void Steer::writePulseUs_(int us) {
 	us = constrain(us, cfg::STEER_PULSE_MIN_US, cfg::STEER_PULSE_MAX_US);
 
-	// 50Hz => period = 20,000us
-	const uint32_t period_us = 20000;
+	// PWM周期（50Hzなら20,000us）
+	const uint32_t period_us = cfg::STEER_PWM_PERIOD_US;
 	uint32_t duty = (uint32_t)((uint64_t)us * 65535ULL / period_us);
 	ledcWrite(cfg::STEER_CHANNEL, duty);
 }

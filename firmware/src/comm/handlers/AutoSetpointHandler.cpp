@@ -1,5 +1,6 @@
 #include "Handlers.h"
 
+#include "../../config/Config.h"
 #include "../Context.h"
 #include "../protocol/Protocol.h"
 #include <Arduino.h>
@@ -21,7 +22,7 @@ bool handleAutoSetpoint(const proto::FrameView &f, Context &ctx) {
 	const auto *h = hdr(f);
 	if (h->len != sizeof(proto::AutoSetpointPayload)) {
 		if (wantsAck(h)) {
-			ctx.tx.sendAck(h->type, h->seq, 3);
+			ctx.tx.sendAck(h->type, h->seq, cfg::ACK_CODE_INVALID_PAYLOAD);
 		}
 		return true;
 	}
@@ -29,14 +30,14 @@ bool handleAutoSetpoint(const proto::FrameView &f, Context &ctx) {
 	if (!ctx.safety.auto_active) {
 		ctx.safety.markAutoInactive();
 		if (wantsAck(h)) {
-			ctx.tx.sendAck(h->type, h->seq, 5);
+			ctx.tx.sendAck(h->type, h->seq, cfg::ACK_CODE_INVALID_TTL);
 		}
 		return true;
 	}
 
 	if (!ctx.autoCmd.isNewerSeq(h->seq)) {
 		if (wantsAck(h)) {
-			ctx.tx.sendAck(h->type, h->seq, 0);
+			ctx.tx.sendAck(h->type, h->seq, cfg::ACK_CODE_OK);
 		}
 		return true;
 	}
@@ -46,7 +47,7 @@ bool handleAutoSetpoint(const proto::FrameView &f, Context &ctx) {
 	ctx.autoCmd.set(h->seq, p, millis());
 
 	if (wantsAck(h)) {
-		ctx.tx.sendAck(h->type, h->seq, 0);
+		ctx.tx.sendAck(h->type, h->seq, cfg::ACK_CODE_OK);
 	}
 	return true;
 }

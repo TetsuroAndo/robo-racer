@@ -29,7 +29,6 @@ static int16_t status_speed_cmd = 0;
 static int16_t status_steer_cdeg = 0;
 static uint8_t status_seq = 0;
 static uint32_t last_status_ms = 0;
-static constexpr uint32_t kStatusIntervalMs = 50;
 
 namespace {
 inline const proto::Header *hdr(const proto::FrameView &f) {
@@ -64,14 +63,14 @@ static void uart_rx_poll() {
 		const auto *h = hdr(frame);
 		if (h->ver != proto::VER) {
 			if (h->flags & proto::FLAG_ACK_REQ) {
-				tx.sendAck(h->type, h->seq, 2);
+				tx.sendAck(h->type, h->seq, cfg::ACK_CODE_VERSION_MISMATCH);
 			}
 			continue;
 		}
 
 		if (!dispatcher.dispatch(h->type, frame, ctx)) {
 			if (h->flags & proto::FLAG_ACK_REQ) {
-				tx.sendAck(h->type, h->seq, 4);
+				tx.sendAck(h->type, h->seq, cfg::ACK_CODE_UNHANDLED);
 			}
 		}
 	}
@@ -117,7 +116,7 @@ static void bt_poll() {
 }
 
 static void maybe_send_status(uint32_t now_ms) {
-	if ((uint32_t)(now_ms - last_status_ms) < kStatusIntervalMs) {
+	if ((uint32_t)(now_ms - last_status_ms) < cfg::STATUS_INTERVAL_MS) {
 		return;
 	}
 
@@ -164,7 +163,8 @@ static void apply_control() {
 			cmd_angle = 0.0f;
 		} else {
 			cmd_speed = auto_cmd.sp.speed_cmd;
-			cmd_angle = static_cast< float >(auto_cmd.sp.steer_cdeg) / 100.0f;
+			cmd_angle = static_cast< float >(auto_cmd.sp.steer_cdeg) /
+						cfg::STEER_CDEG_SCALE;
 			auto_cmd.applied_seq = auto_cmd.seq;
 		}
 	} else {
@@ -173,7 +173,8 @@ static void apply_control() {
 	}
 
 	status_speed_cmd = static_cast< int16_t >(cmd_speed);
-	status_steer_cdeg = static_cast< int16_t >(cmd_angle * 100.0f);
+	status_steer_cdeg =
+		static_cast< int16_t >(cmd_angle * cfg::STEER_CDEG_SCALE);
 
 	drive.setSpeed(cmd_speed);
 	drive.setAngle(cmd_angle);

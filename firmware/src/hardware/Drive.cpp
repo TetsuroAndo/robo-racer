@@ -4,11 +4,11 @@
 namespace {
 inline bool isFront(int deg) {
 	return (deg <= cfg::DRIVE_FRONT_AREA_DEG) ||
-		   (deg >= 360 - cfg::DRIVE_FRONT_AREA_DEG);
+		   (deg >= cfg::FULL_CIRCLE_DEG - cfg::DRIVE_FRONT_AREA_DEG);
 }
 inline bool isCurveArea(int deg) {
 	return (deg <= cfg::DRIVE_CURVE_AREA_DEG) ||
-		   (deg >= 360 - cfg::DRIVE_CURVE_AREA_DEG);
+		   (deg >= cfg::FULL_CIRCLE_DEG - cfg::DRIVE_CURVE_AREA_DEG);
 }
 inline float lerp(float start, float end, float t) {
 	return (1 - t) * start + t * end;

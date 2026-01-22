@@ -1,5 +1,6 @@
 #include "Handlers.h"
 
+#include "../../config/Config.h"
 #include "../Context.h"
 #include "../protocol/Protocol.h"
 
@@ -16,14 +17,14 @@ bool handleKill(const proto::FrameView &f, Context &ctx) {
 	const auto *h = hdr(f);
 	if (h->len != 0) {
 		if (wantsAck(h)) {
-			ctx.tx.sendAck(h->type, h->seq, 3);
+			ctx.tx.sendAck(h->type, h->seq, cfg::ACK_CODE_INVALID_PAYLOAD);
 		}
 		return true;
 	}
 
 	ctx.safety.kill_latched = true;
 	if (wantsAck(h)) {
-		ctx.tx.sendAck(h->type, h->seq, 0);
+		ctx.tx.sendAck(h->type, h->seq, cfg::ACK_CODE_OK);
 	}
 	return true;
 }
@@ -32,14 +33,14 @@ bool handleClearKill(const proto::FrameView &f, Context &ctx) {
 	const auto *h = hdr(f);
 	if (h->len != 0) {
 		if (wantsAck(h)) {
-			ctx.tx.sendAck(h->type, h->seq, 3);
+			ctx.tx.sendAck(h->type, h->seq, cfg::ACK_CODE_INVALID_PAYLOAD);
 		}
 		return true;
 	}
 
 	ctx.safety.kill_latched = false;
 	if (wantsAck(h)) {
-		ctx.tx.sendAck(h->type, h->seq, 0);
+		ctx.tx.sendAck(h->type, h->seq, cfg::ACK_CODE_OK);
 	}
 	return true;
 }

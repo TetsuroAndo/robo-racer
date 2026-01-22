@@ -44,7 +44,8 @@ void Engine::outputSpeed(int cur) {
 }
 
 void Engine::setSpeed(int speed) {
-	int target = constrain(speed, -255, 255);
+	int target =
+		constrain(speed, -cfg::ENGINE_SPEED_LIMIT, cfg::ENGINE_SPEED_LIMIT);
 	int cur = _prev_speed;
 
 	// 方向反転は一旦0まで落としてから（ギア/モータ保護＆挙動安定）

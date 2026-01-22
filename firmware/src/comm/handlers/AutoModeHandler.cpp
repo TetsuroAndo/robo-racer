@@ -1,5 +1,6 @@
 #include "Handlers.h"
 
+#include "../../config/Config.h"
 #include "../Context.h"
 #include "../protocol/Protocol.h"
 #include <string.h>
@@ -20,7 +21,7 @@ bool handleAutoMode(const proto::FrameView &f, Context &ctx) {
 	const auto *h = hdr(f);
 	if (h->len != sizeof(proto::AutoModePayload)) {
 		if (wantsAck(h)) {
-			ctx.tx.sendAck(h->type, h->seq, 3);
+			ctx.tx.sendAck(h->type, h->seq, cfg::ACK_CODE_INVALID_PAYLOAD);
 		}
 		return true;
 	}
@@ -34,7 +35,7 @@ bool handleAutoMode(const proto::FrameView &f, Context &ctx) {
 	}
 
 	if (wantsAck(h)) {
-		ctx.tx.sendAck(h->type, h->seq, 0);
+		ctx.tx.sendAck(h->type, h->seq, cfg::ACK_CODE_OK);
 	}
 	return true;
 }
