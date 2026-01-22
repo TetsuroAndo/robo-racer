@@ -125,7 +125,7 @@ debug-gdb:
 .PHONY: rplidar_sdk
 
 rplidar_sdk: $(RPLIDAR_SDK_MAKE)
-	$(MAKE) -C $(RPLIDAR_SDK_DIR)
+	$(MAKE) -C $(RPLIDAR_SDK_DIR)/sdk
 
 $(RPLIDAR_SDK_MAKE):
 	@$(RM) $(RPLIDAR_SDK_DIR)
@@ -184,7 +184,7 @@ purge: f
 # ================================
 
 $(NAME): $(OBJ) | rplidar_sdk $(LOG_DIR)
-		$(CXX) $(CXXFLAG) $(OPT) $(IDFLAG) $(LFLAG) $(DEFINE) -o  $@ $^
+		$(CXX) $(CXXFLAG) $(OPT) $(IDFLAG) $(DEFINE) -o  $@ $^ $(LFLAG)
 		@echo "====================="
 		@echo "== Build Complete! =="
 		@echo "====================="
