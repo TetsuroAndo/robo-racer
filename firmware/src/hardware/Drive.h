@@ -13,7 +13,7 @@ public:
 	void control();
 
 	void setSpeed(int newSpeed);
-	void setAngle(int newAngle);
+	void setAngle(float newAngle);
 
 	void updateTimeout();
 	bool evalTimeout();

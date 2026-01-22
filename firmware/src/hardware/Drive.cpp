@@ -1,18 +1,14 @@
 #include "Drive.h"
-
-#define SPEED_MAX 255
-#define AVE_DEG_NUM 1
-#define FRONT_AREA 30
-#define CURVE_AREA 70
-
-#define TIMEOUT_MS 250
+#include "../config/Config.h"
 
 namespace {
 inline bool isFront(int deg) {
-	return (deg <= FRONT_AREA) || (deg >= 360 - FRONT_AREA);
+	return (deg <= cfg::DRIVE_FRONT_AREA_DEG) ||
+		   (deg >= 360 - cfg::DRIVE_FRONT_AREA_DEG);
 }
 inline bool isCurveArea(int deg) {
-	return (deg <= CURVE_AREA) || (deg >= 360 - CURVE_AREA);
+	return (deg <= cfg::DRIVE_CURVE_AREA_DEG) ||
+		   (deg >= 360 - cfg::DRIVE_CURVE_AREA_DEG);
 }
 inline float lerp(float start, float end, float t) {
 	return (1 - t) * start + t * end;
@@ -51,14 +47,16 @@ void Drive::setSpeed(int newSpeed) {
 	_speed = newSpeed;
 }
 
-void Drive::setAngle(int newAngle) {
+void Drive::setAngle(float newAngle) {
 	updateTimeout();
 	_angle = newAngle;
 }
 
 void Drive::updateTimeout() { _lastUpdate = millis(); }
 
-bool Drive::evalTimeout() { return millis() - _lastUpdate < TIMEOUT_MS; }
+bool Drive::evalTimeout() {
+	return millis() - _lastUpdate < cfg::DRIVE_TIMEOUT_MS;
+}
 
 String Drive::info() {
 	String res;
