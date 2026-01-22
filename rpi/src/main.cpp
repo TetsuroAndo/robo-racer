@@ -1,6 +1,7 @@
 #include "LidarReceiver.h"
 #include "Process.h"
 #include "Sender.h"
+#include "config/Config.h"
 #include "lidar_to_esp.h"
 #include <csignal>
 #include <cstdlib>
@@ -13,10 +14,10 @@ int main(int argc, char **argv) {
 	signal(SIGINT, on_sig);
 	signal(SIGTERM, on_sig);
 
-	const char *lidar_dev = (argc >= 2) ? argv[1] : "/dev/ttyAMA2";
-	int lidar_baud = (argc >= 3) ? std::atoi(argv[2]) : 460800;
-	const char *esp_dev = (argc >= 4) ? argv[3] : "/dev/ttyAMA0";
-	int esp_baud = (argc >= 5) ? std::atoi(argv[4]) : 921600;
+	const char *lidar_dev = (argc >= 2) ? argv[1] : cfg::DEFAULT_LIDAR_DEVICE;
+	int lidar_baud = (argc >= 3) ? std::atoi(argv[2]) : cfg::DEFAULT_LIDAR_BAUD;
+	const char *esp_dev = (argc >= 4) ? argv[3] : cfg::DEFAULT_ESP_DEVICE;
+	int esp_baud = (argc >= 5) ? std::atoi(argv[4]) : cfg::DEFAULT_ESP_BAUD;
 
 	LidarReceiver lidarReceiver(lidar_dev, lidar_baud);
 	Process process;

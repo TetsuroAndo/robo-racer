@@ -10,10 +10,6 @@
 #include <unistd.h>
 
 namespace {
-constexpr uint16_t kAutoTtlMs = 100;
-constexpr uint32_t kHeartbeatIntervalMs = 50;
-constexpr uint32_t kStatusLogIntervalMs = 1000;
-
 uint32_t now_ms() {
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -23,10 +19,10 @@ uint32_t now_ms() {
 }
 
 int16_t clamp_speed(int speed) {
-	if (speed > 255) {
-		speed = 255;
-	} else if (speed < -255) {
-		speed = -255;
+	if (speed > cfg::SPEED_LIMIT) {
+		speed = cfg::SPEED_LIMIT;
+	} else if (speed < -cfg::SPEED_LIMIT) {
+		speed = -cfg::SPEED_LIMIT;
 	}
 	return static_cast< int16_t >(speed);
 }
@@ -60,9 +56,10 @@ void Sender::send(int speed, int angle) {
 	maybeSendHeartbeat(now);
 
 	proto::AutoSetpointPayload payload{};
-	payload.steer_cdeg = clamp_cdeg(static_cast< int32_t >(angle) * 100);
+	payload.steer_cdeg =
+		clamp_cdeg(static_cast< int32_t >(angle) * cfg::STEER_CDEG_SCALE);
 	payload.speed_cmd = clamp_speed(speed);
-	payload.ttl_ms = kAutoTtlMs;
+	payload.ttl_ms = cfg::AUTO_TTL_MS;
 	payload.distance_mm = 0;
 
 	const bool ok = writer_.write(
@@ -112,7 +109,7 @@ void Sender::sendClearKill() {
 }
 
 void Sender::poll() {
-	uint8_t buf[256];
+	uint8_t buf[cfg::UART_READ_BUF_SIZE];
 	while (true) {
 		const ssize_t n = read(_espFd, buf, sizeof(buf));
 		if (n == 0) {
@@ -128,7 +125,7 @@ void Sender::poll() {
 		for (ssize_t i = 0; i < n; ++i) {
 			proto::FrameView frame{};
 			const auto res = reader_.push(buf[i], frame);
-			if (res == proto::PacketReader::Result::kOk) {
+			if (res == proto::PacketReader::Result::OK) {
 				handleFrame(frame);
 			}
 		}
@@ -191,7 +188,7 @@ void Sender::handleStatus(const proto::StatusPayload &payload) {
 	has_status_ = true;
 
 	const uint32_t now = now_ms();
-	if ((uint32_t)(now - last_status_log_ms_) < kStatusLogIntervalMs) {
+	if ((uint32_t)(now - last_status_log_ms_) < cfg::STATUS_LOG_INTERVAL_MS) {
 		return;
 	}
 	last_status_log_ms_ = now;
@@ -209,7 +206,7 @@ void Sender::maybeSendHeartbeat(uint32_t now_ms) {
 		return;
 	}
 	if (last_hb_ms_ != 0 &&
-		(uint32_t)(now_ms - last_hb_ms_) < kHeartbeatIntervalMs) {
+		(uint32_t)(now_ms - last_hb_ms_) < cfg::HEARTBEAT_INTERVAL_MS) {
 		return;
 	}
 

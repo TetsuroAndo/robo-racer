@@ -1,5 +1,6 @@
 #include "LidarReceiver.h"
 
+#include "config/Config.h"
 #include "uart.h"
 
 #include "sl_lidar.h"
@@ -19,7 +20,9 @@
 namespace {
 // 小数点切り捨て / unsigned int
 float deg_float(const sl_lidar_response_measurement_node_hq_t &n) {
-	return (static_cast< float >(n.angle_z_q14) * 90.0f) / (1U << 14);
+	return (static_cast< float >(n.angle_z_q14) *
+			cfg::LIDAR_ANGLE_Q14_SCALE_DEG) /
+		   cfg::LIDAR_ANGLE_Q14_DENOM;
 }
 
 unsigned int
@@ -28,10 +31,11 @@ dist_mm_floor_uint(const sl_lidar_response_measurement_node_hq_t &n) {
 }
 
 float normalize(double angle) {
-	double a = fmod(angle + 180.0, 360.0);
+	double a =
+		fmod(angle + cfg::LIDAR_ANGLE_WRAP_DEG, cfg::LIDAR_ANGLE_FULL_DEG);
 	if (a < 0)
-		a += 360.0;
-	return static_cast< float >(a - 180.0);
+		a += cfg::LIDAR_ANGLE_FULL_DEG;
+	return static_cast< float >(a - cfg::LIDAR_ANGLE_WRAP_DEG);
 }
 
 } // namespace
@@ -52,7 +56,7 @@ LidarReceiver::~LidarReceiver() {
 }
 
 std::vector< LidarData > LidarReceiver::receive() {
-	sl_lidar_response_measurement_node_hq_t nodes[8192];
+	sl_lidar_response_measurement_node_hq_t nodes[cfg::LIDAR_NODE_MAX];
 	size_t nodeCount = sizeof(nodes) / sizeof(nodes[0]);
 
 	// 1) まずデータ取得（nodeCount が “実データ数” に更新される）
@@ -76,13 +80,14 @@ std::vector< LidarData > LidarReceiver::receive() {
 		if (nodes[i].dist_mm_q2 == 0)
 			continue;
 
-		float angle =
-			(static_cast< float >(nodes[i].angle_z_q14) * 90.0f) / 16384.0f;
+		float angle = (static_cast< float >(nodes[i].angle_z_q14) *
+					   cfg::LIDAR_ANGLE_Q14_SCALE_DEG) /
+					  cfg::LIDAR_ANGLE_Q14_DENOM;
 		angle = normalize(angle);
 
 		unsigned int dist =
 			static_cast< unsigned int >(nodes[i].dist_mm_q2 >> 2);
-		if (dist < 5)
+		if (dist < cfg::LIDAR_DIST_MIN_MM)
 			continue;
 
 		res.emplace_back(dist, angle);

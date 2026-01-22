@@ -14,18 +14,18 @@ struct FrameView {
 class PacketReader {
 public:
 	enum class Result {
-		kNone,
-		kOk,
-		kError,
+		NONE,
+		OK,
+		ERROR,
 	};
 
 	enum class Error {
-		kNone,
-		kOverflow,
-		kDecodeError,
-		kTooShort,
-		kBadLength,
-		kCrcMismatch,
+		NONE,
+		OVERFLOW,
+		DECODE_ERROR,
+		TOO_SHORT,
+		BAD_LENGTH,
+		CRC_MISMATCH,
 	};
 
 	PacketReader();

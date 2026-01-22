@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config/Config.h"
 #include "proto/PacketReader.h"
 #include "proto/PacketWriter.h"
 #include "proto/Protocol.h"
@@ -7,7 +8,7 @@
 
 class Sender {
 public:
-	Sender(const char* esp_dev, int esp_baud = 921600);
+	Sender(const char* esp_dev, int esp_baud = cfg::DEFAULT_ESP_BAUD);
 	~Sender();
 
 	void send(int speed, int angle);

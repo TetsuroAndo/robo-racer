@@ -1,4 +1,5 @@
 #include "Process.h"
+#include "config/Config.h"
 
 #include <cmath>
 #include <iostream>
@@ -14,7 +15,8 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData) const {
 	int minDistance = INT32_MAX;
 	// std::cout << lidarData.size() << "\n";
 	for (const auto &i : lidarData) {
-		if (-70 <= i.angle && i.angle <= 70) {
+		if (cfg::PROCESS_ANGLE_MIN_DEG <= i.angle &&
+			i.angle <= cfg::PROCESS_ANGLE_MAX_DEG) {
 			if (maxDistance < i.distance) {
 				max = i.angle;
 				maxDistance = i.distance;
@@ -25,5 +27,6 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData) const {
 			}
 		}
 	}
-	return ProcResult(maxDistance / 50, min * -1);
+	return ProcResult(maxDistance / cfg::PROCESS_SPEED_DIV,
+					  min * cfg::PROCESS_MIN_ANGLE_SIGN);
 }
