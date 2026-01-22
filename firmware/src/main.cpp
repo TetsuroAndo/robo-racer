@@ -1,168 +1,168 @@
-#include "comm/Context.h"
-#include "comm/Dispatcher.h"
-#include "comm/ProtoTrace.h"
-#include "comm/TxPort.h"
-#include "comm/handlers/Handlers.h"
-#include "comm/protocol/PacketReader.h"
-#include "comm/protocol/Protocol.h"
-#include "config/Config.h"
-#include "control/AutoCommandStore.h"
 #include "control/ControllerInput.h"
-#include "control/InputSource.h"
-#include "control/SafetyState.h"
 #include "hardware/Drive.h"
-#include "log/Logger.h"
 #include <Arduino.h>
 
-static ControllerInput pad;
+#include "../lib/common/Math.h"
+#include "../lib/common/Time.h"
+#include "comm/mc_proto.h"
+#include "comm/registry.h"
+#include "log/AsyncLogger.h"
+
+static constexpr int SERIAL_RXD = 16;
+static constexpr int SERIAL_TXD = 17;
+static constexpr int DEFAULT_ESP_BAUD = 921600;
+
+static mc::ControlState g_state;
+static mc::Context g_ctx;
+
 static Drive drive;
-static Logger logg;
-static InputSource input_source;
+static ControllerInput pad;
+static mc::AsyncLogger alog;
 
-static SafetyState safety;
-static AutoCommandStore auto_cmd;
-static TxPort tx;
-static Dispatcher dispatcher;
-static proto::PacketReader packet_reader;
-static Context ctx{drive, safety, auto_cmd, tx};
-static ProtoTrace proto_trace;
+static mc::proto::PacketReader reader;
 
-static int16_t status_speed_cmd = 0;
-static int16_t status_steer_cdeg = 0;
-static uint8_t status_seq = 0;
-static uint32_t last_status_ms = 0;
+static mc::PeriodicTimer statusTimer(50);
 
-namespace {
-inline const proto::Header *hdr(const proto::FrameView &f) {
-	return reinterpret_cast< const proto::Header * >(f.data);
+static inline uint16_t rd16u(const uint8_t *p) {
+	return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
+static inline void wr16(uint8_t *p, uint16_t v) {
+	p[0] = (uint8_t)(v & 0xFF);
+	p[1] = (uint8_t)(v >> 8);
+}
+static inline void wr32(uint8_t *p, uint32_t v) {
+	p[0] = (uint8_t)v;
+	p[1] = (uint8_t)(v >> 8);
+	p[2] = (uint8_t)(v >> 16);
+	p[3] = (uint8_t)(v >> 24);
 }
 
-ProtoTrace::RxError toTraceError(proto::PacketReader::Error err) {
-	switch (err) {
-	case proto::PacketReader::Error::kOverflow:
-		return ProtoTrace::RxError::kOverflow;
-	case proto::PacketReader::Error::kDecodeError:
-		return ProtoTrace::RxError::kDecode;
-	case proto::PacketReader::Error::kTooShort:
-		return ProtoTrace::RxError::kTooShort;
-	case proto::PacketReader::Error::kBadLength:
-		return ProtoTrace::RxError::kBadLength;
-	case proto::PacketReader::Error::kCrcMismatch:
-		return ProtoTrace::RxError::kCrcMismatch;
-	default:
-		return ProtoTrace::RxError::kDecode;
+#pragma pack(push, 1)
+struct StatusPayload {
+	uint16_t last_seq_le;
+	int16_t speed_mm_s_le;
+	int16_t steer_cdeg_le;
+	uint16_t ttl_ms_le;
+	uint16_t dist_mm_le;
+	uint16_t faults_le;
+	uint16_t rx_bad_crc_le;
+	uint16_t rx_bad_cobs_le;
+};
+#pragma pack(pop)
+
+static void sendStatus_(uint32_t now_ms) {
+	(void)now_ms;
+	StatusPayload p{};
+	wr16((uint8_t *)&p.last_seq_le, (uint16_t)g_state.last_seq);
+	wr16((uint8_t *)&p.speed_mm_s_le, (uint16_t)drive.appliedSpeedMmS());
+	wr16((uint8_t *)&p.steer_cdeg_le, (uint16_t)drive.appliedSteerCdeg());
+	wr16((uint8_t *)&p.ttl_ms_le, drive.ttlMs());
+	wr16((uint8_t *)&p.dist_mm_le, drive.distMm());
+	wr16((uint8_t *)&p.faults_le, g_state.killed ? 0x0001 : 0x0000);
+	wr16((uint8_t *)&p.rx_bad_crc_le,
+		 (uint16_t)mc::clamp< uint32_t >(reader.badCrc(), 0, 65535));
+	wr16((uint8_t *)&p.rx_bad_cobs_le,
+		 (uint16_t)mc::clamp< uint32_t >(reader.badCobs(), 0, 65535));
+
+	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
+	size_t out_len = 0;
+	mc::proto::PacketWriter::build(out, sizeof(out), out_len,
+								   mc::proto::Type::STATUS, 0, 0,
+								   (const uint8_t *)&p, (uint16_t)sizeof(p));
+	Serial2.write(out, out_len);
+}
+
+static void handleRx_(uint32_t now_ms) {
+	while (Serial2.available() > 0) {
+		uint8_t b = (uint8_t)Serial2.read();
+		if (reader.push(b) && reader.hasFrame()) {
+			const auto &f = reader.frame();
+
+			mc::IHandler *h = mc::Registry::instance().get(f.hdr.type);
+			if (h) {
+				(void)h->onFrame(f, g_ctx, now_ms);
+			}
+			reader.consumeFrame();
+		}
 	}
 }
-} // namespace
+
+static void applyTargets_(uint32_t now_ms, float dt_s) {
+	if (g_state.mode == mc::Mode::MANUAL) {
+		pad.update();
+		if (pad.isConnected()) {
+			const PadState &st = pad.state();
+			int forward = st.rt;
+			int back = st.lt;
+			int v = forward - back;
+			int16_t speed_mm_s = (int16_t)mc::clamp< int >(v * 2, -2000, 2000);
+
+			int16_t steer = 0;
+			if (st.dpad & DPAD_LEFT)
+				steer = +1500;
+			if (st.dpad & DPAD_RIGHT)
+				steer = -1500;
+
+			drive.setTargetMmS(speed_mm_s);
+			drive.setTargetSteerCdeg(steer);
+			drive.setTtlMs(100);
+			drive.setDistMm(0);
+		} else {
+			drive.setTargetMmS(g_state.target_speed_mm_s);
+			drive.setTargetSteerCdeg(g_state.target_steer_cdeg);
+			drive.setTtlMs(g_state.target_ttl_ms);
+			drive.setDistMm(g_state.target_dist_mm);
+		}
+	} else {
+		drive.setTargetMmS(g_state.target_speed_mm_s);
+		drive.setTargetSteerCdeg(g_state.target_steer_cdeg);
+		drive.setTtlMs(g_state.target_ttl_ms);
+		drive.setDistMm(g_state.target_dist_mm);
+	}
+
+	drive.tick(now_ms, dt_s, g_state.killed);
+}
 
 void setup() {
-	logg.begin(cfg::LOG_BAUD);
+	Serial.begin(115200);
+	delay(200);
 
-	Serial2.begin(cfg::SERIAL_BAUD, SERIAL_8N1, cfg::SERIAL_RX_PIN,
-				  cfg::SERIAL_TX_PIN);
-	tx.begin(Serial2);
-	tx.setTrace(&proto_trace);
+	Serial2.begin(DEFAULT_ESP_BAUD, SERIAL_8N1, SERIAL_RXD, SERIAL_TXD);
+	Serial2.setRxBufferSize(4096);
+	Serial2.setTxBufferSize(4096);
 
-	Serial.println("\n=== ESP32 UART Protocol (COBS+CRC) ===");
-
-	registerHandlers(dispatcher);
+	g_ctx.st = &g_state;
+	g_ctx.uart = &Serial2;
 
 	pad.begin();
 	drive.begin();
-}
 
-static void uart_rx_poll() {
-	while (Serial2.available() > 0) {
-		const uint8_t byte = static_cast< uint8_t >(Serial2.read());
-		proto::FrameView frame{};
-		const auto res = packet_reader.push(byte, frame);
-		if (res == proto::PacketReader::Result::kError) {
-			proto_trace.onRxError(toTraceError(packet_reader.lastError()));
-			continue;
-		}
-		if (res != proto::PacketReader::Result::kOk) {
-			continue;
-		}
+	alog.begin(Serial2);
+	alog.setMinLevel(mc::LogLevel::INFO);
+	alog.log(mc::LogLevel::INFO, 1, 1000, DEFAULT_ESP_BAUD, 0, 0, 0);
 
-		const auto *h = hdr(frame);
-		proto_trace.onRxFrame(h->type, h->seq, h->len, h->flags);
-		if (h->ver != proto::VER) {
-			proto_trace.onRxError(ProtoTrace::RxError::kBadVersion);
-			if (h->flags & proto::FLAG_ACK_REQ) {
-				tx.sendAck(h->type, h->seq, cfg::ACK_CODE_VERSION_MISMATCH);
-			}
-			continue;
-		}
-
-		if (!dispatcher.dispatch(h->type, frame, ctx)) {
-			proto_trace.onRxError(ProtoTrace::RxError::kUnsupported);
-			if (h->flags & proto::FLAG_ACK_REQ) {
-				tx.sendAck(h->type, h->seq, cfg::ACK_CODE_UNHANDLED);
-			}
-		}
-	}
-}
-
-static void bt_poll() { input_source.updateManual(pad, safety); }
-
-static void maybe_send_status(uint32_t now_ms) {
-	if ((uint32_t)(now_ms - last_status_ms) < cfg::STATUS_INTERVAL_MS) {
-		return;
-	}
-
-	proto::StatusPayload payload{};
-	payload.seq_applied = auto_cmd.applied_seq;
-	payload.auto_active = safety.auto_active ? 1 : 0;
-	payload.fault = safety.fault;
-	payload.speed_now = status_speed_cmd;
-	payload.steer_now_cdeg = status_steer_cdeg;
-	payload.age_ms = auto_cmd.ageMs(now_ms);
-
-	if (tx.sendStatus(payload, status_seq)) {
-		last_status_ms = now_ms;
-		status_seq = static_cast< uint8_t >(status_seq + 1);
-		safety.consumeAutoInactive();
-	}
-}
-
-static void apply_control() {
-	const uint32_t now_ms = millis();
-	const bool hb_timeout = safety.auto_active && safety.last_hb_ms != 0 &&
-							(now_ms - safety.last_hb_ms > safety.hb_timeout_ms);
-	const bool ttl_expired = safety.auto_active && auto_cmd.ttlExpired(now_ms);
-
-	safety.updateFaults();
-	if (hb_timeout) {
-		safety.fault |= SafetyState::HB_TIMEOUT;
-	}
-	if (ttl_expired) {
-		safety.fault |= SafetyState::TTL_EXPIRED;
-	}
-	if (safety.auto_inactive_seen) {
-		safety.fault |= SafetyState::AUTO_INACTIVE;
-	}
-
-	bool used_auto = false;
-	const ControlCommand cmd = input_source.resolve(
-		safety, auto_cmd, hb_timeout, ttl_expired, used_auto);
-	if (used_auto) {
-		auto_cmd.applied_seq = auto_cmd.seq;
-	}
-
-	status_speed_cmd = static_cast< int16_t >(cmd.speed);
-	status_steer_cdeg =
-		static_cast< int16_t >(cmd.angle * cfg::STEER_CDEG_SCALE);
-
-	drive.setSpeed(cmd.speed);
-	drive.setAngle(cmd.angle);
-
-	drive.control();
-	maybe_send_status(now_ms);
-	proto_trace.tick(now_ms);
+	uint32_t now = millis();
+	statusTimer.reset(now);
 }
 
 void loop() {
-	uart_rx_poll();
-	bt_poll();
-	apply_control();
+	static uint64_t last_us = mc::Time::us();
+	uint64_t now_us = mc::Time::us();
+	float dt_s = (float)(now_us - last_us) / 1e6f;
+	if (dt_s < 0.0f)
+		dt_s = 0.0f;
+	if (dt_s > 0.05f)
+		dt_s = 0.05f;
+	last_us = now_us;
+
+	uint32_t now_ms = (uint32_t)millis();
+
+	handleRx_(now_ms);
+	applyTargets_(now_ms, dt_s);
+
+	if (statusTimer.due(now_ms)) {
+		sendStatus_(now_ms);
+	}
+
+	delay(1);
 }

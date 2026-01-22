@@ -16,11 +16,11 @@ static constexpr uint32_t LOG_STARTUP_DELAY_MS = 200;
 //------------------------------------------------------------------------------
 
 // ピン設定
-static constexpr int SERIAL_RX_PIN      = 16;
-static constexpr int SERIAL_TX_PIN      = 17;
+static constexpr int SERIAL_RX_PIN             = 16;
+static constexpr int SERIAL_TX_PIN             = 17;
 
 // 通信設定
-static constexpr uint32_t SERIAL_BAUD   = 921600;
+static constexpr uint32_t SERIAL_BAUD          = 921600;
 
 //------------------------------------------------------------------------------
 // 自動モードのハートビート監視タイムアウト
