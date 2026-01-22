@@ -246,7 +246,7 @@
 * `comm/handlers/*.cpp`：AUTO_SETPOINT/AUTO_MODE/HEARTBEAT/KILL/CLEAR_KILL
 * `control/SafetyState.*`：kill_latched, auto_active, timers, fault
 * `control/AutoCommandStore.*`：最新setpoint、受理時刻、seq 等
-* `control/InputSource.*`（任意だが強く推奨）：BT/UART の入力を統一して Drive に入れる
+* `control/InputSource.*`：BT/UART の入力を統一して Drive に渡す
 
 ## 5.2 “ポリモーフィズム”
 

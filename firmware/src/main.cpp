@@ -7,6 +7,7 @@
 #include "config/Config.h"
 #include "control/AutoCommandStore.h"
 #include "control/ControllerInput.h"
+#include "control/InputSource.h"
 #include "control/SafetyState.h"
 #include "hardware/Drive.h"
 #include "log/Logger.h"
@@ -15,6 +16,7 @@
 static ControllerInput pad;
 static Drive drive;
 static Logger logg;
+static InputSource input_source;
 
 static SafetyState safety;
 static AutoCommandStore auto_cmd;
@@ -23,8 +25,6 @@ static Dispatcher dispatcher;
 static proto::PacketReader packet_reader;
 static Context ctx{drive, safety, auto_cmd, tx};
 
-static int manual_speed = 0;
-static float manual_angle = 0.0f;
 static int16_t status_speed_cmd = 0;
 static int16_t status_steer_cdeg = 0;
 static uint8_t status_seq = 0;
@@ -76,44 +76,7 @@ static void uart_rx_poll() {
 	}
 }
 
-static void bt_poll() {
-	pad.update();
-
-	if (!pad.isConnected()) {
-		manual_speed = 0;
-		manual_angle = 0.0f;
-		return;
-	}
-
-	const PadState &st = pad.state();
-	if (st.home || st.start) {
-		safety.kill_latched = true;
-	}
-
-	if (safety.auto_active) {
-		manual_speed = 0;
-		manual_angle = 0.0f;
-		return;
-	}
-
-	if (st.dpad & 0x04) {
-		manual_angle = cfg::MANUAL_STEER_DEG;
-	} else if (st.dpad & 0x08) {
-		manual_angle = -cfg::MANUAL_STEER_DEG;
-	} else {
-		manual_angle = 0.0f;
-	}
-
-	if (st.B) {
-		manual_speed -= cfg::MANUAL_SPEED_STEP;
-	} else if (st.A) {
-		manual_speed += cfg::MANUAL_SPEED_STEP;
-	} else {
-		manual_speed -= cfg::MANUAL_SPEED_STEP;
-	}
-
-	manual_speed = constrain(manual_speed, 0, cfg::MANUAL_SPEED_MAX);
-}
+static void bt_poll() { input_source.updateManual(pad, safety); }
 
 static void maybe_send_status(uint32_t now_ms) {
 	if ((uint32_t)(now_ms - last_status_ms) < cfg::STATUS_INTERVAL_MS) {
@@ -152,32 +115,19 @@ static void apply_control() {
 		safety.fault |= SafetyState::AUTO_INACTIVE;
 	}
 
-	int cmd_speed = 0;
-	float cmd_angle = 0.0f;
-	if (safety.kill_latched) {
-		cmd_speed = 0;
-		cmd_angle = 0.0f;
-	} else if (safety.auto_active) {
-		if (hb_timeout || ttl_expired) {
-			cmd_speed = 0;
-			cmd_angle = 0.0f;
-		} else {
-			cmd_speed = auto_cmd.sp.speed_cmd;
-			cmd_angle = static_cast< float >(auto_cmd.sp.steer_cdeg) /
-						cfg::STEER_CDEG_SCALE;
-			auto_cmd.applied_seq = auto_cmd.seq;
-		}
-	} else {
-		cmd_speed = manual_speed;
-		cmd_angle = manual_angle;
+	bool used_auto = false;
+	const ControlCommand cmd = input_source.resolve(
+		safety, auto_cmd, hb_timeout, ttl_expired, used_auto);
+	if (used_auto) {
+		auto_cmd.applied_seq = auto_cmd.seq;
 	}
 
-	status_speed_cmd = static_cast< int16_t >(cmd_speed);
+	status_speed_cmd = static_cast< int16_t >(cmd.speed);
 	status_steer_cdeg =
-		static_cast< int16_t >(cmd_angle * cfg::STEER_CDEG_SCALE);
+		static_cast< int16_t >(cmd.angle * cfg::STEER_CDEG_SCALE);
 
-	drive.setSpeed(cmd_speed);
-	drive.setAngle(cmd_angle);
+	drive.setSpeed(cmd.speed);
+	drive.setAngle(cmd.angle);
 
 	drive.control();
 	maybe_send_status(now_ms);
