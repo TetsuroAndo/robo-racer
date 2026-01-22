@@ -112,6 +112,7 @@ bool UdsClient::connect(const std::string &path) {
 		close();
 		return false;
 	}
+	set_nonblock(fd_);
 	return true;
 }
 
