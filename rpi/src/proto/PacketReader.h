@@ -21,7 +21,7 @@ public:
 
 	enum class Error {
 		NONE,
-		OVERFLOW,
+		BUFFER_OVERFLOW,
 		DECODE_ERROR,
 		TOO_SHORT,
 		BAD_LENGTH,

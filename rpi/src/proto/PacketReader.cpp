@@ -14,7 +14,7 @@ void PacketReader::reset() {
 PacketReader::Result PacketReader::push(uint8_t byte, FrameView &frame) {
 	if (byte != 0x00) {
 		if (cobs_len_ >= sizeof(cobs_buf_)) {
-			last_error_ = Error::OVERFLOW;
+			last_error_ = Error::BUFFER_OVERFLOW;
 			cobs_len_ = 0;
 			return Result::ERROR;
 		}

@@ -9,7 +9,6 @@ Process::Process() {}
 Process::~Process() {}
 
 ProcResult Process::proc(const std::vector< LidarData > &lidarData) const {
-	float max = 0;
 	int maxDistance = -1;
 	float min = 0;
 	int minDistance = INT32_MAX;
