@@ -1,4 +1,4 @@
-#include "mc_core/Process.h"
+#include <mc/core/Process.hpp>
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>

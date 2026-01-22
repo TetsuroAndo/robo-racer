@@ -1,121 +1,115 @@
-#include "mc_core/Log.h"
-#include "mc_core/Time.h"
-#include <inttypes.h>
+#include <mc/core/Log.hpp>
+#include <mc/core/Time.hpp>
 
-namespace mc::log {
+#include <cstdio>
+#include <fstream>
 
-static const char *levelName(Level lv) {
-	if (lv >= LV_FATAL)
-		return "FATAL";
-	if (lv >= LV_ERROR)
-		return "ERROR";
-	if (lv >= LV_WARN)
-		return "WARN";
-	if (lv >= LV_INFO)
-		return "INFO";
-	if (lv >= LV_DEBUG)
+namespace mc::core {
+
+static const char *level_str(LogLevel lv) {
+	switch (lv) {
+	case LogLevel::Trace:
+		return "TRACE";
+	case LogLevel::Debug:
 		return "DEBUG";
-	return "TRACE";
+	case LogLevel::Info:
+		return "INFO";
+	case LogLevel::Warn:
+		return "WARN";
+	case LogLevel::Error:
+		return "ERROR";
+	case LogLevel::Fatal:
+		return "FATAL";
+	}
+	return "UNK";
 }
 
-void StdoutSink::write(const Record &r) {
-	std::fprintf(stdout, "[%10" PRIu64 "us] %-5s %-20s %s\n", r.ts_us,
-				 levelName(r.level), r.tag, r.msg);
-	std::fflush(stdout);
+void ConsoleSink::write(const LogRecord &r) {
+	std::fprintf(stderr, "[%llu] %-5s [%s] %s\n", (unsigned long long)r.ts_us,
+				 level_str(r.level), r.tag.c_str(), r.msg.c_str());
 }
 
-FileSink::FileSink(const std::string &path) {
-	fp_ = std::fopen(path.c_str(), "a");
+FileSink::FileSink(std::string path) : path_(std::move(path)) {}
+
+void FileSink::write(const LogRecord &r) {
+	std::ofstream ofs(path_, std::ios::app);
+	ofs << "[" << r.ts_us << "] " << level_str(r.level) << " [" << r.tag << "] "
+		<< r.msg << "\n";
 }
 
-FileSink::~FileSink() {
-	if (fp_)
-		std::fclose(fp_);
+Logger &Logger::instance() {
+	static Logger g;
+	return g;
 }
 
-void FileSink::write(const Record &r) {
-	if (!fp_)
+Logger::Logger() : th_([this] { worker_(); }) {
+	sinks_.push_back(std::make_shared< ConsoleSink >());
+}
+
+Logger::~Logger() { shutdown(); }
+
+void Logger::addSink(std::shared_ptr< ILogSink > sink) {
+	std::lock_guard< std::mutex > lk(mtx_);
+	sinks_.push_back(std::move(sink));
+}
+
+void Logger::log(LogLevel lv, std::string tag, std::string msg) {
+	if ((uint8_t)lv < level_.load())
 		return;
-	std::fprintf(fp_, "[%10" PRIu64 "us] %-5s %-20s %s\n", r.ts_us,
-				 levelName(r.level), r.tag, r.msg);
-	std::fflush(fp_);
+
+	LogRecord r;
+	r.ts_us = now_us_monotonic();
+	r.level = lv;
+	r.tag = std::move(tag);
+	r.msg = std::move(msg);
+
+	{
+		std::lock_guard< std::mutex > lk(mtx_);
+		constexpr size_t MAX_Q = 4096;
+		if (q_.size() >= MAX_Q)
+			q_.pop_front();
+		q_.push_back(std::move(r));
+	}
+	cv_.notify_one();
 }
 
-AsyncLogger::AsyncLogger() : th_(&AsyncLogger::worker_, this) {}
-
-AsyncLogger::~AsyncLogger() {
-	running_.store(false);
-	cv_.notify_all();
+void Logger::shutdown() {
+	bool expected = true;
+	if (!running_.compare_exchange_strong(expected, false))
+		return;
+	cv_.notify_one();
 	if (th_.joinable())
 		th_.join();
 }
 
-void AsyncLogger::addSink(std::unique_ptr< ISink > sink) {
-	std::lock_guard< std::mutex > lk(sinks_m_);
-	sinks_.push_back(std::move(sink));
-}
-
-void AsyncLogger::setMinLevel(Level lv) { min_level_.store(lv); }
-
-bool AsyncLogger::tryPush_(const Record &r) {
-	const uint32_t h = head_.load(std::memory_order_relaxed);
-	const uint32_t t = tail_.load(std::memory_order_acquire);
-	if ((h - t) >= QSIZE)
-		return false;
-
-	q_[h % QSIZE] = r;
-	head_.store(h + 1, std::memory_order_release);
-	return true;
-}
-
-bool AsyncLogger::log(Level lv, const char *tag, const char *msg) {
-	if (lv < min_level_.load())
-		return true;
-
-	Record r{};
-	r.ts_us = mc::Time::us();
-	r.level = lv;
-	std::snprintf(r.tag, sizeof(r.tag), "%s", tag ? tag : "");
-	std::snprintf(r.msg, sizeof(r.msg), "%s", msg ? msg : "");
-
-	if (!tryPush_(r)) {
-		dropped_.fetch_add(1);
-		return false;
-	}
-	cv_.notify_one();
-	return true;
-}
-
-bool AsyncLogger::logf(Level lv, const char *tag, const char *fmt, ...) {
-	if (lv < min_level_.load())
-		return true;
-
-	char buf[200];
-	va_list ap;
-	va_start(ap, fmt);
-	std::vsnprintf(buf, sizeof(buf), fmt, ap);
-	va_end(ap);
-	return log(lv, tag, buf);
-}
-
-void AsyncLogger::worker_() {
+void Logger::worker_() {
 	while (running_.load()) {
-		uint32_t t = tail_.load(std::memory_order_relaxed);
-		uint32_t h = head_.load(std::memory_order_acquire);
-
-		if (t == h) {
-			std::unique_lock< std::mutex > lk(cv_m_);
-			cv_.wait_for(lk, std::chrono::milliseconds(50));
-			continue;
+		std::deque< LogRecord > local;
+		{
+			std::unique_lock< std::mutex > lk(mtx_);
+			cv_.wait(lk, [&] { return !running_.load() || !q_.empty(); });
+			local.swap(q_);
 		}
+		for (auto &r : local) {
+			std::vector< std::shared_ptr< ILogSink > > sinks_copy;
+			{
+				std::lock_guard< std::mutex > lk(mtx_);
+				sinks_copy = sinks_;
+			}
+			for (auto &s : sinks_copy)
+				s->write(r);
+		}
+	}
 
-		Record r = q_[t % QSIZE];
-		tail_.store(t + 1, std::memory_order_release);
-
-		std::lock_guard< std::mutex > lk(sinks_m_);
+	std::deque< LogRecord > local;
+	{
+		std::lock_guard< std::mutex > lk(mtx_);
+		local.swap(q_);
+	}
+	for (auto &r : local) {
 		for (auto &s : sinks_)
 			s->write(r);
 	}
 }
 
-} // namespace mc::log
+} // namespace mc::core

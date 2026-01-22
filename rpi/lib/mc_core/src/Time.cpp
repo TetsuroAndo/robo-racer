@@ -1,7 +1,7 @@
-#include "mc_core/Time.h"
+#include <mc/core/Time.hpp>
 #include <time.h>
 
-namespace mc {
+namespace mc::core {
 
 uint64_t Time::us() {
 	timespec ts{};
@@ -11,4 +11,4 @@ uint64_t Time::us() {
 
 uint32_t Time::ms() { return (uint32_t)(us() / 1000ULL); }
 
-} // namespace mc
+} // namespace mc::core
