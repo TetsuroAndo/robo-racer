@@ -16,10 +16,11 @@ int main(int argc, char **argv) {
 	const char *lidar_dev = (argc >= 2) ? argv[1] : "/dev/ttyAMA2";
 	int lidar_baud = (argc >= 3) ? std::atoi(argv[2]) : 460800;
 	const char *esp_dev = (argc >= 4) ? argv[3] : "/dev/ttyAMA0";
+	int esp_baud = (argc >= 5) ? std::atoi(argv[4]) : 921600;
 
 	LidarReceiver lidarReceiver(lidar_dev, lidar_baud);
 	Process process;
-	Sender sender(esp_dev);
+	Sender sender(esp_dev, esp_baud);
 
 	while (!g_stop) {
 		const std::vector< LidarData > &res = lidarReceiver.receive();
