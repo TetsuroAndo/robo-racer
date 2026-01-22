@@ -13,7 +13,7 @@ namespace cfg {
 // デバイスパス
 static constexpr const char* DEFAULT_LIDAR_DEVICE = "/dev/ttyAMA2";
 static constexpr const char* DEFAULT_ESP_DEVICE   = "/dev/ttyAMA0";
-static constexpr const char* DEFAULT_SERIALD_SOCK = "/run/roboracer/seriald.sock";
+static constexpr const char* DEFAULT_SERIALD_SOCK = "/tmp/roboracer/seriald.sock";
 
 // ボーレート
 static constexpr int DEFAULT_LIDAR_BAUD = 460800;

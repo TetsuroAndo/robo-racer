@@ -7,21 +7,18 @@
 #include <string.h>
 #include <string>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
 
+#include "../config/Config.h"
 #include "async_logger.h"
 #include "sink_file.h"
 #include "sink_stdout.h"
 #include <mc/ipc/UdsSeqPacket.hpp>
 #include <mc/proto/Proto.hpp>
 #include <mc/serial/Uart.hpp>
-
-static constexpr int DEFAULT_BAUD = 921600;
-static const char *DEFAULT_DEV = "/dev/serial0";
-static const char *DEFAULT_SOCK = "/run/roboracer/seriald.sock";
-static const char *DEFAULT_LOG = "/var/log/roboracer/seriald.log";
 
 #pragma pack(push, 1)
 struct EspLogPayload {
@@ -92,11 +89,26 @@ static bool tx_dequeue(TxMsg &out) {
 	return true;
 }
 
+static void ensure_dir_(const std::string &path) {
+	if (path.empty())
+		return;
+	const int rc = mkdir(path.c_str(), 0755);
+	if (rc == 0 || errno == EEXIST)
+		return;
+}
+
+static std::string dir_of_(const std::string &path) {
+	const size_t pos = path.find_last_of('/');
+	if (pos == std::string::npos || pos == 0)
+		return std::string();
+	return path.substr(0, pos);
+}
+
 int main(int argc, char **argv) {
-	std::string dev = DEFAULT_DEV;
-	int baud = DEFAULT_BAUD;
-	std::string sock = DEFAULT_SOCK;
-	std::string logpath = DEFAULT_LOG;
+	std::string dev = seriald_cfg::DEFAULT_DEV;
+	int baud = seriald_cfg::DEFAULT_BAUD;
+	std::string sock = seriald_cfg::DEFAULT_SOCK;
+	std::string logpath = seriald_cfg::DEFAULT_LOG;
 
 	for (int i = 1; i < argc; i++) {
 		std::string a = argv[i];
@@ -109,6 +121,9 @@ int main(int argc, char **argv) {
 		else if (a == "--log" && i + 1 < argc)
 			logpath = argv[++i];
 	}
+
+	ensure_dir_(dir_of_(sock));
+	ensure_dir_(dir_of_(logpath));
 
 	AsyncLogger log;
 	log.addSink(std::make_unique< StdoutSink >());
@@ -150,14 +165,14 @@ int main(int argc, char **argv) {
 					off += w;
 				}
 			} else {
-				usleep(1000);
+				usleep(seriald_cfg::TX_IDLE_US);
 			}
 		}
 	});
 
 	while (run) {
 		std::vector< pollfd > fds;
-		fds.reserve(2 + ipc.clients().size());
+		fds.reserve(2 + seriald_cfg::MAX_CLIENT_FDS);
 
 		pollfd uart_fd{};
 		uart_fd.fd = uart.fd();
@@ -169,14 +184,21 @@ int main(int argc, char **argv) {
 		srv_fd.events = POLLIN;
 		fds.push_back(srv_fd);
 
-		for (int cfd : ipc.clients()) {
+		const auto &clients = ipc.clients();
+		size_t client_count = clients.size();
+		if (client_count > (size_t)seriald_cfg::MAX_CLIENT_FDS)
+			client_count = seriald_cfg::MAX_CLIENT_FDS;
+
+		for (size_t i = 0; i < client_count; ++i) {
+			int cfd = clients[i];
 			pollfd p{};
 			p.fd = cfd;
 			p.events = POLLIN;
 			fds.push_back(p);
 		}
 
-		int r = ::poll(fds.data(), (nfds_t)fds.size(), 10);
+		int r = ::poll(fds.data(), (nfds_t)fds.size(),
+					   seriald_cfg::POLL_TIMEOUT_MS);
 		if (r < 0)
 			continue;
 
