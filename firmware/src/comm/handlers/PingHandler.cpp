@@ -1,3 +1,4 @@
+#include "../../log/AsyncLogger.h"
 #include "../mc_proto.h"
 #include "../registry.h"
 
@@ -14,7 +15,13 @@ public:
 		mc::proto::PacketWriter::build(out, sizeof(out), out_len,
 									   mc::proto::Type::ACK,
 									   mc::proto::FLAG_ACK, seq, nullptr, 0);
-		ctx.uart->write(out, out_len);
+		if (ctx.tx) {
+			ctx.tx->enqueue(out, (uint16_t)out_len);
+		}
+		if (ctx.log) {
+			ctx.log->logf(mc::LogLevel::TRACE, "proto", "RX PING -> ACK seq=%u",
+						  (unsigned)seq);
+		}
 		return mc::Result::Ok();
 	}
 };

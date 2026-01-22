@@ -1,3 +1,4 @@
+#include "../../log/AsyncLogger.h"
 #include "../registry.h"
 
 namespace {
@@ -10,6 +11,9 @@ public:
 		(void)now_ms;
 		ctx.st->killed = true;
 		ctx.st->cmd_expire_ms = 0;
+		if (ctx.log) {
+			ctx.log->log(mc::LogLevel::WARN, "proto", "RX KILL -> killed=1");
+		}
 		return mc::Result::Ok();
 	}
 };

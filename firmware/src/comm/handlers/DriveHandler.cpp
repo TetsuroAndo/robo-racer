@@ -15,8 +15,14 @@ class DriveHandler : public mc::IHandler {
 public:
 	mc::Result onFrame(const mc::proto::FrameView &f, mc::Context &ctx,
 					   uint32_t now_ms) override {
-		if (f.payload_len != 8)
+		if (f.payload_len != 8) {
+			if (ctx.log) {
+				ctx.log->logf(mc::LogLevel::WARN, "proto",
+							  "RX DRIVE invalid len=%u",
+							  (unsigned)f.payload_len);
+			}
 			return mc::Result::Fail(mc::Errc::Invalid, "drive len");
+		}
 
 		int16_t steer_cdeg = rd16(f.payload + 0);
 		int16_t speed_mm_s = rd16(f.payload + 2);
@@ -39,6 +45,13 @@ public:
 		st->target_speed_mm_s = speed_mm_s;
 		st->target_ttl_ms = ttl_ms;
 		st->target_dist_mm = dist_mm;
+
+		if (ctx.log) {
+			ctx.log->logf(mc::LogLevel::DEBUG, "proto",
+						  "RX DRIVE seq=%u steer=%d speed=%d ttl=%u dist=%u",
+						  (unsigned)st->last_seq, (int)steer_cdeg,
+						  (int)speed_mm_s, (unsigned)ttl_ms, (unsigned)dist_mm);
+		}
 
 		return mc::Result::Ok();
 	}

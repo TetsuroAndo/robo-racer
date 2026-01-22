@@ -16,12 +16,12 @@ int main(int argc, char **argv) {
 
 	const char *lidar_dev = (argc >= 2) ? argv[1] : cfg::DEFAULT_LIDAR_DEVICE;
 	int lidar_baud = (argc >= 3) ? std::atoi(argv[2]) : cfg::DEFAULT_LIDAR_BAUD;
-	const char *esp_dev = (argc >= 4) ? argv[3] : cfg::DEFAULT_ESP_DEVICE;
-	int esp_baud = (argc >= 5) ? std::atoi(argv[4]) : cfg::DEFAULT_ESP_BAUD;
+	const char *seriald_sock =
+		(argc >= 4) ? argv[3] : cfg::DEFAULT_SERIALD_SOCK;
 
 	LidarReceiver lidarReceiver(lidar_dev, lidar_baud);
 	Process process;
-	Sender sender(esp_dev, esp_baud);
+	Sender sender(seriald_sock);
 
 	while (!g_stop) {
 		const std::vector< LidarData > &res = lidarReceiver.receive();

@@ -4,6 +4,7 @@
 
 #include "../lib/common/Math.h"
 #include "../lib/common/Time.h"
+#include "comm/UartTx.h"
 #include "comm/mc_proto.h"
 #include "comm/registry.h"
 #include "log/AsyncLogger.h"
@@ -18,23 +19,16 @@ static mc::Context g_ctx;
 static Drive drive;
 static ControllerInput pad;
 static mc::AsyncLogger alog;
+static mc::UartTx uart_tx;
 
 static mc::proto::PacketReader reader;
 
 static mc::PeriodicTimer statusTimer(50);
+static mc::PeriodicTimer logTimer(200);
 
-static inline uint16_t rd16u(const uint8_t *p) {
-	return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
-}
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
 	p[1] = (uint8_t)(v >> 8);
-}
-static inline void wr32(uint8_t *p, uint32_t v) {
-	p[0] = (uint8_t)v;
-	p[1] = (uint8_t)(v >> 8);
-	p[2] = (uint8_t)(v >> 16);
-	p[3] = (uint8_t)(v >> 24);
 }
 
 #pragma pack(push, 1)
@@ -69,7 +63,9 @@ static void sendStatus_(uint32_t now_ms) {
 	mc::proto::PacketWriter::build(out, sizeof(out), out_len,
 								   mc::proto::Type::STATUS, 0, 0,
 								   (const uint8_t *)&p, (uint16_t)sizeof(p));
-	Serial2.write(out, out_len);
+	if (g_ctx.tx) {
+		g_ctx.tx->enqueue(out, (uint16_t)out_len);
+	}
 }
 
 static void handleRx_(uint32_t now_ms) {
@@ -81,6 +77,9 @@ static void handleRx_(uint32_t now_ms) {
 			mc::IHandler *h = mc::Registry::instance().get(f.hdr.type);
 			if (h) {
 				(void)h->onFrame(f, g_ctx, now_ms);
+			} else if (g_ctx.log) {
+				g_ctx.log->logf(mc::LogLevel::WARN, "proto",
+								"RX unknown type=0x%02X", (unsigned)f.hdr.type);
 			}
 			reader.consumeFrame();
 		}
@@ -133,16 +132,20 @@ void setup() {
 
 	g_ctx.st = &g_state;
 	g_ctx.uart = &Serial2;
+	g_ctx.log = &alog;
+	g_ctx.tx = &uart_tx;
 
 	pad.begin();
 	drive.begin();
 
-	alog.begin(Serial2);
+	uart_tx.begin(Serial2);
+	alog.begin(uart_tx);
 	alog.setMinLevel(mc::LogLevel::INFO);
-	alog.log(mc::LogLevel::INFO, 1, 1000, DEFAULT_ESP_BAUD, 0, 0, 0);
+	alog.logf(mc::LogLevel::INFO, "boot", "ESP32 up baud=%d", DEFAULT_ESP_BAUD);
 
 	uint32_t now = millis();
 	statusTimer.reset(now);
+	logTimer.reset(now);
 }
 
 void loop() {
@@ -162,6 +165,17 @@ void loop() {
 
 	if (statusTimer.due(now_ms)) {
 		sendStatus_(now_ms);
+	}
+
+	if (logTimer.due(now_ms)) {
+		const char *mode =
+			(g_state.mode == mc::Mode::MANUAL) ? "MANUAL" : "AUTO";
+		alog.logf(mc::LogLevel::INFO, "drive",
+				  "mode=%s killed=%d applied(speed=%dmm/s steer=%dcdeg "
+				  "ttl=%ums dist=%umm) drop=%u",
+				  mode, (int)g_state.killed, (int)drive.appliedSpeedMmS(),
+				  (int)drive.appliedSteerCdeg(), (unsigned)drive.ttlMs(),
+				  (unsigned)drive.distMm(), (unsigned)alog.dropped());
 	}
 
 	delay(1);

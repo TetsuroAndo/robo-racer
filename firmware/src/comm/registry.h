@@ -21,9 +21,14 @@ struct ControlState {
 	volatile uint16_t target_dist_mm = 0;
 };
 
+class AsyncLogger;
+class UartTx;
+
 struct Context {
 	ControlState* st;
 	HardwareSerial* uart;
+	AsyncLogger* log;
+	UartTx* tx;
 };
 
 class IHandler {

@@ -1,13 +1,12 @@
 #include "Sender.h"
-#include "uart.h"
 
+#include <array>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <limits>
 #include <time.h>
-#include <unistd.h>
 
 namespace {
 uint32_t now_ms() {
@@ -36,191 +35,102 @@ int16_t clamp_cdeg(int32_t cdeg) {
 	return static_cast< int16_t >(cdeg);
 }
 
-proto::Trace::RxError toTraceError(proto::PacketReader::Error err) {
-	switch (err) {
-	case proto::PacketReader::Error::BUFFER_OVERFLOW:
-		return proto::Trace::RxError::kOverflow;
-	case proto::PacketReader::Error::DECODE_ERROR:
-		return proto::Trace::RxError::kDecode;
-	case proto::PacketReader::Error::TOO_SHORT:
-		return proto::Trace::RxError::kTooShort;
-	case proto::PacketReader::Error::BAD_LENGTH:
-		return proto::Trace::RxError::kBadLength;
-	case proto::PacketReader::Error::CRC_MISMATCH:
-		return proto::Trace::RxError::kCrcMismatch;
-	default:
-		return proto::Trace::RxError::kDecode;
-	}
-}
 } // namespace
 
-Sender::Sender(const char *esp_dev, int esp_baud) { _init(esp_dev, esp_baud); }
+Sender::Sender(const char *sock_path) { _init(sock_path); }
 
 Sender::~Sender() {
 	if (auto_enabled_) {
 		sendAutoMode(false);
 	}
-	close(_espFd);
 }
 
 void Sender::send(int speed, int angle) {
 	poll();
-	const uint32_t now = now_ms();
-	trace_.tick(now);
 	if (!auto_enabled_) {
 		return;
 	}
 
-	maybeSendHeartbeat(now);
-
-	proto::AutoSetpointPayload payload{};
+	mc::proto::DrivePayload payload{};
 	payload.steer_cdeg =
 		clamp_cdeg(static_cast< int32_t >(angle) * cfg::STEER_CDEG_SCALE);
-	payload.speed_cmd = clamp_speed(speed);
-	payload.ttl_ms = cfg::AUTO_TTL_MS;
-	payload.distance_mm = 0;
+	payload.speed_mm_s = clamp_speed(speed);
+	payload.ttl_ms_le = mc::proto::to_le16(cfg::AUTO_TTL_MS);
+	payload.distance_mm_le = mc::proto::to_le16(0);
 
-	const uint8_t seq = nextSeq();
-	const bool ok = writer_.write(
-		_espFd, static_cast< uint8_t >(proto::Type::AUTO_SETPOINT), 0, seq,
+	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
+	size_t out_len = 0;
+	const uint16_t seq = nextSeq();
+	const bool ok = mc::proto::PacketWriter::build(
+		out, sizeof(out), out_len, mc::proto::Type::DRIVE, 0, seq,
 		reinterpret_cast< const uint8_t * >(&payload), sizeof(payload));
-	trace_.onTx(static_cast< uint8_t >(proto::Type::AUTO_SETPOINT), seq, ok);
-	if (!ok) {
-		std::cerr << "AUTO_SETPOINT send failed\n";
+	if (!ok || ipc_.send(out, (int)out_len) <= 0) {
+		std::cerr << "DRIVE send failed\n";
 	}
 }
 
 void Sender::sendAutoMode(bool enable) {
-	proto::AutoModePayload payload{};
-	payload.enable = enable ? 1 : 0;
-	payload.reason = 0;
-
-	const uint8_t seq = nextSeq();
-	const bool ok = writer_.write(
-		_espFd, static_cast< uint8_t >(proto::Type::AUTO_MODE),
-		proto::FLAG_ACK_REQ, seq, reinterpret_cast< const uint8_t * >(&payload),
-		sizeof(payload));
-	trace_.onTx(static_cast< uint8_t >(proto::Type::AUTO_MODE), seq, ok);
-	if (!ok) {
+	uint8_t mode = enable ? 1 : 0;
+	const uint16_t seq = nextSeq();
+	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
+	size_t out_len = 0;
+	const bool ok = mc::proto::PacketWriter::build(
+		out, sizeof(out), out_len, mc::proto::Type::MODE_SET, 0, seq, &mode, 1);
+	if (!ok || ipc_.send(out, (int)out_len) <= 0) {
 		std::cerr << "AUTO_MODE send failed\n";
 		return;
 	}
 	auto_enabled_ = enable;
-	if (!enable) {
-		last_hb_ms_ = 0;
-	}
 }
 
 void Sender::sendKill() {
-	const uint8_t seq = nextSeq();
-	const bool ok =
-		writer_.write(_espFd, static_cast< uint8_t >(proto::Type::KILL),
-					  proto::FLAG_ACK_REQ, seq, nullptr, 0);
-	trace_.onTx(static_cast< uint8_t >(proto::Type::KILL), seq, ok);
-	if (!ok) {
+	uint8_t payload[2] = {0, 0};
+	const uint16_t seq = nextSeq();
+	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
+	size_t out_len = 0;
+	const bool ok = mc::proto::PacketWriter::build(
+		out, sizeof(out), out_len, mc::proto::Type::KILL, 0, seq, payload,
+		sizeof(payload));
+	if (!ok || ipc_.send(out, (int)out_len) <= 0) {
 		std::cerr << "KILL send failed\n";
 	}
 }
 
-void Sender::sendClearKill() {
-	const uint8_t seq = nextSeq();
-	const bool ok =
-		writer_.write(_espFd, static_cast< uint8_t >(proto::Type::CLEAR_KILL),
-					  proto::FLAG_ACK_REQ, seq, nullptr, 0);
-	trace_.onTx(static_cast< uint8_t >(proto::Type::CLEAR_KILL), seq, ok);
-	if (!ok) {
-		std::cerr << "CLEAR_KILL send failed\n";
-	}
-}
-
 void Sender::poll() {
-	uint8_t buf[cfg::UART_READ_BUF_SIZE];
+	uint8_t buf[mc::proto::MAX_FRAME_ENCODED];
 	while (true) {
-		const ssize_t n = read(_espFd, buf, sizeof(buf));
-		if (n == 0) {
+		int n = ipc_.recv(buf, (int)sizeof(buf));
+		if (n <= 0)
 			break;
-		}
-		if (n < 0) {
-			if (errno != EAGAIN && errno != EWOULDBLOCK) {
-				std::cerr << "UART read error: " << std::strerror(errno)
-						  << "\n";
-			}
-			break;
-		}
-		for (ssize_t i = 0; i < n; ++i) {
-			proto::FrameView frame{};
-			const auto res = reader_.push(buf[i], frame);
-			if (res == proto::PacketReader::Result::ERROR) {
-				trace_.onRxError(toTraceError(reader_.lastError()));
-				continue;
-			}
-			if (res == proto::PacketReader::Result::OK) {
-				handleFrame(frame);
-			}
+		mc::proto::Frame frame{};
+		std::array< uint8_t, mc::proto::MAX_FRAME_DECODED > decoded{};
+		if (mc::proto::decode_one(buf, (size_t)n, frame, decoded)) {
+			handleFrame(frame);
 		}
 	}
-	trace_.tick(now_ms());
 }
 
-void Sender::_init(const char *esp_dev, int esp_baud) {
-	_espFd = uart_open_readwrite(esp_dev, esp_baud);
-	if (_espFd < 0) {
-		std::cerr << "Failed to open UART: " << std::strerror(errno) << "\n";
+void Sender::_init(const char *sock_path) {
+	if (!ipc_.connect(sock_path)) {
+		std::cerr << "Failed to connect seriald socket: " << sock_path << "\n";
 		exit(1);
 	}
 
 	sendAutoMode(true);
 }
 
-void Sender::handleFrame(const proto::FrameView &frame) {
-	const auto *hdr = reinterpret_cast< const proto::Header * >(frame.data);
-	if (hdr->ver != proto::VER) {
-		trace_.onRxError(proto::Trace::RxError::kBadVersion);
-		return;
-	}
-	trace_.onRxFrame(*hdr);
-
-	switch (hdr->type) {
-	case static_cast< uint8_t >(proto::Type::ACK): {
-		if (hdr->len != sizeof(proto::AckPayload)) {
-			return;
-		}
-		proto::AckPayload payload{};
-		memcpy(&payload, frame.data + sizeof(proto::Header), sizeof(payload));
-		handleAck(payload, hdr->seq);
-		break;
-	}
-	case static_cast< uint8_t >(proto::Type::STATUS): {
-		if (hdr->len != sizeof(proto::StatusPayload)) {
-			return;
-		}
-		proto::StatusPayload payload{};
-		memcpy(&payload, frame.data + sizeof(proto::Header), sizeof(payload));
+void Sender::handleFrame(const mc::proto::Frame &frame) {
+	if (frame.hdr.type == (uint8_t)mc::proto::Type::STATUS &&
+		frame.payload_len == sizeof(mc::proto::StatusPayload)) {
+		mc::proto::StatusPayload payload{};
+		memcpy(&payload, frame.payload, sizeof(payload));
 		handleStatus(payload);
-		break;
-	}
-	default:
-		trace_.onRxError(proto::Trace::RxError::kUnsupported);
-		break;
 	}
 }
 
-void Sender::handleAck(const proto::AckPayload &payload, uint8_t seq) {
-	trace_.onAck(payload);
-	if (payload.code == 0) {
-		return;
-	}
-	std::cerr << "ACK error: type=0x" << std::hex
-			  << static_cast< int >(payload.type_echo) << " seq=0x"
-			  << static_cast< int >(payload.seq_echo) << " code=" << std::dec
-			  << static_cast< int >(payload.code) << " rx_seq=0x" << std::hex
-			  << static_cast< int >(seq) << std::dec << "\n";
-}
-
-void Sender::handleStatus(const proto::StatusPayload &payload) {
+void Sender::handleStatus(const mc::proto::StatusPayload &payload) {
 	last_status_ = payload;
 	has_status_ = true;
-	trace_.onStatus(payload);
 
 	const uint32_t now = now_ms();
 	if ((uint32_t)(now - last_status_log_ms_) < cfg::STATUS_LOG_INTERVAL_MS) {
@@ -228,35 +138,20 @@ void Sender::handleStatus(const proto::StatusPayload &payload) {
 	}
 	last_status_log_ms_ = now;
 
-	std::cerr << "STATUS auto=" << static_cast< int >(payload.auto_active)
-			  << " seq=" << static_cast< int >(payload.seq_applied)
-			  << " fault=0x" << std::hex << payload.fault << std::dec
-			  << " speed=" << payload.speed_now
-			  << " steer_cdeg=" << payload.steer_now_cdeg
-			  << " age_ms=" << payload.age_ms << "\n";
+	const uint16_t last_seq = mc::proto::from_le16(payload.last_seq_le);
+	const int16_t speed =
+		(int16_t)mc::proto::from_le16((uint16_t)payload.speed_mm_s_le);
+	const int16_t steer =
+		(int16_t)mc::proto::from_le16((uint16_t)payload.steer_cdeg_le);
+	const uint16_t ttl = mc::proto::from_le16(payload.ttl_ms_le);
+	const uint16_t faults = mc::proto::from_le16(payload.faults_le);
+	std::cerr << "STATUS seq=" << last_seq << " speed=" << speed
+			  << " steer_cdeg=" << steer << " ttl_ms=" << ttl << " faults=0x"
+			  << std::hex << faults << std::dec << "\n";
 }
 
-void Sender::maybeSendHeartbeat(uint32_t now_ms) {
-	if (!auto_enabled_) {
-		return;
-	}
-	if (last_hb_ms_ != 0 &&
-		(uint32_t)(now_ms - last_hb_ms_) < cfg::HEARTBEAT_INTERVAL_MS) {
-		return;
-	}
-
-	const uint8_t seq = nextSeq();
-	const bool ok =
-		writer_.write(_espFd, static_cast< uint8_t >(proto::Type::HEARTBEAT), 0,
-					  seq, nullptr, 0);
-	if (ok) {
-		last_hb_ms_ = now_ms;
-	}
-	trace_.onTx(static_cast< uint8_t >(proto::Type::HEARTBEAT), seq, ok);
-}
-
-uint8_t Sender::nextSeq() {
-	const uint8_t s = seq_;
-	seq_ = static_cast< uint8_t >(seq_ + 1);
+uint16_t Sender::nextSeq() {
+	const uint16_t s = seq_;
+	seq_ = (uint16_t)(seq_ + 1);
 	return s;
 }
