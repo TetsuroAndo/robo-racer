@@ -94,15 +94,10 @@
 
 ## テスト計画（pytest方針）
 
-### Unit（ホストC++）
-- `rpi/test/proto_codec_test.cpp`
-  - CRC16の既知ベクタ
-  - COBS encode/decode ラウンドトリップ（0x00含む）
-- `rpi/test/proto_reader_test.cpp`
-  - 正常フレームのdecode
-  - CRC不一致 / 長さ不一致 / バージョン不一致
-- `rpi/test/proto_writer_test.cpp`
-  - 既知のフレーム出力（ヘッダ+payloadのgolden）
+### pytest（ホスト）
+- `test/rpi/proto/test_proto_rpi_cpp.py` で g++ を呼び出し、
+  `test/rpi/proto/cpp/proto_tests.cpp` をビルドして実行する。
+- codec/reader/writer の基礎検証を C++ 側で行う。
 
 ### Integration（ホスト）
 - `PacketWriter -> PacketReader` のループバック

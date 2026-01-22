@@ -99,7 +99,7 @@ $(LOG_DIR):
 .PHONY: test activate
 
 test: $(PYTHON_LOCAL)
-	$(VENV)/bin/pytest -q
+	$(VENV)/bin/pytest -svv
 
 activate: $(PYTHON_LOCAL)
 	@bash -lc 'source "$(VENV)/bin/activate" && exec $$SHELL -l'
