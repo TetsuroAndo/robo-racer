@@ -1,5 +1,6 @@
 #include "comm/Context.h"
 #include "comm/Dispatcher.h"
+#include "comm/ProtoTrace.h"
 #include "comm/TxPort.h"
 #include "comm/handlers/Handlers.h"
 #include "comm/protocol/PacketReader.h"
@@ -24,6 +25,7 @@ static TxPort tx;
 static Dispatcher dispatcher;
 static proto::PacketReader packet_reader;
 static Context ctx{drive, safety, auto_cmd, tx};
+static ProtoTrace proto_trace;
 
 static int16_t status_speed_cmd = 0;
 static int16_t status_steer_cdeg = 0;
@@ -34,6 +36,23 @@ namespace {
 inline const proto::Header *hdr(const proto::FrameView &f) {
 	return reinterpret_cast< const proto::Header * >(f.data);
 }
+
+ProtoTrace::RxError toTraceError(proto::PacketReader::Error err) {
+	switch (err) {
+	case proto::PacketReader::Error::kOverflow:
+		return ProtoTrace::RxError::kOverflow;
+	case proto::PacketReader::Error::kDecodeError:
+		return ProtoTrace::RxError::kDecode;
+	case proto::PacketReader::Error::kTooShort:
+		return ProtoTrace::RxError::kTooShort;
+	case proto::PacketReader::Error::kBadLength:
+		return ProtoTrace::RxError::kBadLength;
+	case proto::PacketReader::Error::kCrcMismatch:
+		return ProtoTrace::RxError::kCrcMismatch;
+	default:
+		return ProtoTrace::RxError::kDecode;
+	}
+}
 } // namespace
 
 void setup() {
@@ -42,6 +61,7 @@ void setup() {
 	Serial2.begin(cfg::SERIAL_BAUD, SERIAL_8N1, cfg::SERIAL_RX_PIN,
 				  cfg::SERIAL_TX_PIN);
 	tx.begin(Serial2);
+	tx.setTrace(&proto_trace);
 
 	Serial.println("\n=== ESP32 UART Protocol (COBS+CRC) ===");
 
@@ -56,12 +76,18 @@ static void uart_rx_poll() {
 		const uint8_t byte = static_cast< uint8_t >(Serial2.read());
 		proto::FrameView frame{};
 		const auto res = packet_reader.push(byte, frame);
+		if (res == proto::PacketReader::Result::kError) {
+			proto_trace.onRxError(toTraceError(packet_reader.lastError()));
+			continue;
+		}
 		if (res != proto::PacketReader::Result::kOk) {
 			continue;
 		}
 
 		const auto *h = hdr(frame);
+		proto_trace.onRxFrame(h->type, h->seq, h->len, h->flags);
 		if (h->ver != proto::VER) {
+			proto_trace.onRxError(ProtoTrace::RxError::kBadVersion);
 			if (h->flags & proto::FLAG_ACK_REQ) {
 				tx.sendAck(h->type, h->seq, cfg::ACK_CODE_VERSION_MISMATCH);
 			}
@@ -69,6 +95,7 @@ static void uart_rx_poll() {
 		}
 
 		if (!dispatcher.dispatch(h->type, frame, ctx)) {
+			proto_trace.onRxError(ProtoTrace::RxError::kUnsupported);
 			if (h->flags & proto::FLAG_ACK_REQ) {
 				tx.sendAck(h->type, h->seq, cfg::ACK_CODE_UNHANDLED);
 			}
@@ -131,6 +158,7 @@ static void apply_control() {
 
 	drive.control();
 	maybe_send_status(now_ms);
+	proto_trace.tick(now_ms);
 }
 
 void loop() {

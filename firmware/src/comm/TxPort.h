@@ -9,6 +9,7 @@ public:
 	TxPort() = default;
 
 	void begin(HardwareSerial &serial) { serial_ = &serial; }
+	void setTrace(class ProtoTrace *trace) { trace_ = trace; }
 
 	bool sendAck(uint8_t type_echo, uint8_t seq_echo, uint8_t code,
 				 uint8_t detail = 0);
@@ -17,4 +18,5 @@ public:
 private:
 	HardwareSerial *serial_ = nullptr;
 	proto::PacketWriter writer_{};
+	class ProtoTrace *trace_ = nullptr;
 };

@@ -4,6 +4,7 @@
 #include "proto/PacketReader.h"
 #include "proto/PacketWriter.h"
 #include "proto/Protocol.h"
+#include "proto/Trace.h"
 #include <stdint.h>
 
 class Sender {
@@ -27,6 +28,7 @@ private:
 	int _espFd;
 	proto::PacketWriter writer_;
 	proto::PacketReader reader_;
+	proto::Trace trace_;
 	uint8_t seq_ = 0;
 	uint32_t last_hb_ms_ = 0;
 	uint32_t last_status_log_ms_ = 0;

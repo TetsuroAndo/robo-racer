@@ -104,6 +104,11 @@ static constexpr float MANUAL_STEER_DEG  = 20.0f;
 // 送信周期
 static constexpr uint32_t STATUS_INTERVAL_MS       = 50;
 
+// プロトコルトレース
+static constexpr bool PROTO_TRACE_ENABLE           = true;
+static constexpr bool PROTO_TRACE_VERBOSE          = false;
+static constexpr uint32_t PROTO_TRACE_SUMMARY_MS   = 1000;
+
 // ACKコード
 static constexpr uint8_t ACK_CODE_OK               = 0;
 static constexpr uint8_t ACK_CODE_VERSION_MISMATCH = 2;

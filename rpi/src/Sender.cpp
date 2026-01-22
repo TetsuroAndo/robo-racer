@@ -35,6 +35,23 @@ int16_t clamp_cdeg(int32_t cdeg) {
 	}
 	return static_cast< int16_t >(cdeg);
 }
+
+proto::Trace::RxError toTraceError(proto::PacketReader::Error err) {
+	switch (err) {
+	case proto::PacketReader::Error::BUFFER_OVERFLOW:
+		return proto::Trace::RxError::kOverflow;
+	case proto::PacketReader::Error::DECODE_ERROR:
+		return proto::Trace::RxError::kDecode;
+	case proto::PacketReader::Error::TOO_SHORT:
+		return proto::Trace::RxError::kTooShort;
+	case proto::PacketReader::Error::BAD_LENGTH:
+		return proto::Trace::RxError::kBadLength;
+	case proto::PacketReader::Error::CRC_MISMATCH:
+		return proto::Trace::RxError::kCrcMismatch;
+	default:
+		return proto::Trace::RxError::kDecode;
+	}
+}
 } // namespace
 
 Sender::Sender(const char *esp_dev, int esp_baud) { _init(esp_dev, esp_baud); }
@@ -48,11 +65,12 @@ Sender::~Sender() {
 
 void Sender::send(int speed, int angle) {
 	poll();
+	const uint32_t now = now_ms();
+	trace_.tick(now);
 	if (!auto_enabled_) {
 		return;
 	}
 
-	const uint32_t now = now_ms();
 	maybeSendHeartbeat(now);
 
 	proto::AutoSetpointPayload payload{};
@@ -62,10 +80,11 @@ void Sender::send(int speed, int angle) {
 	payload.ttl_ms = cfg::AUTO_TTL_MS;
 	payload.distance_mm = 0;
 
+	const uint8_t seq = nextSeq();
 	const bool ok = writer_.write(
-		_espFd, static_cast< uint8_t >(proto::Type::AUTO_SETPOINT), 0,
-		nextSeq(), reinterpret_cast< const uint8_t * >(&payload),
-		sizeof(payload));
+		_espFd, static_cast< uint8_t >(proto::Type::AUTO_SETPOINT), 0, seq,
+		reinterpret_cast< const uint8_t * >(&payload), sizeof(payload));
+	trace_.onTx(static_cast< uint8_t >(proto::Type::AUTO_SETPOINT), seq, ok);
 	if (!ok) {
 		std::cerr << "AUTO_SETPOINT send failed\n";
 	}
@@ -76,10 +95,12 @@ void Sender::sendAutoMode(bool enable) {
 	payload.enable = enable ? 1 : 0;
 	payload.reason = 0;
 
+	const uint8_t seq = nextSeq();
 	const bool ok = writer_.write(
 		_espFd, static_cast< uint8_t >(proto::Type::AUTO_MODE),
-		proto::FLAG_ACK_REQ, nextSeq(),
-		reinterpret_cast< const uint8_t * >(&payload), sizeof(payload));
+		proto::FLAG_ACK_REQ, seq, reinterpret_cast< const uint8_t * >(&payload),
+		sizeof(payload));
+	trace_.onTx(static_cast< uint8_t >(proto::Type::AUTO_MODE), seq, ok);
 	if (!ok) {
 		std::cerr << "AUTO_MODE send failed\n";
 		return;
@@ -91,18 +112,22 @@ void Sender::sendAutoMode(bool enable) {
 }
 
 void Sender::sendKill() {
+	const uint8_t seq = nextSeq();
 	const bool ok =
 		writer_.write(_espFd, static_cast< uint8_t >(proto::Type::KILL),
-					  proto::FLAG_ACK_REQ, nextSeq(), nullptr, 0);
+					  proto::FLAG_ACK_REQ, seq, nullptr, 0);
+	trace_.onTx(static_cast< uint8_t >(proto::Type::KILL), seq, ok);
 	if (!ok) {
 		std::cerr << "KILL send failed\n";
 	}
 }
 
 void Sender::sendClearKill() {
+	const uint8_t seq = nextSeq();
 	const bool ok =
 		writer_.write(_espFd, static_cast< uint8_t >(proto::Type::CLEAR_KILL),
-					  proto::FLAG_ACK_REQ, nextSeq(), nullptr, 0);
+					  proto::FLAG_ACK_REQ, seq, nullptr, 0);
+	trace_.onTx(static_cast< uint8_t >(proto::Type::CLEAR_KILL), seq, ok);
 	if (!ok) {
 		std::cerr << "CLEAR_KILL send failed\n";
 	}
@@ -125,11 +150,16 @@ void Sender::poll() {
 		for (ssize_t i = 0; i < n; ++i) {
 			proto::FrameView frame{};
 			const auto res = reader_.push(buf[i], frame);
+			if (res == proto::PacketReader::Result::ERROR) {
+				trace_.onRxError(toTraceError(reader_.lastError()));
+				continue;
+			}
 			if (res == proto::PacketReader::Result::OK) {
 				handleFrame(frame);
 			}
 		}
 	}
+	trace_.tick(now_ms());
 }
 
 void Sender::_init(const char *esp_dev, int esp_baud) {
@@ -145,8 +175,10 @@ void Sender::_init(const char *esp_dev, int esp_baud) {
 void Sender::handleFrame(const proto::FrameView &frame) {
 	const auto *hdr = reinterpret_cast< const proto::Header * >(frame.data);
 	if (hdr->ver != proto::VER) {
+		trace_.onRxError(proto::Trace::RxError::kBadVersion);
 		return;
 	}
+	trace_.onRxFrame(*hdr);
 
 	switch (hdr->type) {
 	case static_cast< uint8_t >(proto::Type::ACK): {
@@ -168,11 +200,13 @@ void Sender::handleFrame(const proto::FrameView &frame) {
 		break;
 	}
 	default:
+		trace_.onRxError(proto::Trace::RxError::kUnsupported);
 		break;
 	}
 }
 
 void Sender::handleAck(const proto::AckPayload &payload, uint8_t seq) {
+	trace_.onAck(payload);
 	if (payload.code == 0) {
 		return;
 	}
@@ -186,6 +220,7 @@ void Sender::handleAck(const proto::AckPayload &payload, uint8_t seq) {
 void Sender::handleStatus(const proto::StatusPayload &payload) {
 	last_status_ = payload;
 	has_status_ = true;
+	trace_.onStatus(payload);
 
 	const uint32_t now = now_ms();
 	if ((uint32_t)(now - last_status_log_ms_) < cfg::STATUS_LOG_INTERVAL_MS) {
@@ -210,12 +245,14 @@ void Sender::maybeSendHeartbeat(uint32_t now_ms) {
 		return;
 	}
 
+	const uint8_t seq = nextSeq();
 	const bool ok =
 		writer_.write(_espFd, static_cast< uint8_t >(proto::Type::HEARTBEAT), 0,
-					  nextSeq(), nullptr, 0);
+					  seq, nullptr, 0);
 	if (ok) {
 		last_hb_ms_ = now_ms;
 	}
+	trace_.onTx(static_cast< uint8_t >(proto::Type::HEARTBEAT), seq, ok);
 }
 
 uint8_t Sender::nextSeq() {

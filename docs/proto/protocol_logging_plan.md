@@ -92,16 +92,16 @@
 
 ---
 
-## テスト計画
+## テスト計画（pytest方針）
 
 ### Unit（ホストC++）
-- `rpi/tests/proto_codec_test.cpp`
+- `rpi/test/proto_codec_test.cpp`
   - CRC16の既知ベクタ
   - COBS encode/decode ラウンドトリップ（0x00含む）
-- `rpi/tests/proto_reader_test.cpp`
+- `rpi/test/proto_reader_test.cpp`
   - 正常フレームのdecode
   - CRC不一致 / 長さ不一致 / バージョン不一致
-- `rpi/tests/proto_writer_test.cpp`
+- `rpi/test/proto_writer_test.cpp`
   - 既知のフレーム出力（ヘッダ+payloadのgolden）
 
 ### Integration（ホスト）
@@ -129,5 +129,4 @@ RPi:
 2. 送受信フックを差し込み
 3. verbose出力追加
 4. 必要なら `PROTO_STATS` 追加
-5. Unit/Integrationテストを追加し `make rpi-test` を用意
 6. 実機UARTでログ取得・検証
