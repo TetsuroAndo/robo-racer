@@ -5,7 +5,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-#include <limits>
 #include <sys/socket.h>
 #include <time.h>
 
@@ -18,20 +17,20 @@ uint32_t now_ms() {
 	return static_cast< uint32_t >(ms & 0xFFFFFFFFu);
 }
 
-int16_t clamp_speed(int speed) {
-	if (speed > cfg::SPEED_LIMIT) {
-		speed = cfg::SPEED_LIMIT;
-	} else if (speed < -cfg::SPEED_LIMIT) {
-		speed = -cfg::SPEED_LIMIT;
+int16_t clamp_speed_input(int speed) {
+	if (speed > cfg::SPEED_INPUT_LIMIT) {
+		speed = cfg::SPEED_INPUT_LIMIT;
+	} else if (speed < -cfg::SPEED_INPUT_LIMIT) {
+		speed = -cfg::SPEED_INPUT_LIMIT;
 	}
 	return static_cast< int16_t >(speed);
 }
 
 int16_t clamp_cdeg(int32_t cdeg) {
-	if (cdeg > std::numeric_limits< int16_t >::max()) {
-		cdeg = std::numeric_limits< int16_t >::max();
-	} else if (cdeg < std::numeric_limits< int16_t >::min()) {
-		cdeg = std::numeric_limits< int16_t >::min();
+	if (cdeg > cfg::STEER_CDEG_MAX) {
+		cdeg = cfg::STEER_CDEG_MAX;
+	} else if (cdeg < -cfg::STEER_CDEG_MAX) {
+		cdeg = -cfg::STEER_CDEG_MAX;
 	}
 	return static_cast< int16_t >(cdeg);
 }
@@ -55,7 +54,10 @@ void Sender::send(int speed, int angle) {
 	mc::proto::DrivePayload payload{};
 	payload.steer_cdeg =
 		clamp_cdeg(static_cast< int32_t >(angle) * cfg::STEER_CDEG_SCALE);
-	payload.speed_mm_s = clamp_speed(speed);
+	const int16_t speed_input = clamp_speed_input(speed);
+	const int32_t speed_mm_s =
+		(int32_t)speed_input * cfg::SPEED_MM_S_MAX / cfg::SPEED_INPUT_LIMIT;
+	payload.speed_mm_s = static_cast< int16_t >(speed_mm_s);
 	payload.ttl_ms_le = mc::proto::to_le16(cfg::AUTO_TTL_MS);
 	payload.distance_mm_le = mc::proto::to_le16(0);
 

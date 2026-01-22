@@ -28,9 +28,13 @@ static constexpr uint16_t AUTO_TTL_MS            = 100;
 static constexpr uint32_t HEARTBEAT_INTERVAL_MS  = 50;
 static constexpr uint32_t STATUS_LOG_INTERVAL_MS = 1000;
 
-// 送信値のスケール/上限
-static constexpr int SPEED_LIMIT                 = 255;
+// 送信値のスケール/上限（ESP32側の単位に合わせる）
+// speed: RPi内部は旧PWM相当(-255..255) → ESP32はmm/s(±2000想定)
+static constexpr int SPEED_INPUT_LIMIT           = 255;
+static constexpr int SPEED_MM_S_MAX              = 2000;
+// steer: degree → centi-degree
 static constexpr int STEER_CDEG_SCALE            = 100;
+static constexpr int STEER_CDEG_MAX              = 3000;
 
 // 受信バッファ
 static constexpr size_t UART_READ_BUF_SIZE       = 256;
