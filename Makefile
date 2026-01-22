@@ -52,13 +52,13 @@ PIO_RUN			:= $(PIO) run -j $(shell nproc)
 # ================================
 # Makefile Target
 # ================================
-.PHONY: all upload rpi clean fclean re monitor c f r clog
+.PHONY: all pio rpi upload clean fclean re monitor c f r clog
 
-all:
-	$(PIO_RUN) $(PIO_ARG_ENV)
-	$(MAKE) $(NAME) -j $(shell nproc)
+all: pio rpi
 	if [ "$(USER)" = "pi" ]; then $(MAKE) upload; fi
 
+pio:
+	$(PIO_RUN) $(PIO_ARG_ENV)
 rpi:
 	$(MAKE) $(NAME) -j $(shell nproc)
 upload:
