@@ -3,7 +3,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-namespace mc {
+namespace mc::core {
 
 pid_t Process::spawn(const std::string &path,
 					 const std::vector< std::string > &args) {
@@ -35,4 +35,4 @@ void Process::terminate(pid_t pid) {
 	waitpid(pid, nullptr, 0);
 }
 
-} // namespace mc
+} // namespace mc::core

@@ -58,7 +58,7 @@ void Logger::log(LogLevel lv, std::string tag, std::string msg) {
 		return;
 
 	LogRecord r;
-	r.ts_us = now_us_monotonic();
+	r.ts_us = Time::us();
 	r.level = lv;
 	r.tag = std::move(tag);
 	r.msg = std::move(msg);

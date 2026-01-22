@@ -7,8 +7,8 @@ namespace mc::proto {
 #pragma pack(push, 1)
 
 struct DrivePayload {
-	int16_t  steer_cdeg;
-	int16_t  speed_mm_s;
+	int16_t steer_cdeg;
+	int16_t speed_mm_s;
 	uint16_t ttl_ms_le;
 	uint16_t distance_mm_le;
 };
@@ -28,20 +28,20 @@ struct PingPayload {
 };
 
 struct LogPayload {
-	uint8_t  level;
-	uint8_t  category;
+	uint8_t level;
+	uint8_t category;
 	uint16_t code_le;
 	uint32_t t_ms_le;
-	int32_t  a0_le;
-	int32_t  a1_le;
-	int32_t  a2_le;
-	int32_t  a3_le;
+	int32_t a0_le;
+	int32_t a1_le;
+	int32_t a2_le;
+	int32_t a3_le;
 };
 
 struct StatusPayload {
 	uint16_t last_seq_le;
-	int16_t  speed_mm_s_le;
-	int16_t  steer_cdeg_le;
+	int16_t speed_mm_s_le;
+	int16_t steer_cdeg_le;
 	uint16_t ttl_ms_le;
 	uint16_t dist_mm_le;
 	uint16_t faults_le;
@@ -51,8 +51,8 @@ struct StatusPayload {
 
 struct AckPayload {
 	uint16_t seq_ack_le;
-	uint8_t  type;
-	uint8_t  status;
+	uint8_t type;
+	uint8_t status;
 };
 
 #pragma pack(pop)

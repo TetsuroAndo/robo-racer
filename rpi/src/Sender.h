@@ -1,9 +1,9 @@
 #pragma once
 
 #include "config/Config.h"
-#include <mc/ipc_dgram.h>
-#include <mc/mcproto.h>
-#include <mc/mcproto_payloads.h>
+#include <mc/ipc/UdsSeqPacket.hpp>
+#include <mc/proto/Proto.hpp>
+#include <mc/proto/Payloads.hpp>
 #include <stdint.h>
 
 class Sender {
@@ -21,7 +21,7 @@ private:
 	void handleStatus(const mc::proto::StatusPayload& payload);
 	uint16_t nextSeq();
 
-	mc::ipc::DgramClient ipc_;
+	mc::ipc::UdsClient ipc_;
 	uint16_t seq_ = 0;
 	uint32_t last_status_log_ms_ = 0;
 	mc::proto::StatusPayload last_status_{};

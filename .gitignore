@@ -10,7 +10,6 @@ objs/
 .DS_Store
 .vscode
 # JetBrains
-CMakeLists.txt
 build/*
 # vim
 compile_commands.json

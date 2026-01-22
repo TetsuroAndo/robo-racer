@@ -6,6 +6,7 @@
 #include <cstring>
 #include <iostream>
 #include <limits>
+#include <sys/socket.h>
 #include <time.h>
 
 namespace {
@@ -64,7 +65,7 @@ void Sender::send(int speed, int angle) {
 	const bool ok = mc::proto::PacketWriter::build(
 		out, sizeof(out), out_len, mc::proto::Type::DRIVE, 0, seq,
 		reinterpret_cast< const uint8_t * >(&payload), sizeof(payload));
-	if (!ok || ipc_.send(out, (int)out_len) <= 0) {
+	if (!ok || ::send(ipc_.fd(), out, out_len, MSG_NOSIGNAL) <= 0) {
 		std::cerr << "DRIVE send failed\n";
 	}
 }
@@ -76,7 +77,7 @@ void Sender::sendAutoMode(bool enable) {
 	size_t out_len = 0;
 	const bool ok = mc::proto::PacketWriter::build(
 		out, sizeof(out), out_len, mc::proto::Type::MODE_SET, 0, seq, &mode, 1);
-	if (!ok || ipc_.send(out, (int)out_len) <= 0) {
+	if (!ok || ::send(ipc_.fd(), out, out_len, MSG_NOSIGNAL) <= 0) {
 		std::cerr << "AUTO_MODE send failed\n";
 		return;
 	}
@@ -91,7 +92,7 @@ void Sender::sendKill() {
 	const bool ok = mc::proto::PacketWriter::build(
 		out, sizeof(out), out_len, mc::proto::Type::KILL, 0, seq, payload,
 		sizeof(payload));
-	if (!ok || ipc_.send(out, (int)out_len) <= 0) {
+	if (!ok || ::send(ipc_.fd(), out, out_len, MSG_NOSIGNAL) <= 0) {
 		std::cerr << "KILL send failed\n";
 	}
 }
@@ -99,7 +100,7 @@ void Sender::sendKill() {
 void Sender::poll() {
 	uint8_t buf[mc::proto::MAX_FRAME_ENCODED];
 	while (true) {
-		int n = ipc_.recv(buf, (int)sizeof(buf));
+		int n = (int)::recv(ipc_.fd(), buf, (int)sizeof(buf), 0);
 		if (n <= 0)
 			break;
 		mc::proto::Frame frame{};

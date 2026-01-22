@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -137,9 +138,17 @@ int main(int argc, char **argv) {
 		while (run) {
 			TxMsg m{};
 			if (tx_dequeue(m)) {
-				bool ok = uart.writeAll(m.data, (int)m.len, 50);
-				if (!ok)
-					log.log(LogLevel::ERROR, "uart write failed");
+				int off = 0;
+				while (off < (int)m.len) {
+					int w = uart.write(m.data + off, (int)m.len - off);
+					if (w < 0) {
+						log.log(LogLevel::ERROR, "uart write failed");
+						break;
+					}
+					if (w == 0)
+						break;
+					off += w;
+				}
 			} else {
 				usleep(1000);
 			}
@@ -147,30 +156,41 @@ int main(int argc, char **argv) {
 	});
 
 	while (run) {
-		pollfd fds[2]{};
-		fds[0].fd = uart.fd();
-		fds[0].events = POLLIN;
-		fds[1].fd = ipc.fd();
-		fds[1].events = POLLIN;
+		std::vector< pollfd > fds;
+		fds.reserve(2 + ipc.clients().size());
 
-		int r = ::poll(fds, 2, 10);
+		pollfd uart_fd{};
+		uart_fd.fd = uart.fd();
+		uart_fd.events = POLLIN;
+		fds.push_back(uart_fd);
+
+		pollfd srv_fd{};
+		srv_fd.fd = ipc.fd();
+		srv_fd.events = POLLIN;
+		fds.push_back(srv_fd);
+
+		for (int cfd : ipc.clients()) {
+			pollfd p{};
+			p.fd = cfd;
+			p.events = POLLIN;
+			fds.push_back(p);
+		}
+
+		int r = ::poll(fds.data(), (nfds_t)fds.size(), 10);
 		if (r < 0)
 			continue;
 
 		if (fds[1].revents & POLLIN) {
-			uint8_t buf[mc::proto::MAX_FRAME_ENCODED];
-			std::string from_path;
-			int n = ipc.recv(buf, (int)sizeof(buf), &from_path);
-			if (n > 0) {
-				tx_enqueue(buf, (uint16_t)n);
-				log.log(LogLevel::DEBUG,
-						"IPC->UART forward bytes=" + std::to_string(n));
+			while (true) {
+				int cfd = ipc.accept_client();
+				if (cfd < 0)
+					break;
 			}
 		}
 
 		if (fds[0].revents & POLLIN) {
 			uint8_t buf[1024];
-			int n = uart.readSome(buf, (int)sizeof(buf));
+			int n = uart.read(buf, (int)sizeof(buf));
 			if (n > 0) {
 				for (int i = 0; i < n; i++) {
 					if (pr.push(buf[i]) && pr.hasFrame()) {
@@ -243,13 +263,29 @@ int main(int argc, char **argv) {
 								enc, sizeof(enc), enc_len,
 								static_cast< mc::proto::Type >(f.hdr.type),
 								f.hdr.flags, seq, f.payload, f.payload_len)) {
-							ipc.broadcast(enc, (int)enc_len);
+							for (int cfd : ipc.clients()) {
+								(void)::send(cfd, enc, enc_len, MSG_NOSIGNAL);
+							}
 						}
 
 						pr.consumeFrame();
 					}
 				}
 			}
+		}
+
+		for (size_t i = 2; i < fds.size(); ++i) {
+			if (!(fds[i].revents & POLLIN))
+				continue;
+			uint8_t buf[mc::proto::MAX_FRAME_ENCODED];
+			ssize_t n = ::recv(fds[i].fd, buf, sizeof(buf), 0);
+			if (n <= 0) {
+				ipc.remove_client(fds[i].fd);
+				continue;
+			}
+			tx_enqueue(buf, (uint16_t)n);
+			log.log(LogLevel::DEBUG,
+					"IPC->UART forward bytes=" + std::to_string(n));
 		}
 	}
 
