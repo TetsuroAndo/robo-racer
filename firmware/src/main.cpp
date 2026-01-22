@@ -1,3 +1,4 @@
+#include "config/Config.h"
 #include "control/ControllerInput.h"
 #include "hardware/Drive.h"
 #include <Arduino.h>
