@@ -2,7 +2,7 @@
 
 namespace seriald_cfg {
 
-static constexpr const char* DEFAULT_DEV = "/dev/serial0";
+static constexpr const char *DEFAULT_DEV = "/dev/ttyAMA0";
 static constexpr int DEFAULT_BAUD = 921600;
 static constexpr const char* DEFAULT_SOCK = "/tmp/roboracer/seriald.sock";
 static constexpr const char* DEFAULT_LOG = "./logs/seriald.log";
