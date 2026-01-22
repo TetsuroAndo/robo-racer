@@ -17,8 +17,8 @@ FIRMWARE			:= $(PIO_BUILD_DIR)/firmware.elf
 FIRMWARE_SRC_DIR	:= $(FIRMWARE_DIR)/src
 
 RPI_SRC_DIR			:= $(ROOT)/rpi/src
-RPI_OBJ_DIR			:= $(ROOT)/rpi/obj
 RPI_LIB_DIR			:= $(ROOT)/rpi/lib
+RPI_BUILD_DIR		:= $(ROOT)/rpi/build
 
 RPLIDAR_SDK_DIR		:= $(RPI_LIB_DIR)/rplidar_sdk
 RPLIDAR_INC			:= $(RPLIDAR_SDK_DIR)/sdk/include
@@ -31,20 +31,7 @@ RPLIDAR_SDK_MAKE	:= $(RPLIDAR_SDK_DIR)/Makefile
 # ================================
 
 NAME	:= robo-racer
-SRC_RPI	:= $(shell find $(RPI_SRC_DIR) -path '*/test' -prune -o -name '*.c*' -print)
-SRC_LIB	:= $(shell find $(RPI_LIB_DIR)/mc_proto/src $(RPI_LIB_DIR)/mc_ipc/src -name '*.c*' -print)
-SRC		:= $(SRC_RPI) $(SRC_LIB)
-OBJ		:= $(patsubst $(RPI_SRC_DIR)/%.c*,$(RPI_OBJ_DIR)/src/%.o,$(SRC_RPI)) \
-		   $(patsubst $(RPI_LIB_DIR)/%.c*,$(RPI_OBJ_DIR)/lib/%.o,$(SRC_LIB))
-
-CXX		:= g++
-CXXFLAG	:= -std=c++17 -Wall -Wextra -Wpedantic -pthread
-OPT		:= -O3
-DEFINE  :=
-IDFLAG	:= -I$(RPLIDAR_INC) -I$(RPLIDAR_SRC) \
-		   -I$(RPI_LIB_DIR)/mc_proto/include \
-		   -I$(RPI_LIB_DIR)/mc_ipc/include
-LFLAG	:= -L$(RPLIDAR_LIB) -lsl_lidar_sdk -lm -lpthread -ldl
+CMAKE	?= cmake
 
 # ================================
 # PlatformIO rules / ESP32
@@ -66,23 +53,32 @@ PIO_RUN			:= $(PIO) run -j $(shell nproc)
 # ================================
 # Makefile Target
 # ================================
-.PHONY: all pio rpi upload clean fclean re monitor c f r clog
+.PHONY: all
 
 all: pio rpi
 	@if [ "$(USER)" = "pi" ]; then $(MAKE) upload; fi
 
+# === RPi build ===
+.PHONY: rpi
+$(NAME): rpi
+rpi: | rplidar_sdk $(LOG_DIR)
+	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
+	$(CMAKE) --build $(RPI_BUILD_DIR) -j $(shell nproc)
+
+# === firmware build ===
+.PHONY: pio upload monitor
 pio:
 	$(PIO_RUN) $(PIO_ARG_ENV)
-rpi:
-	$(MAKE) $(NAME) -j $(shell nproc)
 upload:
 	$(PIO_RUN) $(PIO_ARG_UPLOAD)
 monitor:
 	$(PIO) device monitor
 
+# === Clean / Rebuild ===
+.PHONY: clean fclean re c f r clog
 clean:
 	$(PIO_RUN) $(PIO_ARG_CLEAN)
-	$(RM) $(RPI_OBJ_DIR)
+	$(RM) $(RPI_BUILD_DIR)
 	$(MAKE) -C $(RPLIDAR_SDK_DIR) clean
 fclean: clean
 	$(RM) $(PIO_DIR)
@@ -100,7 +96,9 @@ clog:
 $(LOG_DIR):
 	@mkdir -p $(LOG_DIR)
 
-# ============= Run Targets =============
+# ================================
+# Runs
+# ================================
 .PHONY: test activate
 
 test: $(PYTHON_LOCAL)
@@ -130,7 +128,7 @@ debug-gdb:
 .PHONY: rplidar_sdk
 
 rplidar_sdk: $(RPLIDAR_SDK_MAKE)
-	$(MAKE) -C $(RPLIDAR_SDK_DIR)/sdk
+	$(MAKE) -C $(RPLIDAR_SDK_DIR)/sdk CEXTRA=-w CXXEXTRA=-w
 
 $(RPLIDAR_SDK_MAKE):
 	@$(RM) $(RPLIDAR_SDK_DIR)
@@ -183,32 +181,6 @@ purge: f
 	$(RM) $(VENV)
 	$(RM) uv.lock
 	@echo "🧹 Clean up complete."
-
-# ================================
-# BUILD
-# ================================
-
-$(NAME): $(OBJ) | rplidar_sdk $(LOG_DIR)
-		$(CXX) $(CXXFLAG) $(OPT) $(IDFLAG) $(DEFINE) -o  $@ $^ $(LFLAG)
-		@echo "====================="
-		@echo "== Build Complete! =="
-		@echo "====================="
-		@echo "[Executable]: $(NAME)"
-		@echo "[OS/Arch]: $(UNAME_S)"
-		@echo "[Compiler flags/CXXFLAG]: $(CXX) $(CXXFLAG)"
-		@echo "[Optimizer flags/OPT]: $(OPT)"
-		@echo "[Include flags/IDFLAG]: $(IDFLAG)"
-		@echo "[Linker flags/LFLAG]: $(LFLAG)"
-		@echo "[DEFINE]: $(DEFINE)"
-		@echo "====================="
-
-$(RPI_OBJ_DIR)/src/%.o: $(RPI_SRC_DIR)/%.c*
-		@mkdir -p $(dir $@)
-		$(CXX) $(CXXFLAG) $(OPT) $(IDFLAG) $(DEFINE) -fPIC -MMD -MP  -c $< -o $@
-
-$(RPI_OBJ_DIR)/lib/%.o: $(RPI_LIB_DIR)/%.c*
-		@mkdir -p $(dir $@)
-		$(CXX) $(CXXFLAG) $(OPT) $(IDFLAG) $(DEFINE) -fPIC -MMD -MP  -c $< -o $@
 
 # ================================
 # Misc
