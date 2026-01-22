@@ -31,14 +31,19 @@ RPLIDAR_SDK_MAKE	:= $(RPLIDAR_SDK_DIR)/Makefile
 # ================================
 
 NAME	:= robo-racer
-SRC		:= $(shell find $(RPI_SRC_DIR) -path '*/test' -prune -o -name '*.c*' -print)
-OBJ		:= $(patsubst $(RPI_SRC_DIR)/%.c*,$(RPI_OBJ_DIR)/%.o,$(SRC))
+SRC_RPI	:= $(shell find $(RPI_SRC_DIR) -path '*/test' -prune -o -name '*.c*' -print)
+SRC_LIB	:= $(shell find $(RPI_LIB_DIR)/mc_proto/src $(RPI_LIB_DIR)/mc_ipc/src -name '*.c*' -print)
+SRC		:= $(SRC_RPI) $(SRC_LIB)
+OBJ		:= $(patsubst $(RPI_SRC_DIR)/%.c*,$(RPI_OBJ_DIR)/src/%.o,$(SRC_RPI)) \
+		   $(patsubst $(RPI_LIB_DIR)/%.c*,$(RPI_OBJ_DIR)/lib/%.o,$(SRC_LIB))
 
 CXX		:= g++
 CXXFLAG	:= -std=c++17 -Wall -Wextra -Wpedantic -pthread
 OPT		:= -O3
 DEFINE  :=
-IDFLAG	:= -I$(RPLIDAR_INC) -I$(RPLIDAR_SRC)
+IDFLAG	:= -I$(RPLIDAR_INC) -I$(RPLIDAR_SRC) \
+		   -I$(RPI_LIB_DIR)/mc_proto/include \
+		   -I$(RPI_LIB_DIR)/mc_ipc/include
 LFLAG	:= -L$(RPLIDAR_LIB) -lsl_lidar_sdk -lm -lpthread -ldl
 
 # ================================
@@ -197,7 +202,11 @@ $(NAME): $(OBJ) | rplidar_sdk $(LOG_DIR)
 		@echo "[DEFINE]: $(DEFINE)"
 		@echo "====================="
 
-$(RPI_OBJ_DIR)/%.o: $(RPI_SRC_DIR)/%.c*
+$(RPI_OBJ_DIR)/src/%.o: $(RPI_SRC_DIR)/%.c*
+		@mkdir -p $(dir $@)
+		$(CXX) $(CXXFLAG) $(OPT) $(IDFLAG) $(DEFINE) -fPIC -MMD -MP  -c $< -o $@
+
+$(RPI_OBJ_DIR)/lib/%.o: $(RPI_LIB_DIR)/%.c*
 		@mkdir -p $(dir $@)
 		$(CXX) $(CXXFLAG) $(OPT) $(IDFLAG) $(DEFINE) -fPIC -MMD -MP  -c $< -o $@
 

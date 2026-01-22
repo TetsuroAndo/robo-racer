@@ -5,17 +5,17 @@ LDFLAGS  := -pthread
 BIN := seriald
 SRC := \
   src/main.cpp \
-  src/proto.cpp \
-  src/uart_posix.cpp \
   src/async_logger.cpp \
   src/sink_stdout.cpp \
   src/sink_file.cpp \
-  src/ipc.cpp
+  ../../lib/mc_proto/src/mcproto.cpp \
+  ../../lib/mc_ipc/src/ipc_dgram.cpp \
+  ../../lib/mc_serial/src/UartPosix.cpp
 
 all: $(BIN)
 
 $(BIN): $(SRC)
-	$(CXX) $(CXXFLAGS) -Iinclude -Isrc -o $@ $(SRC) $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -Iinclude -Isrc -I../../lib/mc_proto/include -I../../lib/mc_ipc/include -I../../lib/mc_serial/include -o $@ $(SRC) $(LDFLAGS)
 
 clean:
 	rm -f $(BIN)
