@@ -16,7 +16,7 @@ build/*
 compile_commands.json
 .cache/
 # bin
-lidar_to_esp
+robo-racer
 
 # Created by https://www.toptal.com/developers/gitignore/api/c
 # Edit at https://www.toptal.com/developers/gitignore?templates=c

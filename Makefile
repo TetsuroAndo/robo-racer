@@ -7,30 +7,39 @@ ROOT				:= .
 VENV				:= $(ROOT)/.venv
 TEST_DIR			:= $(ROOT)/test
 LOG_DIR				:= $(ROOT)/logs
+
 PIO_DIR				:= $(ROOT)/.pio
 PIO_ENV				?= esp32dev
 PIO_BUILD_DIR		:= $(PIO_DIR)/build/$(PIO_ENV)
+
 FIRMWARE_DIR		:= $(ROOT)/firmware
 FIRMWARE			:= $(PIO_BUILD_DIR)/firmware.elf
 FIRMWARE_SRC_DIR	:= $(FIRMWARE_DIR)/src
+
 RPI_SRC_DIR			:= $(ROOT)/rpi/src
 RPI_OBJ_DIR			:= $(ROOT)/rpi/obj
 RPI_LIB_DIR			:= $(ROOT)/rpi/lib
+
+RPLIDAR_SDK_DIR		:= $(RPI_LIB_DIR)/rplidar_sdk
+RPLIDAR_INC			:= $(RPLIDAR_SDK_DIR)/sdk/include
+RPLIDAR_SRC			:= $(RPLIDAR_SDK_DIR)/sdk/src
+RPLIDAR_LIB			:= $(RPLIDAR_SDK_DIR)/output/$(OS)/Release
+RPLIDAR_SDK_MAKE	:= $(RPLIDAR_SDK_DIR)/Makefile
 
 # ================================
 # RPi build rules
 # ================================
 
 NAME	:= robo-racer
-SRC		:= $(shell find $(RPI_SRC_DIR) -path '*/test' -prune -o -name '*.cpp' -print)
-OBJ		:= $(shell find $(RPI_OBJ_DIR) -name '*.o' -print 2>/dev/null)
+SRC		:= $(shell find $(RPI_SRC_DIR) -path '*/test' -prune -o -name '*.c*' -print)
+OBJ		:= $(patsubst $(RPI_SRC_DIR)/%.c*,$(RPI_OBJ_DIR)/%.o,$(SRC))
 
 CXX		:= g++
 CXXFLAG	:= -std=c++17 -Wall -Wextra -Wpedantic -pthread
 OPT		:= -O3
 DEFINE  :=
-IDFLAG	:=
-LFLAG	:=
+IDFLAG	:= -I$(RPLIDAR_INC) -I$(RPLIDAR_SRC)
+LFLAG	:= -L$(RPLIDAR_LIB) -lsl_lidar_sdk -lm -lpthread -ldl
 
 # ================================
 # PlatformIO rules / ESP32
@@ -55,7 +64,7 @@ PIO_RUN			:= $(PIO) run -j $(shell nproc)
 .PHONY: all pio rpi upload clean fclean re monitor c f r clog
 
 all: pio rpi
-	if [ "$(USER)" = "pi" ]; then $(MAKE) upload; fi
+	@if [ "$(USER)" = "pi" ]; then $(MAKE) upload; fi
 
 pio:
 	$(PIO_RUN) $(PIO_ARG_ENV)
@@ -68,8 +77,11 @@ monitor:
 
 clean:
 	$(PIO_RUN) $(PIO_ARG_CLEAN)
+	$(RM) $(RPI_OBJ_DIR)
+	$(MAKE) -C $(RPLIDAR_SDK_DIR) clean
 fclean: clean
 	$(RM) $(PIO_DIR)
+	$(RM) $(NAME)
 re: fclean all
 
 # Aliases
@@ -104,6 +116,21 @@ debug: fclean
 
 debug-gdb:
 	$(PIO) debug -s $(PIO_BUILD_DIR) --interface gdb -p
+
+
+# ================================
+# SUBMODULE RULES
+# ================================
+
+.PHONY: rplidar_sdk
+
+rplidar_sdk: $(RPLIDAR_SDK_MAKE)
+	$(MAKE) -C $(RPLIDAR_SDK_DIR)
+
+$(RPLIDAR_SDK_MAKE):
+	@$(RM) $(RPLIDAR_SDK_DIR)
+	@echo "[Submodule] Initializing rplidar_sdk..."
+	@git submodule update --init --recursive $(RPLIDAR_SDK_DIR)
 
 # ================================
 # Environment Setup
@@ -151,6 +178,29 @@ purge: f
 	$(RM) $(VENV)
 	$(RM) uv.lock
 	@echo "🧹 Clean up complete."
+
+# ================================
+# BUILD
+# ================================
+
+$(NAME): $(OBJ) | rplidar_sdk $(LOG_DIR)
+		$(CXX) $(CXXFLAG) $(OPT) $(IDFLAG) $(LFLAG) $(DEFINE) -o  $@ $^
+		@echo "====================="
+		@echo "== Build Complete! =="
+		@echo "====================="
+		@echo "[Executable]: $(NAME)"
+		@echo "[OS/Arch]: $(UNAME_S)"
+		@echo "[Config]: $(CONF)"
+		@echo "[Include]: $(INC_DIR)"
+		@echo "[Compiler flags/CXXFLAG]: $(CXXFLAG)"
+		@echo "[Linker flags/LFLAG]: $(LFLAG)"
+		@echo "[Optimizer flags/OPT]: $(OPT)"
+		@echo "[DEFINE]: $(DEFINE)"
+		@echo "====================="
+
+$(RPI_OBJ_DIR)/%.o: $(RPI_SRC_DIR)/%.c*
+		@mkdir -p $(dir $@)
+		$(CXX) $(CXXFLAG) $(OPT) $(IDFLAG) $(DEFINE) -fPIC -MMD -MP  -c $< -o $@
 
 # ================================
 # Misc
@@ -218,37 +268,3 @@ help:
 	@echo "  submodule        Update and initialize git submodules"
 	@echo "  rplidar_sdk      Build the RPLIDAR SDK (auto-inits submodule)"
 	@echo "  help             Print this help message"
-
-# =========== SUBMODULE RULES ===========
-
-RPLIDAR_SDK_DIR		:= $(RPI_LIB_DIR)/rplidar_sdk
-RPLIDAR_SDK_MAKE	:= $(RPLIDAR_SDK_DIR)/Makefile
-
-rplidar_sdk: $(RPLIDAR_SDK_MAKE)
-	$(MAKE) -C $(RPLIDAR_SDK_DIR) -j $(shell nproc)
-
-$(RPLIDAR_SDK_MAKE):
-	@$(RM) $(RPLIDAR_SDK_DIR)
-	@echo "[Submodule] Initializing rplidar_sdk..."
-	@git submodule update --init --recursive $(RPLIDAR_SDK_DIR)
-
-# ============= BUILD RULES =============
-
-$(NAME): rplidar_sdk $(OBJ) | $(LOG_DIR)
-		$(CXX) $(CXXFLAG) $(OPT) $(IDFLAG) $(LFLAG) $(DEFINE) -o  $@ $^
-		@echo "====================="
-		@echo "== Build Complete! =="
-		@echo "====================="
-		@echo "[Executable]: $(NAME)"
-		@echo "[OS/Arch]: $(UNAME_S)"
-		@echo "[Config]: $(CONF)"
-		@echo "[Include]: $(INC_DIR)"
-		@echo "[Compiler flags/CXXFLAG]: $(CXXFLAG)"
-		@echo "[Linker flags/LFLAG]: $(LFLAG)"
-		@echo "[Optimizer flags/OPT]: $(OPT)"
-		@echo "[DEFINE]: $(DEFINE)"
-		@echo "====================="
-
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
-		@mkdir -p $(dir $@)
-		$(CXX) $(CXXFLAG) $(OPT) $(IDFLAG) $(DEFINE) -fPIC -MMD -MP  -c $< -o $@
