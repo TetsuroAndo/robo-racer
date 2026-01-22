@@ -70,21 +70,21 @@ static constexpr float STEER_CDEG_SCALE        = 100.0f;
 //------------------------------------------------------------------------------
 
 // GPIO
-static constexpr int ENGINE_PIN_RPWM            = 25;
-static constexpr int ENGINE_PIN_LPWM            = 26;
-static constexpr int ENGINE_PIN_REN             = 27;
-static constexpr int ENGINE_PIN_LEN             = 14;
+static constexpr int ENGINE_PIN_RPWM           = 25;
+static constexpr int ENGINE_PIN_LPWM           = 26;
+static constexpr int ENGINE_PIN_REN            = 27;
+static constexpr int ENGINE_PIN_LEN            = 14;
 
 // PWM
-static constexpr int ENGINE_CHANNEL_RPWM        = 0;
-static constexpr int ENGINE_CHANNEL_LPWM        = 1;
-static constexpr int ENGINE_PWM_FREQ_HZ         = 20000;
-static constexpr int ENGINE_PWM_RESOLUTION_BITS = 8;
+static constexpr int ENGINE_CHANNEL_RPWM       = 0;
+static constexpr int ENGINE_CHANNEL_LPWM       = 1;
+static constexpr int ENGINE_PWM_FREQ_HZ        = 20000;
+static constexpr int ENGINE_PWM_RES_BITS       = 8;
 
 // ランプ
-static constexpr int ENGINE_SPEED_STEP          = 4;
-static constexpr int ENGINE_RAMP_DELAY_MS       = 10;
-static constexpr int ENGINE_SPEED_LIMIT         = 255;
+static constexpr int ENGINE_SPEED_STEP         = 4;
+static constexpr int ENGINE_RAMP_DELAY_MS      = 10;
+static constexpr int ENGINE_SPEED_LIMIT        = 255;
 
 //------------------------------------------------------------------------------
 // 手動操作の上限（ゲームパッド）
