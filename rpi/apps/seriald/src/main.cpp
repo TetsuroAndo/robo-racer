@@ -13,9 +13,9 @@
 #include "async_logger.h"
 #include "sink_file.h"
 #include "sink_stdout.h"
-#include <mc/ipc_dgram.h>
-#include <mc/mcproto.h>
-#include <mc_serial/UartPosix.h>
+#include <mc/ipc/UdsSeqPacket.hpp>
+#include <mc/proto/Proto.hpp>
+#include <mc/serial/Uart.hpp>
 
 static constexpr int DEFAULT_BAUD = 921600;
 static const char *DEFAULT_DEV = "/dev/serial0";
@@ -117,14 +117,14 @@ int main(int argc, char **argv) {
 	log.log(LogLevel::INFO, "seriald starting dev=" + dev + " baud=" +
 								std::to_string(baud) + " sock=" + sock);
 
-	mc::serial::UartPosix uart;
+	mc::serial::Uart uart;
 	if (!uart.open(dev, baud)) {
 		log.log(LogLevel::FATAL, "failed to open uart " + dev);
 		return 1;
 	}
 
-	mc::ipc::DgramServer ipc;
-	if (!ipc.bind(sock)) {
+	mc::ipc::UdsServer ipc;
+	if (!ipc.listen(sock)) {
 		log.log(LogLevel::FATAL, "failed to open ipc " + sock);
 		return 1;
 	}

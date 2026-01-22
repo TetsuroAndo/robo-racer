@@ -1,4 +1,4 @@
-#include <mc/mcproto.h>
+#include <mc/proto/Proto.hpp>
 
 #include <cstring>
 

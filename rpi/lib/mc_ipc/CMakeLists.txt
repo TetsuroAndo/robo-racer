@@ -1,5 +1,5 @@
 add_library(mc_ipc
-  src/ipc_dgram.cpp
+  src/UdsSeqPacket.cpp
 )
 
 target_include_directories(mc_ipc PUBLIC include)
