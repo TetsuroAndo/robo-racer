@@ -1,7 +1,6 @@
 add_executable(serialctl main.cpp)
 
 target_link_libraries(serialctl
-  mc_core
   mc_proto
   mc_ipc
 )

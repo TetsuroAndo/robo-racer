@@ -18,16 +18,16 @@
 
 namespace {
 // 小数点切り捨て / unsigned int
-float deg_float(const sl_lidar_response_measurement_node_hq_t &n) {
-	return (static_cast< float >(n.angle_z_q14) *
-			cfg::LIDAR_ANGLE_Q14_SCALE_DEG) /
-		   cfg::LIDAR_ANGLE_Q14_DENOM;
-}
+// float deg_float(const sl_lidar_response_measurement_node_hq_t &n) {
+// 	return (static_cast< float >(n.angle_z_q14) *
+// 			cfg::LIDAR_ANGLE_Q14_SCALE_DEG) /
+// 		   cfg::LIDAR_ANGLE_Q14_DENOM;
+// }
 
-unsigned int
-dist_mm_floor_uint(const sl_lidar_response_measurement_node_hq_t &n) {
-	return static_cast< unsigned int >(n.dist_mm_q2 >> 2);
-}
+// unsigned int
+// dist_mm_floor_uint(const sl_lidar_response_measurement_node_hq_t &n) {
+// 	return static_cast< unsigned int >(n.dist_mm_q2 >> 2);
+// }
 
 float normalize(double angle) {
 	double a =

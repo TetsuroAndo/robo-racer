@@ -62,7 +62,7 @@ all: pio rpi
 .PHONY: rpi
 $(NAME): rpi
 rpi: | rplidar_sdk $(LOG_DIR)
-	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
+	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release -DROBO_RACER_NAME=$(NAME)
 	$(CMAKE) --build $(RPI_BUILD_DIR) -j $(shell nproc)
 
 # === firmware build ===

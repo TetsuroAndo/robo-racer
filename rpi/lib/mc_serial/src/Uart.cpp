@@ -15,12 +15,20 @@ static speed_t toSpeed(int baud) {
 		return B115200;
 	case 230400:
 		return B230400;
+#ifdef B460800
 	case 460800:
 		return B460800;
+#endif
+#ifdef B921600
 	case 921600:
 		return B921600;
+#endif
 	default:
+#ifdef B921600
 		return B921600;
+#else
+		return B115200;
+#endif
 	}
 }
 
