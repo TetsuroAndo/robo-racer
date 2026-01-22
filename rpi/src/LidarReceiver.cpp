@@ -1,7 +1,6 @@
 #include "LidarReceiver.h"
 
 #include "config/Config.h"
-#include "uart.h"
 
 #include "sl_lidar.h"
 #include "sl_lidar_driver.h"
