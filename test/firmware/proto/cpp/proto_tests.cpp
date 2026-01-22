@@ -1,6 +1,4 @@
-#include "Codec.h"
-#include "PacketReader.h"
-#include "Protocol.h"
+#include "mc_proto.h"
 
 #include <cassert>
 #include <cstring>
@@ -9,27 +7,29 @@
 #include <vector>
 
 namespace {
-size_t build_raw_frame(const proto::Header &hdr, const uint8_t *payload,
+static constexpr size_t kCrcSize = 2;
+
+size_t build_raw_frame(const mc::proto::Header &hdr, const uint8_t *payload,
 					   size_t payload_len, uint8_t *out, size_t out_max) {
-	const size_t frame_len = sizeof(proto::Header) + payload_len;
-	const size_t total_len = frame_len + proto::CRC_SIZE;
+	const size_t frame_len = sizeof(mc::proto::Header) + payload_len;
+	const size_t total_len = frame_len + kCrcSize;
 	if (total_len > out_max) {
 		return 0;
 	}
-	std::memcpy(out, &hdr, sizeof(proto::Header));
+	std::memcpy(out, &hdr, sizeof(mc::proto::Header));
 	if (payload_len > 0 && payload != nullptr) {
-		std::memcpy(out + sizeof(proto::Header), payload, payload_len);
+		std::memcpy(out + sizeof(mc::proto::Header), payload, payload_len);
 	}
-	const uint16_t crc = proto::crc16_ccitt(out, frame_len);
+	const uint16_t crc = mc::proto::crc16_ccitt(out, frame_len);
 	out[frame_len] = static_cast< uint8_t >(crc & 0xFF);
 	out[frame_len + 1] = static_cast< uint8_t >((crc >> 8) & 0xFF);
 	return total_len;
 }
 
 std::vector< uint8_t > encode_frame(const uint8_t *raw, size_t raw_len) {
-	uint8_t cobs_buf[proto::MAX_ENCODED];
+	uint8_t cobs_buf[mc::proto::MAX_FRAME_ENCODED];
 	const size_t encoded_len =
-		proto::cobs_encode(raw, raw_len, cobs_buf, sizeof(cobs_buf));
+		mc::proto::cobs_encode(raw, raw_len, cobs_buf, sizeof(cobs_buf));
 	assert(encoded_len > 0);
 	std::vector< uint8_t > out(cobs_buf, cobs_buf + encoded_len);
 	out.push_back(0x00);
@@ -58,7 +58,7 @@ void print_bytes(const char *label, const uint8_t *data, size_t len) {
 static void test_crc16() {
 	std::cout << "[TEST] crc16\n";
 	const uint8_t data[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
-	const uint16_t crc = proto::crc16_ccitt(data, sizeof(data));
+	const uint16_t crc = mc::proto::crc16_ccitt(data, sizeof(data));
 	std::cout << "\tgot: 0x" << std::hex << std::setw(4) << std::setfill('0')
 			  << crc << std::dec << "\n";
 	std::cout << "\texpected: 0x29b1\n";
@@ -78,10 +78,10 @@ static void test_cobs_roundtrip() {
 	uint8_t decoded[32];
 
 	const size_t enc_len =
-		proto::cobs_encode(input, sizeof(input), encoded, sizeof(encoded));
+		mc::proto::cobs_encode(input, sizeof(input), encoded, sizeof(encoded));
 	assert(enc_len > 0);
 	const size_t dec_len =
-		proto::cobs_decode(encoded, enc_len, decoded, sizeof(decoded));
+		mc::proto::cobs_decode(encoded, enc_len, decoded, sizeof(decoded));
 	print_bytes("input", input, sizeof(input));
 	print_bytes("encoded", encoded, enc_len);
 	print_bytes("decoded", decoded, dec_len);
@@ -90,179 +90,148 @@ static void test_cobs_roundtrip() {
 }
 
 /**
- * @brief 正常なフレームを受信したときにPacketReaderがOKを返すことを検証する。
+ * @brief 正常なフレームを受信したときにPacketReaderがOKになることを検証する。
  *
  * Header/CRCを含むフレームをCOBS化して投入し、復元されたHeaderが
  * 送信元と一致することを確認する。
  */
 static void test_reader_ok() {
 	std::cout << "[TEST] packet_reader_ok\n";
-	proto::Header hdr{};
-	hdr.ver = proto::VER;
-	hdr.type = static_cast< uint8_t >(proto::Type::AUTO_MODE);
+	mc::proto::Header hdr{};
+	hdr.magic[0] = mc::proto::MAGIC0;
+	hdr.magic[1] = mc::proto::MAGIC1;
+	hdr.ver = mc::proto::VERSION;
+	hdr.type = static_cast< uint8_t >(mc::proto::Type::PING);
 	hdr.flags = 0;
-	hdr.seq = 0x42;
-	hdr.len = 2;
+	hdr.seq_le = 0x0042;
+	hdr.len_le = 2;
 	const uint8_t payload[2] = {0x01, 0x00};
 
-	uint8_t raw[proto::MAX_FRAME];
+	uint8_t raw[mc::proto::MAX_FRAME_DECODED];
 	const size_t raw_len =
 		build_raw_frame(hdr, payload, sizeof(payload), raw, sizeof(raw));
 	assert(raw_len > 0);
 
 	const auto encoded = encode_frame(raw, raw_len);
-	proto::PacketReader reader;
-	proto::FrameView frame{};
-	auto res = proto::PacketReader::Result::kNone;
+	mc::proto::PacketReader reader;
 	for (uint8_t b : encoded) {
-		res = reader.push(b, frame);
+		reader.push(b);
 	}
-	std::cout << "\treader result: "
-			  << (res == proto::PacketReader::Result::kOk ? "OK" : "OTHER")
-			  << "\n";
-	assert(res == proto::PacketReader::Result::kOk);
-	const auto *out_hdr = reinterpret_cast< const proto::Header * >(frame.data);
-	std::cout << "\theader got: ver=" << static_cast< int >(out_hdr->ver)
-			  << " type=0x" << std::hex << static_cast< int >(out_hdr->type)
-			  << " flags=0x" << static_cast< int >(out_hdr->flags) << " seq=0x"
-			  << static_cast< int >(out_hdr->seq) << std::dec
-			  << " len=" << out_hdr->len << "\n";
+	assert(reader.hasFrame());
+	const auto &frame = reader.frame();
+	std::cout << "\theader got: ver=" << static_cast< int >(frame.hdr.ver)
+			  << " type=0x" << std::hex << static_cast< int >(frame.hdr.type)
+			  << " flags=0x" << static_cast< int >(frame.hdr.flags) << " seq=0x"
+			  << static_cast< int >(frame.hdr.seq_le) << std::dec
+			  << " len=" << frame.hdr.len_le << "\n";
 	std::cout << "\theader expected: ver=" << static_cast< int >(hdr.ver)
 			  << " type=0x" << std::hex << static_cast< int >(hdr.type)
 			  << " flags=0x" << static_cast< int >(hdr.flags) << " seq=0x"
-			  << static_cast< int >(hdr.seq) << std::dec << " len=" << hdr.len
-			  << "\n";
-	assert(out_hdr->ver == proto::VER);
-	assert(out_hdr->type == hdr.type);
-	assert(out_hdr->seq == hdr.seq);
-	assert(out_hdr->len == hdr.len);
+			  << static_cast< int >(hdr.seq_le) << std::dec
+			  << " len=" << hdr.len_le << "\n";
+	assert(frame.hdr.ver == mc::proto::VERSION);
+	assert(frame.hdr.type == hdr.type);
+	assert(frame.hdr.flags == hdr.flags);
+	assert(frame.hdr.seq_le == hdr.seq_le);
+	assert(frame.hdr.len_le == hdr.len_le);
+	assert(frame.payload_len == sizeof(payload));
+	assert(std::memcmp(frame.payload, payload, sizeof(payload)) == 0);
 }
 
 /**
  * @brief CRCが壊れているフレームをPacketReaderが検出することを検証する。
  *
- * 1バイトを反転させたフレームを送信し、ResultがERRORになり、
- * lastErrorがCRC_MISMATCHになることを確認する。
+ * 1バイトを反転させたフレームを送信し、badCrcが増えることを確認する。
  */
 static void test_reader_crc_fail() {
 	std::cout << "[TEST] packet_reader_crc_fail\n";
-	proto::Header hdr{};
-	hdr.ver = proto::VER;
-	hdr.type = static_cast< uint8_t >(proto::Type::AUTO_SETPOINT);
+	mc::proto::Header hdr{};
+	hdr.magic[0] = mc::proto::MAGIC0;
+	hdr.magic[1] = mc::proto::MAGIC1;
+	hdr.ver = mc::proto::VERSION;
+	hdr.type = static_cast< uint8_t >(mc::proto::Type::DRIVE);
 	hdr.flags = 0;
-	hdr.seq = 0x10;
-	hdr.len = 1;
+	hdr.seq_le = 0x0010;
+	hdr.len_le = 1;
 	uint8_t payload[1] = {0x7A};
 
-	uint8_t raw[proto::MAX_FRAME];
+	uint8_t raw[mc::proto::MAX_FRAME_DECODED];
 	const size_t raw_len =
 		build_raw_frame(hdr, payload, sizeof(payload), raw, sizeof(raw));
 	assert(raw_len > 0);
 
-	raw[sizeof(proto::Header)] ^= 0xFF;
+	raw[sizeof(mc::proto::Header)] ^= 0xFF;
 	const auto encoded = encode_frame(raw, raw_len);
 
-	proto::PacketReader reader;
-	proto::FrameView frame{};
-	auto res = proto::PacketReader::Result::kNone;
+	mc::proto::PacketReader reader;
 	for (uint8_t b : encoded) {
-		res = reader.push(b, frame);
-		if (res == proto::PacketReader::Result::kError) {
-			break;
-		}
+		reader.push(b);
 	}
-	std::cout << "\treader result: "
-			  << (res == proto::PacketReader::Result::kError ? "ERROR"
-															 : "OTHER")
-			  << "\n";
-	std::cout << "\terror got: "
-			  << (reader.lastError() == proto::PacketReader::Error::kCrcMismatch
-					  ? "CRC_MISMATCH"
-					  : "OTHER")
-			  << "\n";
-	std::cout << "\terror expected: CRC_MISMATCH\n";
-	assert(res == proto::PacketReader::Result::kError);
-	assert(reader.lastError() == proto::PacketReader::Error::kCrcMismatch);
+	std::cout << "\tbadCrc: " << reader.badCrc() << "\n";
+	assert(reader.badCrc() == 1);
+	assert(!reader.hasFrame());
 }
 
 /**
  * @brief ヘッダのlenと実際のpayload長が不一致のフレームを検出する。
  *
- * lenを意図的に不正値にし、ResultがERRORかつBAD_LENGTHになることを確認する。
+ * lenを意図的に不正値にし、badHdrが増えることを確認する。
  */
 static void test_reader_bad_length() {
 	std::cout << "[TEST] packet_reader_bad_length\n";
-	proto::Header hdr{};
-	hdr.ver = proto::VER;
-	hdr.type = static_cast< uint8_t >(proto::Type::AUTO_MODE);
+	mc::proto::Header hdr{};
+	hdr.magic[0] = mc::proto::MAGIC0;
+	hdr.magic[1] = mc::proto::MAGIC1;
+	hdr.ver = mc::proto::VERSION;
+	hdr.type = static_cast< uint8_t >(mc::proto::Type::MODE_SET);
 	hdr.flags = 0;
-	hdr.seq = 0x20;
-	hdr.len = 3;
+	hdr.seq_le = 0x0020;
+	hdr.len_le = 3;
 	const uint8_t payload[2] = {0x00, 0x00};
 
-	uint8_t raw[proto::MAX_FRAME];
+	uint8_t raw[mc::proto::MAX_FRAME_DECODED];
 	const size_t raw_len =
 		build_raw_frame(hdr, payload, sizeof(payload), raw, sizeof(raw));
 	assert(raw_len > 0);
 	const auto encoded = encode_frame(raw, raw_len);
 
-	proto::PacketReader reader;
-	proto::FrameView frame{};
-	auto res = proto::PacketReader::Result::kNone;
+	mc::proto::PacketReader reader;
 	for (uint8_t b : encoded) {
-		res = reader.push(b, frame);
-		if (res == proto::PacketReader::Result::kError) {
-			break;
-		}
+		reader.push(b);
 	}
-	std::cout << "\treader result: "
-			  << (res == proto::PacketReader::Result::kError ? "ERROR"
-															 : "OTHER")
-			  << "\n";
-	std::cout << "\terror got: "
-			  << (reader.lastError() == proto::PacketReader::Error::kBadLength
-					  ? "BAD_LENGTH"
-					  : "OTHER")
-			  << "\n";
-	std::cout << "\terror expected: BAD_LENGTH\n";
-	assert(res == proto::PacketReader::Result::kError);
-	assert(reader.lastError() == proto::PacketReader::Error::kBadLength);
+	std::cout << "\tbadHdr: " << reader.badHdr() << "\n";
+	assert(reader.badHdr() == 1);
+	assert(!reader.hasFrame());
 }
 
 /**
- * @brief プロトコルバージョンが異なるフレームを受信できることを確認する。
+ * @brief プロトコルバージョンが異なるフレームを受信できないことを確認する。
  *
- * PacketReader自体はフレームとして受理（OK）するが、
- * Header上のverが期待値ではないことを確認する。
+ * Header上のverが期待値ではないため、badHdrが増えることを確認する。
  */
 static void test_reader_bad_version() {
 	std::cout << "[TEST] packet_reader_bad_version\n";
-	proto::Header hdr{};
-	hdr.ver = static_cast< uint8_t >(proto::VER + 1);
-	hdr.type = static_cast< uint8_t >(proto::Type::HEARTBEAT);
+	mc::proto::Header hdr{};
+	hdr.magic[0] = mc::proto::MAGIC0;
+	hdr.magic[1] = mc::proto::MAGIC1;
+	hdr.ver = static_cast< uint8_t >(mc::proto::VERSION + 1);
+	hdr.type = static_cast< uint8_t >(mc::proto::Type::PING);
 	hdr.flags = 0x01;
-	hdr.seq = 0x33;
-	hdr.len = 0;
+	hdr.seq_le = 0x0033;
+	hdr.len_le = 0;
 
-	uint8_t raw[proto::MAX_FRAME];
+	uint8_t raw[mc::proto::MAX_FRAME_DECODED];
 	const size_t raw_len = build_raw_frame(hdr, nullptr, 0, raw, sizeof(raw));
 	assert(raw_len > 0);
 	const auto encoded = encode_frame(raw, raw_len);
 
-	proto::PacketReader reader;
-	proto::FrameView frame{};
-	auto res = proto::PacketReader::Result::kNone;
+	mc::proto::PacketReader reader;
 	for (uint8_t b : encoded) {
-		res = reader.push(b, frame);
+		reader.push(b);
 	}
-	std::cout << "\treader result: "
-			  << (res == proto::PacketReader::Result::kOk ? "OK" : "OTHER")
-			  << "\n";
-	assert(res == proto::PacketReader::Result::kOk);
-	const auto *out_hdr = reinterpret_cast< const proto::Header * >(frame.data);
-	std::cout << "\theader got: ver=" << static_cast< int >(out_hdr->ver)
-			  << " expected not " << static_cast< int >(proto::VER) << "\n";
-	assert(out_hdr->ver != proto::VER);
+	std::cout << "\tbadHdr: " << reader.badHdr() << "\n";
+	assert(reader.badHdr() == 1);
+	assert(!reader.hasFrame());
 }
 
 /**
@@ -273,20 +242,22 @@ static void test_reader_bad_version() {
  */
 static void test_golden_frame_output() {
 	std::cout << "[TEST] golden_frame_output\n";
-	proto::Header hdr{};
+	mc::proto::Header hdr{};
+	hdr.magic[0] = mc::proto::MAGIC0;
+	hdr.magic[1] = mc::proto::MAGIC1;
 	hdr.ver = 0x01;
-	hdr.type = 0x81;
+	hdr.type = static_cast< uint8_t >(mc::proto::Type::ACK);
 	hdr.flags = 0x01;
-	hdr.seq = 0x10;
-	hdr.len = 0x0004;
+	hdr.seq_le = 0x0010;
+	hdr.len_le = 0x0004;
 	const uint8_t payload[4] = {0xAA, 0xBB, 0xCC, 0xDD};
 
-	uint8_t raw[proto::MAX_FRAME];
+	uint8_t raw[mc::proto::MAX_FRAME_DECODED];
 	const size_t raw_len =
 		build_raw_frame(hdr, payload, sizeof(payload), raw, sizeof(raw));
 
-	const uint8_t expected[] = {0x01, 0x81, 0x01, 0x10, 0x04, 0x00,
-								0xAA, 0xBB, 0xCC, 0xDD, 0xDE, 0x69};
+	const uint8_t expected[] = {0x4D, 0x43, 0x01, 0x80, 0x01, 0x10, 0x00, 0x04,
+								0x00, 0xAA, 0xBB, 0xCC, 0xDD, 0xE6, 0xC8};
 	print_bytes("raw", raw, raw_len);
 	print_bytes("expected", expected, sizeof(expected));
 	assert(raw_len == sizeof(expected));

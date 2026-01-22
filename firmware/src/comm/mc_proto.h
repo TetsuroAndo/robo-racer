@@ -1,7 +1,11 @@
 #pragma once
+
+#ifdef ARDUINO
 #include <Arduino.h>
-#include <stdint.h>
+#else
 #include <stddef.h>
+#include <stdint.h>
+#endif
 
 namespace mc::proto {
 

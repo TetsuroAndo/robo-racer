@@ -12,8 +12,7 @@ def test_firmware_proto_cpp(tmp_path: Path):
     repo_root = Path(__file__).resolve().parents[3]
     test_cpp = repo_root / "test/firmware/proto/cpp/proto_tests.cpp"
     proto_src = [
-        repo_root / "firmware/src/comm/protocol/Codec.cpp",
-        repo_root / "firmware/src/comm/protocol/PacketReader.cpp",
+        repo_root / "firmware/src/comm/mc_proto.cpp",
     ]
 
     output = tmp_path / "firmware_proto_tests"
@@ -25,7 +24,7 @@ def test_firmware_proto_cpp(tmp_path: Path):
         "-Wpedantic",
         "-O2",
         "-I",
-        str(repo_root / "firmware/src/comm/protocol"),
+        str(repo_root / "firmware/src/comm"),
         str(test_cpp),
         *[str(path) for path in proto_src],
         "-o",
