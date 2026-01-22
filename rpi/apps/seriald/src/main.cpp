@@ -35,14 +35,12 @@ struct EspLogPayload {
 
 #pragma pack(push, 1)
 struct EspStatusPayload {
-	uint16_t last_seq_le;
+	uint8_t seq_applied;
+	uint8_t auto_active;
+	uint16_t faults_le;
 	int16_t speed_mm_s_le;
 	int16_t steer_cdeg_le;
-	uint16_t ttl_ms_le;
-	uint16_t dist_mm_le;
-	uint16_t faults_le;
-	uint16_t rx_bad_crc_le;
-	uint16_t rx_bad_cobs_le;
+	uint16_t age_ms_le;
 };
 #pragma pack(pop)
 
@@ -242,30 +240,25 @@ int main(int argc, char **argv) {
 									   (uint8_t)mc::proto::Type::STATUS &&
 								   f.payload_len == sizeof(EspStatusPayload)) {
 							const uint8_t *p = f.payload;
-							uint16_t last_seq = rd16u(p + 0);
-							int16_t vmm = rd16s(p + 2);
-							int16_t scd = rd16s(p + 4);
-							uint16_t ttl = rd16u(p + 6);
-							uint16_t dist = rd16u(p + 8);
-							uint16_t faults = rd16u(p + 10);
-							uint16_t badcrc = rd16u(p + 12);
-							uint16_t badcobs = rd16u(p + 14);
+							uint8_t seq = p[0];
+							uint8_t auto_active = p[1];
+							uint16_t faults = rd16u(p + 2);
+							int16_t vmm = rd16s(p + 4);
+							int16_t scd = rd16s(p + 6);
+							uint16_t age_ms = rd16u(p + 8);
 
 							log.log(
 								LogLevel::INFO,
-								"STATUS seq=" + std::to_string(last_seq) +
+								"STATUS seq=" + std::to_string(seq) +
+									" auto=" + std::to_string(auto_active) +
 									" v_mm_s=" + std::to_string(vmm) +
 									" steer_cdeg=" + std::to_string(scd) +
-									" ttl_ms=" + std::to_string(ttl) +
-									" dist_mm=" + std::to_string(dist) +
-									" faults=0x" +
-									[](uint16_t x) {
+									" age_ms=" + std::to_string(age_ms) +
+									" faults=0x" + [](uint16_t x) {
 										char b[16];
 										snprintf(b, sizeof(b), "%04x", x);
 										return std::string(b);
-									}(faults) +
-									" rx_bad_crc=" + std::to_string(badcrc) +
-									" rx_bad_cobs=" + std::to_string(badcobs));
+									}(faults));
 						} else {
 							log.log(
 								LogLevel::DEBUG,

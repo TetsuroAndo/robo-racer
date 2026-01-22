@@ -65,21 +65,22 @@
 ### 3.2.4 CRC
 
 * CRC16-CCITT（多項式 0x1021, 初期値 0xFFFF 推奨）
-* 対象：**header(VER〜LEN) + payload**
+* 対象：**header(MAGIC〜LEN) + payload**
 * CRCは little-endian 2byte を末尾に付与
 
 ---
 
 ## 3.3 パケット構造
 
-### 3.3.1 Header v1（固定 6 bytes）
+### 3.3.1 Header v1（固定 9 bytes）
 
 | フィールド |      型 | 説明                       |
 | ------- | -----: | --------------------------- |
+| `magic` |   u8×2 | 固定 `0x4D 0x43` ("MC")     |
 | `ver`   |     u8 | 現行は 1                     |
 | `type`  |     u8 | メッセージ種別                |
 | `flags` |     u8 | フラグ（共通）                |
-| `seq`   |     u8 | シーケンス（0-255循環）        |
+| `seq`   | u16 LE | シーケンス（0-65535循環）      |
 | `len`   | u16 LE | payload長（0..MAX_PAYLOAD）  |
 
 **flags（共通）定義**
@@ -129,12 +130,12 @@
 
 物理量寄りで固定し、後からPIDや車両スケールが変わっても仕様が安定するようにします。
 
-| フィールド      |  型 | 単位      | 説明                                                |
-| ------------- | --: | -------- | --------------------------------------------------- |
-| `steer_cdeg`  | i16 | 0.01°    | 目標舵角（0中心、左+右- などは実装で統一）                |
-| `speed_cmd`   | i16 | “cmd単位” | 当面は -255..255 相当を推奨（現行 Engine に直結しやすい） |
-| `ttl_ms`      | u16 | ms       | このコマンドの有効期限                                  |
-| `distance_mm` | u16 | mm       | 将来拡張用（0なら無視）                                 |
+| フィールド      |  型 | 単位    | 説明                                                |
+| ------------- | --: | ------ | --------------------------------------------------- |
+| `steer_cdeg`  | i16 | 0.01°  | 目標舵角（0中心、左+右- などは実装で統一）                |
+| `speed_mm_s`  | i16 | mm/s   | 目標速度（符号付き。車体/モータ都合で上限は実装側でクランプ） |
+| `ttl_ms`      | u16 | ms     | このコマンドの有効期限                                  |
+| `distance_mm` | u16 | mm     | 将来拡張用（0なら無視）                                 |
 
 **TTLの評価基準**
 
@@ -184,16 +185,18 @@
 
 ---
 
-### 3.5.6 `STATUS` (type=0x82) payload（12 bytes）
+### 3.5.6 `STATUS` (type=0x82) payload（10 bytes）
 
 | フィールド         |  型 | 単位       | 説明                          |
 | ---------------- | --: | -------- | ---------------------------------- |
 | `seq_applied`    |  u8 | -        | 最後に適用した `AUTO_SETPOINT.seq`    |
 | `auto_active`    |  u8 | -        | 1/0                                |
 | `fault`          | u16 | bitfield | 故障/停止要因                        |
-| `speed_now`      | i16 | cmd単位    | 現在速度（暫定は指令値でも良い）       |
+| `speed_now_mm_s` | i16 | mm/s     | 現在速度（暫定は指令値でも良い）       |
 | `steer_now_cdeg` | i16 | 0.01°    | 現在舵角（暫定は指令値でも良い）        |
 | `age_ms`         | u16 | ms       | 最終AUTO_SETPOINT受理からの経過       |
+
+※ `seq_applied` は `seq` の下位8bitを載せる運用でも可。
 
 **fault bitfield（v1案）**
 
@@ -292,11 +295,12 @@ enum : uint8_t {
 
 #pragma pack(push, 1)
 struct Header {
+  uint8_t  magic[2];
   uint8_t  ver;
   uint8_t  type;
   uint8_t  flags;
-  uint8_t  seq;
-  uint16_t len;  // little-endian on wire
+  uint16_t seq_le;
+  uint16_t len_le;  // little-endian on wire
 };
 
 struct AutoModePayload {
@@ -306,7 +310,7 @@ struct AutoModePayload {
 
 struct AutoSetpointPayload {
   int16_t  steer_cdeg;   // 0.01 deg
-  int16_t  speed_cmd;    // -255..255 推奨（現行Engineに直結）
+  int16_t  speed_mm_s;   // mm/s
   uint16_t ttl_ms;
   uint16_t distance_mm;  // 0なら無視
 };
@@ -322,7 +326,7 @@ struct StatusPayload {
   uint8_t  seq_applied;
   uint8_t  auto_active;
   uint16_t fault;
-  int16_t  speed_now;
+  int16_t  speed_now_mm_s;
   int16_t  steer_now_cdeg;
   uint16_t age_ms;
 };

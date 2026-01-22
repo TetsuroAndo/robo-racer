@@ -39,14 +39,12 @@ struct LogPayload {
 };
 
 struct StatusPayload {
-	uint16_t last_seq_le;
+	uint8_t seq_applied;
+	uint8_t auto_active;
+	uint16_t faults_le;
 	int16_t speed_mm_s_le;
 	int16_t steer_cdeg_le;
-	uint16_t ttl_ms_le;
-	uint16_t dist_mm_le;
-	uint16_t faults_le;
-	uint16_t rx_bad_crc_le;
-	uint16_t rx_bad_cobs_le;
+	uint16_t age_ms_le;
 };
 
 struct AckPayload {

@@ -30,8 +30,9 @@ RPLIDAR_SDK_MAKE	:= $(RPLIDAR_SDK_DIR)/Makefile
 # RPi build rules
 # ================================
 
-NAME	:= robo-racer
-CMAKE	?= cmake
+NAME		:= robo-racer
+APP_SERIALD	:= seriald
+CMAKE		?= cmake
 
 # ================================
 # PlatformIO rules / ESP32
@@ -59,14 +60,17 @@ all: pio rpi
 	@if [ "$(USER)" = "pi" ]; then $(MAKE) upload; fi
 
 # === RPi build ===
-.PHONY: rpi
+.PHONY: rpi c-rpi
 $(NAME): rpi
 rpi: | rplidar_sdk $(LOG_DIR)
 	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release -DROBO_RACER_NAME=$(NAME)
 	$(CMAKE) --build $(RPI_BUILD_DIR) -j $(shell nproc)
 
+c-rpi:
+	$(RM) $(RPI_BUILD_DIR)
+
 # === firmware build ===
-.PHONY: pio upload monitor
+.PHONY: pio upload monitor c-pio
 pio:
 	$(PIO_RUN) $(PIO_ARG_ENV)
 upload:
@@ -74,13 +78,14 @@ upload:
 monitor:
 	$(PIO) device monitor
 
+c-pio:
+	$(PIO_RUN) $(PIO_ARG_CLEAN)
+
 # === Clean / Rebuild ===
 .PHONY: clean fclean re c f r clog
-clean:
-	$(PIO_RUN) $(PIO_ARG_CLEAN)
-	$(RM) $(RPI_BUILD_DIR)
-	$(MAKE) -C $(RPLIDAR_SDK_DIR) clean
+clean: c-rpi c-pio
 fclean: clean
+	$(MAKE) -C $(RPLIDAR_SDK_DIR) clean
 	$(RM) $(PIO_DIR)
 	$(RM) $(NAME)
 re: fclean all

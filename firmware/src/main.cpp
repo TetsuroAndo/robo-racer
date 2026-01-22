@@ -33,30 +33,52 @@ static inline void wr16(uint8_t *p, uint16_t v) {
 
 #pragma pack(push, 1)
 struct StatusPayload {
-	uint16_t last_seq_le;
+	uint8_t seq_applied;
+	uint8_t auto_active;
+	uint16_t faults_le;
 	int16_t speed_mm_s_le;
 	int16_t steer_cdeg_le;
-	uint16_t ttl_ms_le;
-	uint16_t dist_mm_le;
-	uint16_t faults_le;
-	uint16_t rx_bad_crc_le;
-	uint16_t rx_bad_cobs_le;
+	uint16_t age_ms_le;
 };
 #pragma pack(pop)
 
 static void sendStatus_(uint32_t now_ms) {
-	(void)now_ms;
+	const bool auto_active = (g_state.mode == mc::Mode::AUTO);
+	const bool hb_timeout = auto_active && (g_state.last_hb_ms != 0) &&
+							((uint32_t)(now_ms - g_state.last_hb_ms) >
+							 (uint32_t)cfg::HEARTBEAT_TIMEOUT_MS);
+	const bool ttl_expired =
+		auto_active && (g_state.cmd_expire_ms != 0) &&
+		((uint32_t)now_ms > (uint32_t)g_state.cmd_expire_ms);
+	const bool auto_inactive =
+		(!auto_active) && (g_state.cmd_expire_ms != 0) &&
+		((uint32_t)now_ms <= (uint32_t)g_state.cmd_expire_ms);
+
+	uint16_t faults = 0;
+	if (g_state.killed)
+		faults |= 1u << 0; // KILL_LATCHED
+	if (hb_timeout)
+		faults |= 1u << 1; // HB_TIMEOUT
+	if (ttl_expired)
+		faults |= 1u << 2; // TTL_EXPIRED
+	if (auto_inactive)
+		faults |= 1u << 3; // AUTO_INACTIVE
+
+	uint16_t age_ms = cfg::AUTO_CMD_AGE_UNKNOWN_MS;
+	if (g_state.last_cmd_ms != 0) {
+		uint32_t age = now_ms - g_state.last_cmd_ms;
+		if (age > 0xFFFFu)
+			age = 0xFFFFu;
+		age_ms = (uint16_t)age;
+	}
+
 	StatusPayload p{};
-	wr16((uint8_t *)&p.last_seq_le, (uint16_t)g_state.last_seq);
+	p.seq_applied = (uint8_t)(g_state.last_seq & 0xFFu);
+	p.auto_active = auto_active ? 1u : 0u;
+	wr16((uint8_t *)&p.faults_le, faults);
 	wr16((uint8_t *)&p.speed_mm_s_le, (uint16_t)drive.appliedSpeedMmS());
 	wr16((uint8_t *)&p.steer_cdeg_le, (uint16_t)drive.appliedSteerCdeg());
-	wr16((uint8_t *)&p.ttl_ms_le, drive.ttlMs());
-	wr16((uint8_t *)&p.dist_mm_le, drive.distMm());
-	wr16((uint8_t *)&p.faults_le, g_state.killed ? 0x0001 : 0x0000);
-	wr16((uint8_t *)&p.rx_bad_crc_le,
-		 (uint16_t)mc::clamp< uint32_t >(reader.badCrc(), 0, 65535));
-	wr16((uint8_t *)&p.rx_bad_cobs_le,
-		 (uint16_t)mc::clamp< uint32_t >(reader.badCobs(), 0, 65535));
+	wr16((uint8_t *)&p.age_ms_le, age_ms);
 
 	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
 	size_t out_len = 0;
@@ -87,6 +109,8 @@ static void handleRx_(uint32_t now_ms) {
 }
 
 static void applyTargets_(uint32_t now_ms, float dt_s) {
+	const bool cmd_fresh =
+		(g_state.cmd_expire_ms != 0) && (now_ms <= g_state.cmd_expire_ms);
 	if (g_state.mode == mc::Mode::MANUAL) {
 		pad.update();
 		if (pad.isConnected()) {
@@ -107,16 +131,24 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 			drive.setTtlMs(100);
 			drive.setDistMm(0);
 		} else {
+			// AUTO_ACTIVE=false のときは UART setpoint を適用しない
+			drive.setTargetMmS(0);
+			drive.setTargetSteerCdeg(0);
+			drive.setTtlMs(100);
+			drive.setDistMm(0);
+		}
+	} else {
+		if (cmd_fresh) {
 			drive.setTargetMmS(g_state.target_speed_mm_s);
 			drive.setTargetSteerCdeg(g_state.target_steer_cdeg);
 			drive.setTtlMs(g_state.target_ttl_ms);
 			drive.setDistMm(g_state.target_dist_mm);
+		} else {
+			drive.setTargetMmS(0);
+			drive.setTargetSteerCdeg(0);
+			drive.setTtlMs(100);
+			drive.setDistMm(0);
 		}
-	} else {
-		drive.setTargetMmS(g_state.target_speed_mm_s);
-		drive.setTargetSteerCdeg(g_state.target_steer_cdeg);
-		drive.setTtlMs(g_state.target_ttl_ms);
-		drive.setDistMm(g_state.target_dist_mm);
 	}
 
 	drive.tick(now_ms, dt_s, g_state.killed);

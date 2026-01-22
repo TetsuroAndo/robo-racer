@@ -141,15 +141,17 @@ void Sender::handleStatus(const mc::proto::StatusPayload &payload) {
 	}
 	last_status_log_ms_ = now;
 
-	const uint16_t last_seq = mc::proto::from_le16(payload.last_seq_le);
+	const uint8_t seq = payload.seq_applied;
+	const uint8_t auto_active = payload.auto_active;
+	const uint16_t faults = mc::proto::from_le16(payload.faults_le);
 	const int16_t speed =
 		(int16_t)mc::proto::from_le16((uint16_t)payload.speed_mm_s_le);
 	const int16_t steer =
 		(int16_t)mc::proto::from_le16((uint16_t)payload.steer_cdeg_le);
-	const uint16_t ttl = mc::proto::from_le16(payload.ttl_ms_le);
-	const uint16_t faults = mc::proto::from_le16(payload.faults_le);
-	std::cerr << "STATUS seq=" << last_seq << " speed=" << speed
-			  << " steer_cdeg=" << steer << " ttl_ms=" << ttl << " faults=0x"
+	const uint16_t age_ms = mc::proto::from_le16(payload.age_ms_le);
+	std::cerr << "STATUS seq=" << (unsigned)seq
+			  << " auto=" << (unsigned)auto_active << " speed_mm_s=" << speed
+			  << " steer_cdeg=" << steer << " age_ms=" << age_ms << " faults=0x"
 			  << std::hex << faults << std::dec << "\n";
 }
 

@@ -8,7 +8,7 @@ class PingHandler : public mc::IHandler {
 public:
 	mc::Result onFrame(const mc::proto::FrameView &f, mc::Context &ctx,
 					   uint32_t now_ms) override {
-		(void)now_ms;
+		ctx.st->last_hb_ms = now_ms;
 		uint8_t out[mc::proto::MAX_FRAME_ENCODED];
 		size_t out_len = 0;
 		const uint16_t seq = (uint16_t)f.hdr.seq_le;

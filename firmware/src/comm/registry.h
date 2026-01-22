@@ -14,6 +14,7 @@ struct ControlState {
 	volatile uint16_t last_seq = 0;
 	volatile uint32_t last_cmd_ms = 0;
 	volatile uint32_t cmd_expire_ms = 0;
+	volatile uint32_t last_hb_ms = 0;
 
 	volatile int16_t target_steer_cdeg = 0;
 	volatile int16_t target_speed_mm_s = 0;
