@@ -26,6 +26,7 @@ static mc::proto::PacketReader reader;
 
 static mc::PeriodicTimer statusTimer(50);
 static mc::PeriodicTimer logTimer(200);
+static uint16_t status_seq = 0;
 
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
@@ -77,14 +78,16 @@ static void sendStatus_(uint32_t now_ms) {
 	p.seq_applied = (uint8_t)(g_state.last_seq & 0xFFu);
 	p.auto_active = auto_active ? 1u : 0u;
 	wr16((uint8_t *)&p.faults_le, faults);
-	wr16((uint8_t *)&p.speed_mm_s_le, (uint16_t)drive.appliedSpeedMmS());
-	wr16((uint8_t *)&p.steer_cdeg_le, (uint16_t)drive.appliedSteerCdeg());
+	wr16((uint8_t *)&p.speed_mm_s_le,
+		 (uint16_t)(int16_t)drive.appliedSpeedMmS());
+	wr16((uint8_t *)&p.steer_cdeg_le,
+		 (uint16_t)(int16_t)drive.appliedSteerCdeg());
 	wr16((uint8_t *)&p.age_ms_le, age_ms);
 
 	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
 	size_t out_len = 0;
 	mc::proto::PacketWriter::build(out, sizeof(out), out_len,
-								   mc::proto::Type::STATUS, 0, 0,
+								   mc::proto::Type::STATUS, 0, status_seq++,
 								   (const uint8_t *)&p, (uint16_t)sizeof(p));
 	if (g_ctx.tx) {
 		g_ctx.tx->enqueue(out, (uint16_t)out_len);
@@ -97,12 +100,12 @@ static void handleRx_(uint32_t now_ms) {
 		if (reader.push(b) && reader.hasFrame()) {
 			const auto &f = reader.frame();
 
-			mc::IHandler *h = mc::Registry::instance().get(f.hdr.type);
+			mc::IHandler *h = mc::Registry::instance().get(f.type());
 			if (h) {
 				(void)h->onFrame(f, g_ctx, now_ms);
 			} else if (g_ctx.log) {
 				g_ctx.log->logf(mc::LogLevel::WARN, "proto",
-								"RX unknown type=0x%02X", (unsigned)f.hdr.type);
+								"RX unknown type=0x%02X", (unsigned)f.type());
 			}
 			reader.consumeFrame();
 		}

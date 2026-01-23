@@ -18,7 +18,7 @@ public:
 		}
 		uint8_t out[mc::proto::MAX_FRAME_ENCODED];
 		size_t out_len = 0;
-		const uint16_t seq = mc::proto::le16_to_host(f.hdr.seq_le);
+		const uint16_t seq = f.seq();
 		mc::proto::PacketWriter::build(out, sizeof(out), out_len,
 									   mc::proto::Type::ACK, 0, seq, nullptr,
 									   0);

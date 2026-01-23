@@ -1,4 +1,5 @@
 #include "../../log/AsyncLogger.h"
+#include "../Ack.h"
 #include "../registry.h"
 
 namespace {
@@ -13,6 +14,10 @@ public:
 		ctx.st->cmd_expire_ms = 0;
 		if (ctx.log) {
 			ctx.log->log(mc::LogLevel::WARN, "proto", "RX KILL -> killed=1");
+		}
+		if (f.flags() & mc::proto::FLAG_ACK_REQ) {
+			const uint16_t seq = f.seq();
+			mc::send_ack(ctx, seq);
 		}
 		return mc::Result::Ok();
 	}

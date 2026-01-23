@@ -129,7 +129,7 @@ bool PacketWriter::build(uint8_t *out, size_t out_cap, size_t &out_len,
 PacketReader::PacketReader()
 	: _rawLen(0), _decodedLen(0), _hasFrame(false), _badCrc(0), _badCobs(0),
 	  _badHdr(0) {
-	std::memset(&_frame, 0, sizeof(_frame));
+	_frame = Frame{};
 }
 
 bool PacketReader::push(uint8_t b) {
@@ -182,7 +182,7 @@ bool PacketReader::decodeFrame_() {
 		return false;
 	}
 
-	_frame.hdr = h;
+	_frame._hdr = h;
 	_frame.payload = _decoded.data() + sizeof(Header);
 	_frame.payload_len = plen;
 	_hasFrame = true;
@@ -221,7 +221,7 @@ bool decode_one(const uint8_t *enc, size_t enc_len, Frame &out,
 	if (crc != expect)
 		return false;
 
-	out.hdr = h;
+	out._hdr = h;
 	out.payload = decoded_buf.data() + sizeof(Header);
 	out.payload_len = payload_len;
 	return true;

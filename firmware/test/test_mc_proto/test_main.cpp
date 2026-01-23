@@ -25,11 +25,11 @@ static void test_packet_roundtrip() {
 	TEST_ASSERT_TRUE(reader.hasFrame());
 
 	const auto &frame = reader.frame();
-	TEST_ASSERT_EQUAL_UINT8(mc::proto::VERSION, frame.hdr.ver);
+	TEST_ASSERT_EQUAL_UINT8(mc::proto::VERSION, frame.ver());
 	TEST_ASSERT_EQUAL_UINT8(static_cast< uint8_t >(mc::proto::Type::PING),
-							frame.hdr.type);
-	TEST_ASSERT_EQUAL_UINT16(0x1234, frame.hdr.seq_le);
-	TEST_ASSERT_EQUAL_UINT16(sizeof(payload), frame.hdr.len_le);
+							frame.type());
+	TEST_ASSERT_EQUAL_UINT16(0x1234, frame.seq());
+	TEST_ASSERT_EQUAL_UINT16(sizeof(payload), frame.len());
 	TEST_ASSERT_EQUAL_UINT16(sizeof(payload), frame.payload_len);
 	TEST_ASSERT_EQUAL_UINT8_ARRAY(payload, frame.payload, sizeof(payload));
 }

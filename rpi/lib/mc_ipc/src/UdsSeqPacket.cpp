@@ -25,7 +25,7 @@ bool UdsServer::listen(const std::string &path) {
 	close();
 	path_ = path;
 
-	fd_ = ::socket(AF_UNIX, SOCK_SEQPACKET, 0);
+	fd_ = ::socket(AF_UNIX, sock_type_, 0);
 	if (fd_ < 0) {
 		MC_LOGE("uds", "socket failed: " + std::string(::strerror(errno)));
 		return false;
@@ -44,10 +44,12 @@ bool UdsServer::listen(const std::string &path) {
 		return false;
 	}
 
-	if (::listen(fd_, 16) != 0) {
-		MC_LOGE("uds", "listen failed: " + std::string(::strerror(errno)));
-		close();
-		return false;
+	if (sock_type_ == SOCK_SEQPACKET) {
+		if (::listen(fd_, 16) != 0) {
+			MC_LOGE("uds", "listen failed: " + std::string(::strerror(errno)));
+			close();
+			return false;
+		}
 	}
 
 	return true;
@@ -69,6 +71,8 @@ void UdsServer::close() {
 
 int UdsServer::accept_client() {
 	if (fd_ < 0)
+		return -1;
+	if (sock_type_ != SOCK_SEQPACKET)
 		return -1;
 	int cfd = ::accept(fd_, nullptr, nullptr);
 	if (cfd < 0) {
@@ -97,7 +101,7 @@ UdsClient::~UdsClient() { close(); }
 bool UdsClient::connect(const std::string &path) {
 	close();
 
-	fd_ = ::socket(AF_UNIX, SOCK_SEQPACKET, 0);
+	fd_ = ::socket(AF_UNIX, sock_type_, 0);
 	if (fd_ < 0) {
 		MC_LOGE("uds", "socket failed: " + std::string(::strerror(errno)));
 		return false;

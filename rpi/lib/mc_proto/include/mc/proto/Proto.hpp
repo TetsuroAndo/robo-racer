@@ -14,10 +14,32 @@ static constexpr size_t MAX_FRAME_DECODED = sizeof(Header) + MAX_PAYLOAD + 2;
 static constexpr size_t MAX_FRAME_ENCODED =
 	MAX_FRAME_DECODED + (MAX_FRAME_DECODED / 254) + 4;
 
-struct Frame {
-	Header hdr;
-	const uint8_t *payload;
-	uint16_t payload_len;
+static inline uint16_t to_le16(uint16_t v) {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	return v;
+#else
+	return (uint16_t)((v >> 8) | (v << 8));
+#endif
+}
+static inline uint16_t from_le16(uint16_t v) { return to_le16(v); }
+
+class Frame {
+public:
+	const uint8_t *payload = nullptr;
+	uint16_t payload_len = 0;
+
+	uint8_t ver() const { return _hdr.ver; }
+	uint8_t type() const { return _hdr.type; }
+	uint8_t flags() const { return _hdr.flags; }
+	uint16_t seq() const { return from_le16(_hdr.seq_le); }
+	uint16_t len() const { return from_le16(_hdr.len_le); }
+
+private:
+	Header _hdr{};
+	friend class PacketReader;
+	friend bool
+	decode_one(const uint8_t *enc, size_t enc_len, Frame &out,
+			   std::array< uint8_t, MAX_FRAME_DECODED > &decoded_buf);
 };
 
 uint16_t crc16_ccitt(const uint8_t *data, size_t len);
@@ -59,14 +81,5 @@ private:
 
 bool decode_one(const uint8_t *enc, size_t enc_len, Frame &out,
 				std::array< uint8_t, MAX_FRAME_DECODED > &decoded_buf);
-
-static inline uint16_t to_le16(uint16_t v) {
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-	return v;
-#else
-	return (uint16_t)((v >> 8) | (v << 8));
-#endif
-}
-static inline uint16_t from_le16(uint16_t v) { return to_le16(v); }
 
 } // namespace mc::proto

@@ -96,11 +96,13 @@ void Sender::sendAutoMode(bool enable) {
 	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
 	size_t out_len = 0;
 	const bool ok = mc::proto::PacketWriter::build(
-		out, sizeof(out), out_len, mc::proto::Type::MODE_SET, 0, seq, &mode, 1);
+		out, sizeof(out), out_len, mc::proto::Type::MODE_SET,
+		mc::proto::FLAG_ACK_REQ, seq, &mode, 1);
 	if (!ok || ::send(ipc_.fd(), out, out_len, MSG_NOSIGNAL) <= 0) {
 		std::cerr << "AUTO_MODE send failed\n";
 		return;
 	}
+	trackPending(seq, out, (uint16_t)out_len);
 	auto_enabled_ = enable;
 }
 
@@ -110,14 +112,18 @@ void Sender::sendKill() {
 	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
 	size_t out_len = 0;
 	const bool ok = mc::proto::PacketWriter::build(
-		out, sizeof(out), out_len, mc::proto::Type::KILL, 0, seq, payload,
-		sizeof(payload));
+		out, sizeof(out), out_len, mc::proto::Type::KILL,
+		mc::proto::FLAG_ACK_REQ, seq, payload, sizeof(payload));
 	if (!ok || ::send(ipc_.fd(), out, out_len, MSG_NOSIGNAL) <= 0) {
 		std::cerr << "KILL send failed\n";
+		return;
 	}
+	trackPending(seq, out, (uint16_t)out_len);
 }
 
 void Sender::poll() {
+	checkPending();
+	checkStatusLiveness();
 	uint8_t buf[mc::proto::MAX_FRAME_ENCODED];
 	while (true) {
 		int n = (int)::recv(ipc_.fd(), buf, (int)sizeof(buf), 0);
@@ -129,6 +135,8 @@ void Sender::poll() {
 			handleFrame(frame);
 		}
 	}
+	checkPending();
+	checkStatusLiveness();
 }
 
 void Sender::_init(const char *sock_path) {
@@ -141,17 +149,23 @@ void Sender::_init(const char *sock_path) {
 }
 
 void Sender::handleFrame(const mc::proto::Frame &frame) {
-	if (frame.hdr.type == (uint8_t)mc::proto::Type::STATUS &&
+	if (frame.type() == (uint8_t)mc::proto::Type::STATUS &&
 		frame.payload_len == sizeof(mc::proto::StatusPayload)) {
 		mc::proto::StatusPayload payload{};
 		memcpy(&payload, frame.payload, sizeof(payload));
 		handleStatus(payload);
+	} else if (frame.type() == (uint8_t)mc::proto::Type::ACK &&
+			   frame.payload_len == 0) {
+		const uint16_t seq = frame.seq();
+		handleAck(seq);
 	}
 }
 
 void Sender::handleStatus(const mc::proto::StatusPayload &payload) {
 	last_status_ = payload;
 	has_status_ = true;
+	last_status_ms_ = now_ms();
+	status_stale_ = false;
 
 	const uint32_t now = now_ms();
 	if ((uint32_t)(now - last_status_log_ms_) < cfg::STATUS_LOG_INTERVAL_MS) {
@@ -171,6 +185,60 @@ void Sender::handleStatus(const mc::proto::StatusPayload &payload) {
 			  << " auto=" << (unsigned)auto_active << " speed_mm_s=" << speed
 			  << " steer_cdeg=" << steer << " age_ms=" << age_ms << " faults=0x"
 			  << std::hex << faults << std::dec << "\n";
+}
+
+void Sender::handleAck(uint16_t seq) {
+	auto it = pending_.find(seq);
+	if (it != pending_.end()) {
+		pending_.erase(it);
+	}
+}
+
+void Sender::trackPending(uint16_t seq, const uint8_t *data, uint16_t len) {
+	if (len == 0 || len > mc::proto::MAX_FRAME_ENCODED)
+		return;
+	PendingTx p{};
+	p.deadline_ms = now_ms() + cfg::ACK_TIMEOUT_MS;
+	p.retries = 0;
+	p.len = len;
+	memcpy(p.data.data(), data, len);
+	pending_[seq] = p;
+}
+
+void Sender::checkPending() {
+	if (pending_.empty())
+		return;
+	const uint32_t now = now_ms();
+	for (auto it = pending_.begin(); it != pending_.end();) {
+		PendingTx &p = it->second;
+		if ((int32_t)(now - p.deadline_ms) < 0) {
+			++it;
+			continue;
+		}
+		if (p.retries >= cfg::ACK_MAX_RETRY) {
+			std::cerr << "ACK timeout seq=" << it->first << "\n";
+			it = pending_.erase(it);
+			continue;
+		}
+		if (::send(ipc_.fd(), p.data.data(), p.len, MSG_NOSIGNAL) <= 0) {
+			std::cerr << "ACK retry send failed seq=" << it->first << "\n";
+		}
+		p.retries = (uint8_t)(p.retries + 1);
+		p.deadline_ms = now + cfg::ACK_TIMEOUT_MS;
+		++it;
+	}
+}
+
+void Sender::checkStatusLiveness() {
+	if (!has_status_)
+		return;
+	const uint32_t now = now_ms();
+	if ((uint32_t)(now - last_status_ms_) > cfg::STATUS_DEAD_MS) {
+		if (!status_stale_) {
+			status_stale_ = true;
+			std::cerr << "STATUS stale (> " << cfg::STATUS_DEAD_MS << " ms)\n";
+		}
+	}
 }
 
 uint16_t Sender::nextSeq() {

@@ -119,21 +119,22 @@ static void test_reader_ok() {
 	}
 	assert(reader.hasFrame());
 	const auto &frame = reader.frame();
-	std::cout << "\theader got: ver=" << static_cast< int >(frame.hdr.ver)
-			  << " type=0x" << std::hex << static_cast< int >(frame.hdr.type)
-			  << " flags=0x" << static_cast< int >(frame.hdr.flags) << " seq=0x"
-			  << static_cast< int >(frame.hdr.seq_le) << std::dec
-			  << " len=" << frame.hdr.len_le << "\n";
+	std::cout << "\theader got: ver=" << static_cast< int >(frame.ver())
+			  << " type=0x" << std::hex << static_cast< int >(frame.type())
+			  << " flags=0x" << static_cast< int >(frame.flags()) << " seq=0x"
+			  << static_cast< int >(frame.seq()) << std::dec
+			  << " len=" << frame.len() << "\n";
 	std::cout << "\theader expected: ver=" << static_cast< int >(hdr.ver)
 			  << " type=0x" << std::hex << static_cast< int >(hdr.type)
 			  << " flags=0x" << static_cast< int >(hdr.flags) << " seq=0x"
-			  << static_cast< int >(hdr.seq_le) << std::dec
-			  << " len=" << hdr.len_le << "\n";
-	assert(frame.hdr.ver == mc::proto::VERSION);
-	assert(frame.hdr.type == hdr.type);
-	assert(frame.hdr.flags == hdr.flags);
-	assert(frame.hdr.seq_le == hdr.seq_le);
-	assert(frame.hdr.len_le == hdr.len_le);
+			  << static_cast< int >(mc::proto::le16_to_host(hdr.seq_le))
+			  << std::dec << " len=" << mc::proto::le16_to_host(hdr.len_le)
+			  << "\n";
+	assert(frame.ver() == mc::proto::VERSION);
+	assert(frame.type() == hdr.type);
+	assert(frame.flags() == hdr.flags);
+	assert(frame.seq() == mc::proto::le16_to_host(hdr.seq_le));
+	assert(frame.len() == mc::proto::le16_to_host(hdr.len_le));
 	assert(frame.payload_len == sizeof(payload));
 	assert(std::memcmp(frame.payload, payload, sizeof(payload)) == 0);
 }
@@ -264,6 +265,65 @@ static void test_golden_frame_output() {
 	assert(std::memcmp(raw, expected, sizeof(expected)) == 0);
 }
 
+/**
+ * @brief PacketWriterでACKを生成し、PacketReaderで復元できることを確認する。
+ */
+static void test_writer_ack_roundtrip() {
+	std::cout << "[TEST] writer_ack_roundtrip\n";
+	uint8_t enc[mc::proto::MAX_FRAME_ENCODED];
+	size_t enc_len = 0;
+	const uint16_t seq = 0x1234;
+
+	const bool ok = mc::proto::PacketWriter::build(
+		enc, sizeof(enc), enc_len, mc::proto::Type::ACK, 0, seq, nullptr, 0);
+	assert(ok);
+	assert(enc_len > 0);
+
+	mc::proto::PacketReader reader;
+	for (size_t i = 0; i < enc_len; ++i) {
+		reader.push(enc[i]);
+	}
+	assert(reader.hasFrame());
+	const auto &frame = reader.frame();
+	assert(frame.type() == static_cast< uint8_t >(mc::proto::Type::ACK));
+	assert(frame.flags() == 0);
+	assert(frame.payload_len == 0);
+	assert(frame.seq() == seq);
+}
+
+/**
+ * @brief PacketWriterでSTATUSを生成し、payloadが保持されることを確認する。
+ */
+static void test_writer_status_roundtrip() {
+	std::cout << "[TEST] writer_status_roundtrip\n";
+	mc::proto::StatusPayload payload{};
+	payload.seq_applied = 0x7B;
+	payload.auto_active = 1;
+	payload.faults_le = mc::proto::host_to_le16(0x0005);
+	payload.speed_mm_s_le =
+		(int16_t)mc::proto::host_to_le16((uint16_t)(int16_t)-123);
+	payload.steer_cdeg_le =
+		(int16_t)mc::proto::host_to_le16((uint16_t)(int16_t)456);
+	payload.age_ms_le = mc::proto::host_to_le16(250);
+
+	uint8_t enc[mc::proto::MAX_FRAME_ENCODED];
+	size_t enc_len = 0;
+	const bool ok = mc::proto::PacketWriter::build(
+		enc, sizeof(enc), enc_len, mc::proto::Type::STATUS, 0, 0x0102,
+		reinterpret_cast< const uint8_t * >(&payload), sizeof(payload));
+	assert(ok);
+
+	mc::proto::PacketReader reader;
+	for (size_t i = 0; i < enc_len; ++i) {
+		reader.push(enc[i]);
+	}
+	assert(reader.hasFrame());
+	const auto &frame = reader.frame();
+	assert(frame.type() == static_cast< uint8_t >(mc::proto::Type::STATUS));
+	assert(frame.payload_len == sizeof(payload));
+	assert(std::memcmp(frame.payload, &payload, sizeof(payload)) == 0);
+}
+
 int main() {
 	test_crc16();
 	test_cobs_roundtrip();
@@ -272,6 +332,8 @@ int main() {
 	test_reader_bad_length();
 	test_reader_bad_version();
 	test_golden_frame_output();
+	test_writer_ack_roundtrip();
+	test_writer_status_roundtrip();
 	std::cout << "firmware proto tests ok\n";
 	return 0;
 }

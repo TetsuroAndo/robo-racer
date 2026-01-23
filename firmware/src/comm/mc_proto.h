@@ -36,10 +36,20 @@ static constexpr size_t   MAX_FRAME_DECODED = sizeof(Header) + MAX_PAYLOAD + 2;
 static constexpr size_t   MAX_FRAME_ENCODED = MAX_FRAME_DECODED + (MAX_FRAME_DECODED / 254) + 2;
 
 // View of a decoded frame (for firmware use)
-struct FrameView {
-	Header hdr;
-	const uint8_t* payload;
-	uint16_t payload_len;
+class FrameView {
+public:
+	const uint8_t* payload = nullptr;
+	uint16_t payload_len = 0;
+
+	uint8_t ver() const { return _hdr.ver; }
+	uint8_t type() const { return _hdr.type; }
+	uint8_t flags() const { return _hdr.flags; }
+	uint16_t seq() const { return le16_to_host(_hdr.seq_le); }
+	uint16_t len() const { return le16_to_host(_hdr.len_le); }
+
+private:
+	Header _hdr{};
+	friend class PacketReader;
 };
 
 // Firmware-side implementation of protocol utils

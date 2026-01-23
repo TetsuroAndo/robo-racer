@@ -32,9 +32,9 @@ enum class Type : uint8_t {
 
 // Packet Flags
 enum Flags : uint8_t {
-	FLAG_ACK_REQ = 1u << 0,
-	FLAG_ACK     = 1u << 1,
-	FLAG_ERR     = 1u << 2,
+	FLAG_ACK_REQ = 1u << 0, // v1: only this bit is used
+	FLAG_ACK     = 1u << 1, // reserved (v1 unused)
+	FLAG_ERR     = 1u << 2, // reserved (v1 unused)
 };
 
 // Common packet header

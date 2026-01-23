@@ -1,4 +1,5 @@
 #include "../../log/AsyncLogger.h"
+#include "../Ack.h"
 #include "../registry.h"
 
 namespace {
@@ -30,6 +31,10 @@ public:
 		if (ctx.log) {
 			ctx.log->logf(mc::LogLevel::INFO, "proto", "RX MODE -> %s",
 						  (mode == 0 ? "MANUAL" : "AUTO"));
+		}
+		if (f.flags() & mc::proto::FLAG_ACK_REQ) {
+			const uint16_t seq = f.seq();
+			mc::send_ack(ctx, seq);
 		}
 		return mc::Result::Ok();
 	}

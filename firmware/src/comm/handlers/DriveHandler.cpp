@@ -1,5 +1,6 @@
 #include "../../../lib/common/Math.h"
 #include "../../log/AsyncLogger.h"
+#include "../Ack.h"
 #include "../registry.h"
 
 namespace {
@@ -37,7 +38,7 @@ public:
 			ttl_ms = 2000;
 
 		auto *st = ctx.st;
-		st->last_seq = mc::proto::le16_to_host(f.hdr.seq_le);
+		st->last_seq = f.seq();
 		st->last_cmd_ms = now_ms;
 		st->cmd_expire_ms = now_ms + ttl_ms;
 
@@ -51,6 +52,11 @@ public:
 						  "RX DRIVE seq=%u steer=%d speed=%d ttl=%u dist=%u",
 						  (unsigned)st->last_seq, (int)steer_cdeg,
 						  (int)speed_mm_s, (unsigned)ttl_ms, (unsigned)dist_mm);
+		}
+
+		if (f.flags() & mc::proto::FLAG_ACK_REQ) {
+			const uint16_t seq = f.seq();
+			mc::send_ack(ctx, seq);
 		}
 
 		return mc::Result::Ok();
