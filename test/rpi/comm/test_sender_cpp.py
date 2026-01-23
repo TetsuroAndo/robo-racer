@@ -1,10 +1,15 @@
 import shutil
+import sys
 import subprocess
 from pathlib import Path
 
 import pytest
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="requires Linux AF_UNIX SOCK_SEQPACKET support",
+)
 def test_sender_cpp(tmp_path: Path):
     """
     @brief

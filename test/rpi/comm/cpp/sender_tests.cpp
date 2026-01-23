@@ -27,13 +27,14 @@ int make_server_socket() {
 	std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", kSockPath);
 	const int rc = ::bind(fd, (sockaddr *)&addr, sizeof(addr));
 	assert(rc == 0);
+	const int lrc = ::listen(fd, 1);
+	assert(lrc == 0);
 	return fd;
 }
 
 bool recv_frame(int fd,
 				std::array< uint8_t, mc::proto::MAX_FRAME_ENCODED > &buf,
-				size_t &len, sockaddr_un &from, socklen_t &from_len,
-				int timeout_ms) {
+				size_t &len, int timeout_ms) {
 	fd_set rfds;
 	FD_ZERO(&rfds);
 	FD_SET(fd, &rfds);
@@ -43,8 +44,7 @@ bool recv_frame(int fd,
 	const int r = ::select(fd + 1, &rfds, nullptr, nullptr, &tv);
 	if (r <= 0)
 		return false;
-	len = (size_t)::recvfrom(fd, buf.data(), buf.size(), 0, (sockaddr *)&from,
-							 &from_len);
+	len = (size_t)::recv(fd, buf.data(), buf.size(), 0);
 	return len > 0;
 }
 
@@ -54,14 +54,14 @@ bool decode(const std::array< uint8_t, mc::proto::MAX_FRAME_ENCODED > &buf,
 	return mc::proto::decode_one(buf.data(), len, out, decoded);
 }
 
-bool send_ack(int fd, const sockaddr_un &to, socklen_t to_len, uint16_t seq) {
+bool send_ack(int fd, uint16_t seq) {
 	uint8_t enc[mc::proto::MAX_FRAME_ENCODED];
 	size_t enc_len = 0;
 	const bool ok = mc::proto::PacketWriter::build(
 		enc, sizeof(enc), enc_len, mc::proto::Type::ACK, 0, seq, nullptr, 0);
 	if (!ok)
 		return false;
-	const ssize_t sent = ::sendto(fd, enc, enc_len, 0, (sockaddr *)&to, to_len);
+	const ssize_t sent = ::send(fd, enc, enc_len, 0);
 	return sent > 0;
 }
 
@@ -87,12 +87,12 @@ static void test_sender_mode_set_ack() {
 	std::cout << "[TEST] sender_mode_set_ack\n";
 	const int srv_fd = make_server_socket();
 	Sender sender(kSockPath);
+	const int cfd = ::accept(srv_fd, nullptr, nullptr);
+	assert(cfd >= 0);
 
 	std::array< uint8_t, mc::proto::MAX_FRAME_ENCODED > buf{};
 	size_t len = 0;
-	sockaddr_un from{};
-	socklen_t from_len = sizeof(from);
-	const bool got = recv_frame(srv_fd, buf, len, from, from_len, 500);
+	const bool got = recv_frame(cfd, buf, len, 500);
 	assert(got);
 
 	mc::proto::Frame f{};
@@ -108,9 +108,10 @@ static void test_sender_mode_set_ack() {
 
 	// Send ACK back to Sender and let poll consume it.
 	const uint16_t seq = f.seq();
-	assert(send_ack(srv_fd, from, from_len, seq));
+	assert(send_ack(cfd, seq));
 
 	sender.poll();
+	::close(cfd);
 	::close(srv_fd);
 	std::cout << "\tACK sent for seq=0x" << std::hex << seq << std::dec << "\n";
 }
@@ -123,29 +124,29 @@ static void test_sender_auto_disabled_no_drive() {
 	std::cout << "[TEST] sender_auto_disabled_no_drive\n";
 	const int srv_fd = make_server_socket();
 	Sender sender(kSockPath);
+	const int cfd = ::accept(srv_fd, nullptr, nullptr);
+	assert(cfd >= 0);
 
 	// Drain initial MODE_SET
 	std::array< uint8_t, mc::proto::MAX_FRAME_ENCODED > buf{};
 	size_t len = 0;
-	sockaddr_un from{};
-	socklen_t from_len = sizeof(from);
-	if (recv_frame(srv_fd, buf, len, from, from_len, 500)) {
+	if (recv_frame(cfd, buf, len, 500)) {
 		mc::proto::Frame f{};
 		if (decode(buf, len, f) &&
 			f.type() == (uint8_t)mc::proto::Type::MODE_SET &&
 			(f.flags() & mc::proto::FLAG_ACK_REQ)) {
-			send_ack(srv_fd, from, from_len, f.seq());
+			send_ack(cfd, f.seq());
 			sender.poll();
 		}
 	}
 
 	sender.sendAutoMode(false);
-	if (recv_frame(srv_fd, buf, len, from, from_len, 500)) {
+	if (recv_frame(cfd, buf, len, 500)) {
 		mc::proto::Frame f{};
 		if (decode(buf, len, f) &&
 			f.type() == (uint8_t)mc::proto::Type::MODE_SET &&
 			(f.flags() & mc::proto::FLAG_ACK_REQ)) {
-			send_ack(srv_fd, from, from_len, f.seq());
+			send_ack(cfd, f.seq());
 			sender.poll();
 		}
 	}
@@ -156,7 +157,7 @@ static void test_sender_auto_disabled_no_drive() {
 	const auto deadline =
 		std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
 	while (std::chrono::steady_clock::now() < deadline) {
-		const bool got = recv_frame(srv_fd, buf, len, from, from_len, 50);
+		const bool got = recv_frame(cfd, buf, len, 50);
 		if (!got)
 			continue;
 		mc::proto::Frame f{};
@@ -168,13 +169,14 @@ static void test_sender_auto_disabled_no_drive() {
 		}
 		if (f.type() == (uint8_t)mc::proto::Type::MODE_SET &&
 			(f.flags() & mc::proto::FLAG_ACK_REQ)) {
-			send_ack(srv_fd, from, from_len, f.seq());
+			send_ack(cfd, f.seq());
 			sender.poll();
 		}
 	}
 	std::cout << "\tEXPECT no DRIVE, actual=" << (saw_drive ? "drive" : "none")
 			  << "\n";
 	assert(!saw_drive);
+	::close(cfd);
 	::close(srv_fd);
 }
 
@@ -186,14 +188,14 @@ static void test_sender_ping_interval() {
 	std::cout << "[TEST] sender_ping_interval\n";
 	const int srv_fd = make_server_socket();
 	Sender sender(kSockPath);
+	const int cfd = ::accept(srv_fd, nullptr, nullptr);
+	assert(cfd >= 0);
 
 	std::array< uint8_t, mc::proto::MAX_FRAME_ENCODED > buf{};
 	size_t len = 0;
-	sockaddr_un from{};
-	socklen_t from_len = sizeof(from);
 
 	// Drain initial MODE_SET
-	recv_frame(srv_fd, buf, len, from, from_len, 500);
+	recv_frame(cfd, buf, len, 500);
 
 	sender.send(0, 0);
 	std::this_thread::sleep_for(
@@ -202,7 +204,7 @@ static void test_sender_ping_interval() {
 
 	bool saw_ping = false;
 	for (int i = 0; i < 3; ++i) {
-		const bool got = recv_frame(srv_fd, buf, len, from, from_len, 200);
+		const bool got = recv_frame(cfd, buf, len, 200);
 		if (!got)
 			break;
 		mc::proto::Frame f{};
@@ -216,6 +218,7 @@ static void test_sender_ping_interval() {
 	std::cout << "\tEXPECT ping=true, actual=" << (saw_ping ? "true" : "false")
 			  << "\n";
 	assert(saw_ping);
+	::close(cfd);
 	::close(srv_fd);
 }
 
@@ -227,12 +230,12 @@ static void test_sender_ack_retry() {
 	std::cout << "[TEST] sender_ack_retry\n";
 	const int srv_fd = make_server_socket();
 	Sender sender(kSockPath);
+	const int cfd = ::accept(srv_fd, nullptr, nullptr);
+	assert(cfd >= 0);
 
 	std::array< uint8_t, mc::proto::MAX_FRAME_ENCODED > buf{};
 	size_t len = 0;
-	sockaddr_un from{};
-	socklen_t from_len = sizeof(from);
-	recv_frame(srv_fd, buf, len, from, from_len, 500); // initial MODE_SET
+	recv_frame(cfd, buf, len, 500); // initial MODE_SET
 
 	sender.sendKill();
 	int count = 0;
@@ -240,7 +243,7 @@ static void test_sender_ack_retry() {
 		std::chrono::steady_clock::now() + std::chrono::milliseconds(400);
 	while (std::chrono::steady_clock::now() < deadline) {
 		sender.poll();
-		if (recv_frame(srv_fd, buf, len, from, from_len, 50)) {
+		if (recv_frame(cfd, buf, len, 50)) {
 			mc::proto::Frame f{};
 			if (decode(buf, len, f) &&
 				f.type() == (uint8_t)mc::proto::Type::KILL) {
@@ -252,6 +255,7 @@ static void test_sender_ack_retry() {
 	}
 	std::cout << "\tEXPECT retries>=2, actual=" << count << "\n";
 	assert(count >= 2);
+	::close(cfd);
 	::close(srv_fd);
 }
 

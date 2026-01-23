@@ -13,6 +13,7 @@ import select
 import socket
 import struct
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -141,6 +142,10 @@ def read_frame_from_fd(fd: int, timeout_s: float) -> bytes:
     return b""
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="requires Linux AF_UNIX SOCK_SEQPACKET support",
+)
 @pytest.mark.skipif(shutil.which("g++") is None, reason="g++ not available")
 def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
     """
