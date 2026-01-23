@@ -52,4 +52,4 @@ def test_firmware_comm_integration_cpp(tmp_path: Path):
 
     run = subprocess.run([str(output)], capture_output=False, text=True)
     print("\n[INFO] run bin:", output)
-    assert run.returncode == 0, f"run failed rc={run.returncode}"
+    assert run.returncode == 0, (run.stdout or "") + (run.stderr or "")

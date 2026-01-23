@@ -163,10 +163,10 @@
 
 ### 3.5.3 `PING` (type=0x04) payload（0 bytes）
 
-* len=0 固定
-* 受理したら `last_hb_ms=now` を更新
+* len=0 固定（len!=0 は不正として無視）
+* 受理したら `last_hb_ms=now` を更新（payloadは参照しない）
 * 受理時に `ACK` を返す（payloadなし、headerのseqで応答）
-* **PINGは常にACK**（`FLAG_ACK_REQ` に依存しない）
+* **PINGは常にACK**（`FLAG_ACK_REQ` に依存しない、ただし len!=0 は ACK しない）
 
 運用メモ：
 * RPi は **modeに関わらず** PING を送る（リンク監視目的）

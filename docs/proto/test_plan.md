@@ -27,7 +27,7 @@
   - `0x01 DRIVE`（len=8）
   - `0x02 KILL`（len無視）
   - `0x03 MODE_SET`（len>=1許容）
-  - `0x04 PING`（len無視）
+  - `0x04 PING`（len=0固定）
 - ESP32 -> RPi
   - `0x10 LOG`（len>=1）
   - `0x11 STATUS`（len=10）
@@ -43,7 +43,7 @@
   - `mode: u8`（0=MANUAL, 1=AUTO）
   - `reason: u8`（任意、無視される）
 - PING
-  - payloadは無視（現在の実装）
+  - payloadは空（len=0固定、len!=0は不正）
 - KILL
   - payloadは無視（現在の実装）
 - STATUS（10 bytes）
@@ -103,7 +103,7 @@
 
 **PING**
 - len=0 で last_hb_ms 更新 + ACK送信
-- len=4 でも同様に動作
+- len!=0 は不正（last_hb_ms更新なし、ACKなし）
 
 **KILL**
 - len=0 で killed=true, cmd_expire=0

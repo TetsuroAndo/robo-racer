@@ -196,6 +196,14 @@ def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
 
     sock_path = Path("/tmp/seriald.sock")
     log_path = Path("/tmp/seriald.log")
+    try:
+        log_path.unlink()
+    except FileNotFoundError:
+        pass
+    try:
+        sock_path.unlink()
+    except FileNotFoundError:
+        pass
 
     proc = subprocess.Popen(
         [
@@ -223,7 +231,8 @@ def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
         uds = None
         use_dgram = sys.platform == "darwin"
         sock_type = socket.SOCK_DGRAM if use_dgram else socket.SOCK_SEQPACKET
-        client_path = tmp_path / "seriald_client.sock"
+        # macOS: AF_UNIX sun_path has a short length limit; tmp_path can exceed it.
+        client_path = Path("/tmp") / f"seriald_client_{os.getpid()}.sock"
         last_err = ""
         while time.time() < deadline:
             if proc.poll() is not None:

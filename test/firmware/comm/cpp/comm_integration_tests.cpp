@@ -214,7 +214,8 @@ static void test_mode_invalid_value() {
 
 /**
  * @brief
- *   PING len=0/len=4 で ACK が返ること、last_hb_ms が更新されることを確認。
+ *   PING len=0 は ACK が返り、last_hb_ms が更新されることを確認。
+ *   len!=0 は不正として無視され、ACK も last_hb_ms 更新もされないことを確認。
  */
 static void test_ping_len0_len4_ack() {
 	std::cout << "[TEST] firmware_comm_ping_len0_len4\n";
@@ -242,9 +243,8 @@ static void test_ping_len0_len4_ack() {
 	const auto f4 = decode_one(enc4);
 	h->onFrame(f4, t.ctx, 200);
 	std::cout << "\tlen=4 last_hb_ms=" << t.st.last_hb_ms << "\n";
-	assert(t.st.last_hb_ms == 200);
-	assert(mc::test::frames().size() == 1);
-	expect_ack_seq(mc::test::frames()[0], 0x51);
+	assert(t.st.last_hb_ms == 100);
+	assert(mc::test::frames().empty());
 }
 
 /**

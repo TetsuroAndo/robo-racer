@@ -171,7 +171,7 @@
 
 - 受信側は `flags & ACK_REQ` のとき **ACKを返す**。
 - `ACK` は `type=0x80`、`payload_len=0`、`seq` は要求側の `seq` をそのまま返す。
-- **PINGは常にACK**（`ACK_REQ` に依存しない）。
+- **PINGは常にACK**（`ACK_REQ` に依存しない）。ただし len!=0 は不正として ACK しない。
 
 ---
 
