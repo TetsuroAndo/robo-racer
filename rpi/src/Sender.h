@@ -3,7 +3,6 @@
 #include "config/Config.h"
 #include <mc/ipc/UdsSeqPacket.hpp>
 #include <mc/proto/Proto.hpp>
-#include <mc/proto/Payloads.hpp>
 #include <stdint.h>
 
 class Sender {

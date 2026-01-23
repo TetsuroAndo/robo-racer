@@ -60,7 +60,7 @@ void Sender::send(int speed, int angle) {
 		(int32_t)speed_input * cfg::SPEED_MM_S_MAX / cfg::SPEED_INPUT_LIMIT;
 	payload.speed_mm_s = static_cast< int16_t >(speed_mm_s);
 	payload.ttl_ms_le = mc::proto::to_le16(cfg::AUTO_TTL_MS);
-	payload.distance_mm_le = mc::proto::to_le16(0);
+	payload.dist_mm_le = mc::proto::to_le16(0);
 
 	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
 	size_t out_len = 0;

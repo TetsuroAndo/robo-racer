@@ -7,8 +7,11 @@
 #include <stdint.h>
 #endif
 
+#include "../../../shared/proto/mc_proto.h"
+
 namespace mc::proto {
 
+// Endianness helpers for this platform
 static inline uint16_t le16_to_host(uint16_t v) {
 #if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
 	(__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
@@ -27,58 +30,20 @@ static inline uint16_t host_to_le16(uint16_t v) {
 #endif
 }
 
-static constexpr uint8_t  MAGIC0 = 'M';
-static constexpr uint8_t  MAGIC1 = 'C';
-static constexpr uint8_t  VERSION = 1;
-
+// Platform-specific constants
 static constexpr size_t   MAX_PAYLOAD = 64;
-static constexpr size_t   MAX_FRAME_DECODED = 2 + 1 + 1 + 1 + 2 + 2 + MAX_PAYLOAD + 2;
+static constexpr size_t   MAX_FRAME_DECODED = sizeof(Header) + MAX_PAYLOAD + 2;
 static constexpr size_t   MAX_FRAME_ENCODED = MAX_FRAME_DECODED + (MAX_FRAME_DECODED / 254) + 2;
 
-enum class Type : uint8_t {
-	DRIVE      = 0x01,
-	KILL       = 0x02,
-	MODE_SET   = 0x03,
-	PING       = 0x04,
-
-	LOG        = 0x10,
-	STATUS     = 0x11,
-	HILS_STATE = 0x12,
-	ACK        = 0x80,
-};
-
-enum : uint8_t {
-	FLAG_ACK_REQ = 1u << 0,
-	FLAG_ACK     = 1u << 1,
-	FLAG_ERR     = 1u << 2,
-};
-
-#pragma pack(push, 1)
-struct Header {
-	uint8_t magic[2];
-	uint8_t ver;
-	uint8_t type;
-	uint8_t flags;
-	uint16_t seq_le;
-	uint16_t len_le;
-};
-
-struct HilsStatePayload {
-    uint32_t timestamp;
-    int16_t throttle_raw;
-    int16_t steer_cdeg;
-    uint8_t flags;
-};
-#pragma pack(pop)
-
+// View of a decoded frame (for firmware use)
 struct FrameView {
 	Header hdr;
 	const uint8_t* payload;
 	uint16_t payload_len;
 };
 
+// Firmware-side implementation of protocol utils
 uint16_t crc16_ccitt(const uint8_t* data, size_t len);
-
 size_t cobs_encode(const uint8_t* in, size_t len, uint8_t* out, size_t out_cap);
 size_t cobs_decode(const uint8_t* in, size_t len, uint8_t* out, size_t out_cap);
 

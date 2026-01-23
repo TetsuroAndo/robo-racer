@@ -4,43 +4,11 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "mc_proto.h"
+
 namespace mc::proto {
 
-static constexpr uint8_t MAGIC0 = 'M';
-static constexpr uint8_t MAGIC1 = 'C';
-static constexpr uint8_t VERSION = 1;
-
 static constexpr size_t MAX_PAYLOAD = 64;
-
-#pragma pack(push, 1)
-struct Header {
-	uint8_t magic[2];
-	uint8_t ver;
-	uint8_t type;
-	uint8_t flags;
-	uint16_t seq_le;
-	uint16_t len_le;
-};
-#pragma pack(pop)
-static_assert(sizeof(Header) == 9, "Header must be 9 bytes on wire");
-
-enum class Type : uint8_t {
-	DRIVE = 0x01,
-	KILL = 0x02,
-	MODE_SET = 0x03,
-	PING = 0x04,
-
-	LOG = 0x10,
-	STATUS = 0x11,
-	HILS_STATE = 0x12,
-	ACK = 0x80,
-};
-
-enum : uint8_t {
-	FLAG_ACK_REQ = 0x01,
-	FLAG_ACK = 0x02,
-	FLAG_ERR = 0x04,
-};
 
 static constexpr size_t MAX_FRAME_DECODED = sizeof(Header) + MAX_PAYLOAD + 2;
 static constexpr size_t MAX_FRAME_ENCODED =
