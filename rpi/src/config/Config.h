@@ -27,6 +27,9 @@ static constexpr int DEFAULT_ESP_BAUD   = 921600;
 static constexpr uint16_t AUTO_TTL_MS            = 100;
 static constexpr uint32_t HEARTBEAT_INTERVAL_MS  = 50;
 static constexpr uint32_t STATUS_LOG_INTERVAL_MS = 1000;
+static constexpr uint32_t ACK_TIMEOUT_MS         = 50;
+static constexpr uint8_t ACK_MAX_RETRY           = 3;
+static constexpr uint32_t STATUS_DEAD_MS         = 300;
 
 // 送信値のスケール/上限（ESP32側の単位に合わせる）
 // speed: RPi内部は旧PWM相当(-255..255) → ESP32はmm/s(±2000想定)
