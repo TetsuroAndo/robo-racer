@@ -39,6 +39,8 @@ float normalize(double angle) {
 
 } // namespace
 
+namespace perception {
+
 LidarReceiver::LidarReceiver(const char *lidar_dev_c, int lidar_baud) {
 	_init(lidar_dev_c, lidar_baud);
 }
@@ -155,3 +157,5 @@ void LidarReceiver::_init(const char *lidar_dev_c, int lidar_baud) {
 		exit(1);
 	}
 }
+
+} // namespace perception

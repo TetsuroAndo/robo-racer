@@ -7,6 +7,8 @@
 #include <stdint.h>
 #include <unordered_map>
 
+namespace comm {
+
 class Sender {
 public:
 	Sender(const char* sock_path);
@@ -43,5 +45,8 @@ private:
 		uint16_t len;
 		std::array< uint8_t, mc::proto::MAX_FRAME_ENCODED > data;
 	};
+
 	std::unordered_map< uint16_t, PendingTx > pending_;
 };
+
+} // namespace comm

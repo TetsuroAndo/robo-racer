@@ -11,6 +11,8 @@ struct LidarData {
 	LidarData(int distance, float angle) : distance(distance), angle(angle) {}
 };
 
+namespace perception {
+
 class LidarReceiver {
 public:
 	LidarReceiver(const char *lidar_dev_c, int lidar_baud);
@@ -23,3 +25,5 @@ private:
 	sl::IChannel *_channel;
 	sl::ILidarDriver *_lidar;
 };
+
+} // namespace perception

@@ -37,6 +37,8 @@ int16_t clamp_cdeg(int32_t cdeg) {
 
 } // namespace
 
+namespace comm {
+
 Sender::Sender(const char *sock_path) { _init(sock_path); }
 
 Sender::~Sender() {
@@ -246,3 +248,5 @@ uint16_t Sender::nextSeq() {
 	seq_ = (uint16_t)(seq_ + 1);
 	return s;
 }
+
+} // namespace comm
