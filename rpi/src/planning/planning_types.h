@@ -5,6 +5,8 @@
 
 namespace planning {
 
+constexpr int kInvalidDistance = 100000;
+
 struct Scan {
 	float angle_min_deg = 0.0f;
 	float angle_max_deg = 0.0f;
@@ -36,4 +38,3 @@ struct GapDescriptor {
 };
 
 } // namespace planning
-

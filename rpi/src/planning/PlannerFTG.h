@@ -18,6 +18,12 @@ private:
 					 const cfg::Params &params,
 					 const std::vector< int > &inflated) const;
 	size_t selectBestGap(const std::vector< GapDescriptor > &gaps) const;
+	void applySafetyBubble(const Scan &scan, const cfg::Params &params,
+						   std::vector< int > &inflated) const;
+	void extendDisparities(const cfg::Params &params,
+						   std::vector< int > &inflated) const;
+	void clampGapAimPoint(const Scan &scan, const cfg::Params &params,
+						  GapDescriptor &gap) const;
 };
 
 } // namespace planning

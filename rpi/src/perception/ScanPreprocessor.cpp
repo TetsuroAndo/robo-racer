@@ -3,10 +3,6 @@
 #include <algorithm>
 #include <cmath>
 
-namespace {
-constexpr int INF_DISTANCE = 100000;
-} // namespace
-
 namespace perception {
 
 planning::Scan ScanPreprocessor::process(const std::vector< LidarData > &points,
@@ -48,7 +44,7 @@ planning::Scan ScanPreprocessor::process(const std::vector< LidarData > &points,
 	// replace untouched bins with INF marker
 	for (size_t i = 0; i < bin_count; ++i) {
 		if (scan.ranges_mm[i] >= params.range_max_mm) {
-			scan.ranges_mm[i] = INF_DISTANCE;
+			scan.ranges_mm[i] = planning::kInvalidDistance;
 		}
 	}
 

@@ -2,11 +2,14 @@
 
 #include <array>
 #include <cerrno>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <sys/socket.h>
 #include <time.h>
+
+#include "mc/common/clamp.h"
 
 namespace {
 uint32_t now_ms() {
@@ -17,22 +20,16 @@ uint32_t now_ms() {
 	return static_cast< uint32_t >(ms & 0xFFFFFFFFu);
 }
 
-int16_t clamp_speed_input(int speed) {
-	if (speed > cfg::SPEED_INPUT_LIMIT) {
-		speed = cfg::SPEED_INPUT_LIMIT;
-	} else if (speed < -cfg::SPEED_INPUT_LIMIT) {
-		speed = -cfg::SPEED_INPUT_LIMIT;
-	}
-	return static_cast< int16_t >(speed);
+int16_t clamp_speed_input(int32_t speed) {
+	constexpr int32_t limit = cfg::SPEED_INPUT_LIMIT;
+	return static_cast< int16_t >(
+		mc::common::clamp< int32_t >(speed, -limit, limit));
 }
 
 int16_t clamp_cdeg(int32_t cdeg) {
-	if (cdeg > cfg::STEER_CDEG_MAX) {
-		cdeg = cfg::STEER_CDEG_MAX;
-	} else if (cdeg < -cfg::STEER_CDEG_MAX) {
-		cdeg = -cfg::STEER_CDEG_MAX;
-	}
-	return static_cast< int16_t >(cdeg);
+	constexpr int32_t limit = cfg::STEER_CDEG_MAX;
+	return static_cast< int16_t >(
+		mc::common::clamp< int32_t >(cdeg, -limit, limit));
 }
 
 } // namespace

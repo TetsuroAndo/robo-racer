@@ -15,6 +15,7 @@ target_include_directories(${ROBO_RACER_NAME} PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../../shared/proto/include
   ${CMAKE_CURRENT_SOURCE_DIR}/../../shared/proto
   ${CMAKE_CURRENT_SOURCE_DIR}/../lib/mc_ipc/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../shared/common/include
 )
 
 target_compile_options(${ROBO_RACER_NAME} PRIVATE -Wall -Wextra -Wpedantic
