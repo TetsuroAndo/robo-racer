@@ -1,69 +1,55 @@
 #include "Drive.h"
-
-#define SPEED_MAX 255
-#define AVE_DEG_NUM 1
-#define FRONT_AREA 30
-#define CURVE_AREA 70
-
-#define TIMEOUT_MS 250
-
-namespace {
-inline bool isFront(int deg) {
-	return (deg <= FRONT_AREA) || (deg >= 360 - FRONT_AREA);
-}
-inline bool isCurveArea(int deg) {
-	return (deg <= CURVE_AREA) || (deg >= 360 - CURVE_AREA);
-}
-inline float lerp(float start, float end, float t) {
-	return (1 - t) * start + t * end;
-}
-
-inline int clampi(int x, int lo, int hi) {
-	if (x < lo)
-		return lo;
-	if (x > hi)
-		return hi;
-	return x;
-}
-} // namespace
-Drive::Drive() : _angle(0), _speed(0), _lastUpdate(0) {}
-
-Drive::~Drive() {}
+#include "../../lib/common/Math.h"
 
 void Drive::begin() {
 	_engine.begin();
 	_steer.begin();
-
-	updateTimeout();
+	_lastUpdateMs = millis();
 }
 
-void Drive::control() {
-	if (evalTimeout() == false) {
-		_speed = 0;
-		_angle = 0;
-	}
-	_engine.setSpeed(_speed);
-	_steer.setAngle(_angle);
+void Drive::setTargetMmS(int16_t speed_mm_s) {
+	_tgt_speed_mm_s = speed_mm_s;
+	_lastUpdateMs = millis();
 }
 
-void Drive::setSpeed(int newSpeed) {
-	updateTimeout();
-	_speed = newSpeed;
+void Drive::setTargetSteerCdeg(int16_t steer_cdeg) {
+	_tgt_steer_cdeg = steer_cdeg;
+	_lastUpdateMs = millis();
 }
 
-void Drive::setAngle(int newAngle) {
-	updateTimeout();
-	_angle = newAngle;
+void Drive::setTtlMs(uint16_t ttl_ms) {
+	_ttl_ms = ttl_ms;
+	_lastUpdateMs = millis();
 }
 
-void Drive::updateTimeout() { _lastUpdate = millis(); }
+void Drive::setDistMm(uint16_t dist_mm) {
+	_dist_mm = dist_mm;
+	_lastUpdateMs = millis();
+}
 
-bool Drive::evalTimeout() { return millis() - _lastUpdate < TIMEOUT_MS; }
+int Drive::speedMmSToPwm_(int16_t mm_s) const {
+	int v = (int)mm_s;
+	v = mc::clamp< int >(v, -MAX_SPEED_MM_S, MAX_SPEED_MM_S);
+	long pwm = (long)v * 255L / (long)MAX_SPEED_MM_S;
+	return (int)mc::clamp< long >(pwm, -255, 255);
+}
 
-String Drive::info() {
-	String res;
-	res += String(_speed);
-	res += ", ";
-	res += String(_angle);
-	return res;
+float Drive::steerCdegToDeg_(int16_t cdeg) const {
+	float deg = (float)cdeg / 100.0f;
+	return mc::clamp< float >(deg, -30.0f, 30.0f);
+}
+
+void Drive::tick(uint32_t now_ms, float dt_s, bool killed) {
+	bool expired = ((uint32_t)(now_ms - _lastUpdateMs) > (uint32_t)_ttl_ms);
+
+	int16_t cmd_speed = (killed || expired) ? 0 : _tgt_speed_mm_s;
+	int16_t cmd_steer = (killed || expired) ? 0 : _tgt_steer_cdeg;
+
+	_applied_speed_mm_s = cmd_speed;
+	_applied_steer_cdeg = cmd_steer;
+
+	_engine.setTarget(speedMmSToPwm_(cmd_speed));
+	_engine.control(dt_s);
+
+	_steer.setAngle(steerCdegToDeg_(cmd_steer));
 }

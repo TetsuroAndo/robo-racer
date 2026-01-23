@@ -1,52 +1,94 @@
 OS			:= $(shell uname -s)
+USER		:= $(shell whoami)
+RM 			:= rm -rf
 
 # --- PATHS ---
-ROOT			:= .
-VENV			:= $(ROOT)/.venv
-TEST_DIR		:= $(ROOT)/test
-LOG_DIR			:= $(ROOT)/logs
-PIO_DIR			:= $(ROOT)/.pio
-PIO_ENV			?= esp32dev
-PIO_BUILD_DIR	:= $(PIO_DIR)/build/$(PIO_ENV)
+ROOT				:= .
+VENV				:= $(ROOT)/.venv
+TEST_DIR			:= $(ROOT)/test
+LOG_DIR				:= $(ROOT)/logs
 
+PIO_DIR				:= $(ROOT)/.pio
+PIO_ENV				?= esp32dev
+PIO_BUILD_DIR		:= $(PIO_DIR)/build/$(PIO_ENV)
 
-NAME			:= $(PIO_BUILD_DIR)/firmware.elf
-RM				:= rm -rf
+FIRMWARE_DIR		:= $(ROOT)/firmware
+FIRMWARE			:= $(PIO_BUILD_DIR)/firmware.elf
+FIRMWARE_SRC_DIR	:= $(FIRMWARE_DIR)/src
+
+RPI_SRC_DIR			:= $(ROOT)/rpi/src
+RPI_LIB_DIR			:= $(ROOT)/rpi/lib
+RPI_BUILD_DIR		:= $(ROOT)/rpi/build
+
+RPLIDAR_SDK_DIR		:= $(RPI_LIB_DIR)/rplidar_sdk
+RPLIDAR_INC			:= $(RPLIDAR_SDK_DIR)/sdk/include
+RPLIDAR_SRC			:= $(RPLIDAR_SDK_DIR)/sdk/src
+RPLIDAR_LIB			:= $(RPLIDAR_SDK_DIR)/output/$(OS)/Release
+RPLIDAR_SDK_MAKE	:= $(RPLIDAR_SDK_DIR)/Makefile
 
 # ================================
-# PlatformIO rules
+# RPi build rules
 # ================================
-ifeq ($(OS), Darwin)
-UP_PORT	:= /dev/tty.SLAB_USBtoUART
-else ifeq ($(OS), Linux)
-UP_PORT	:= /dev/ttyUSB0
+
+NAME		:= robo-racer
+APP_SERIALD	:= seriald
+CMAKE		?= cmake
+
+# ================================
+# PlatformIO rules / ESP32
+# ================================
+ifeq ($(OS), Linux)
+  UP_PORT	:= /dev/ttyUSB0
+else ifeq ($(OS), Darwin)
+  UP_PORT	:= /dev/tty.SLAB_USBtoUART
 else ifeq ($(OS), Windows_NT)
-UP_PORT	:= COM3
+  UP_PORT	:= COM3
 endif
 
 PIO				?= $(VENV)/bin/pio
 PIO_ARG_ENV		?= -e $(PIO_ENV)
 PIO_ARG_CLEAN	:= -t clean
 PIO_ARG_UPLOAD	:= $(PIO_ARG_ENV) -t upload --upload-port $(UP_PORT)
-PIO_RUN			:= $(PIO) run
+PIO_RUN			:= $(PIO) run -j $(shell nproc)
 
 # ================================
 # Makefile Target
 # ================================
-.PHONY: all clean fclean re upload monitor c f r clog
+.PHONY: all
 
-all:
+all: pio rpi
+	@if [ "$(USER)" = "pi" ]; then $(MAKE) upload; fi
+
+# === RPi build ===
+.PHONY: rpi c-rpi
+$(NAME): rpi
+rpi: | rplidar_sdk $(LOG_DIR)
+	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release -DROBO_RACER_NAME=$(NAME)
+	$(CMAKE) --build $(RPI_BUILD_DIR) -j $(shell nproc)
+
+c-rpi:
+	$(RM) $(RPI_BUILD_DIR)
+
+# === firmware build ===
+.PHONY: pio upload monitor c-pio
+pio:
 	$(PIO_RUN) $(PIO_ARG_ENV)
-clean:
-	$(PIO_RUN) $(PIO_ARG_CLEAN)
-fclean: clean
-	$(RM) $(PIO_DIR)
-re: fclean all
-
 upload:
 	$(PIO_RUN) $(PIO_ARG_UPLOAD)
 monitor:
 	$(PIO) device monitor
+
+c-pio:
+	$(PIO_RUN) $(PIO_ARG_CLEAN)
+
+# === Clean / Rebuild ===
+.PHONY: clean fclean re c f r clog
+clean: c-rpi c-pio
+fclean: clean
+	$(MAKE) -C $(RPLIDAR_SDK_DIR) clean
+	$(RM) $(PIO_DIR)
+	$(RM) $(NAME)
+re: fclean all
 
 # Aliases
 c: clog clean
@@ -59,11 +101,14 @@ clog:
 $(LOG_DIR):
 	@mkdir -p $(LOG_DIR)
 
-# ============= Run Targets =============
+# ================================
+# Runs
+# ================================
 .PHONY: test activate
 
 test: $(PYTHON_LOCAL)
-	$(VENV)/bin/pytest -q
+	$(MAKE) all
+	$(VENV)/bin/pytest -svv
 
 activate: $(PYTHON_LOCAL)
 	@bash -lc 'source "$(VENV)/bin/activate" && exec $$SHELL -l'
@@ -73,11 +118,28 @@ activate: $(PYTHON_LOCAL)
 # ================================
 .PHONY: debug debug-gdb
 
-debug:
+debug: OPT		:= -O0 -g3 -ggdb
+debug: fclean
 	$(PIO) debug $(PIO_ARGS_ENV)
+	$(MAKE) $(NAME) -j $(shell nproc) OPT="$(OPT)"
 
 debug-gdb:
 	$(PIO) debug -s $(PIO_BUILD_DIR) --interface gdb -p
+
+
+# ================================
+# SUBMODULE RULES
+# ================================
+
+.PHONY: rplidar_sdk
+
+rplidar_sdk: $(RPLIDAR_SDK_MAKE)
+	$(MAKE) -C $(RPLIDAR_SDK_DIR)/sdk CEXTRA=-w CXXEXTRA=-w
+
+$(RPLIDAR_SDK_MAKE):
+	@$(RM) $(RPLIDAR_SDK_DIR)
+	@echo "[Submodule] Initializing rplidar_sdk..."
+	@git submodule update --init --recursive $(RPLIDAR_SDK_DIR)
 
 # ================================
 # Environment Setup
@@ -129,18 +191,13 @@ purge: f
 # ================================
 # Misc
 # ================================
-.PHONY: nm nmbin printsrc printobj fill view submodule help
+.PHONY: nm nmbin printsrc printobj fill view submodule rplidar_sdk help
 
 nm:
 	@nm $(OBJ) | grep ' U ' | awk '{print $$2}' | sort | uniq
 
 nmbin:
 	@nm $(NAME) | grep ' U ' | awk '{print $$2}' | sort | uniq
-
-FIRMWARE_DIR	:= $(ROOT)/firmware
-SRC_DIR			:= $(FIRMWARE_DIR)/src
-SRC				:= $(shell find $(SRC_DIR) -path '*/test' -prune -o -name '*.cpp' -print)
-OBJ				:= $(shell find $(PIO_BUILD_DIR) -name '*.o' -print 2>/dev/null)
 
 printsrc:
 	@echo $(SRC) | tr ' ' '\n' | sort
@@ -161,7 +218,9 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Build Targets:"
-	@echo "  all              Build firmware with PlatformIO (pio run)"
+	@echo "  all              Build firmware (pio run) and RPi executable"
+	@echo "  upload           Upload firmware to the device (pio run -t upload)"
+	@echo "  rpi              Build RPi executable (auto-builds RPLIDAR SDK)"
 	@echo "  clean            Clean PlatformIO build artifacts (pio run -t clean)"
 	@echo "  fclean           Fully clean (clean + remove .pio)"
 	@echo "  re               Rebuild (fclean + all)"
@@ -173,9 +232,11 @@ help:
 	@echo "Run Targets:"
 	@echo "  test             Run Python tests using pytest"
 	@echo "  activate         Activate the Python virtual environment"
+	@echo "  monitor          Open serial monitor (pio device monitor)"
 	@echo ""
 	@echo "Debug Targets:"
-	@echo "  debug            Build firmware with PlatformIO"
+	@echo "  debug            Build debug"
+	@echo "  debug-gdb        Build GDB debug session"
 	@echo ""
 	@echo "Environment Setup"
 	@echo "  init             Initialize the environment"
@@ -191,4 +252,5 @@ help:
 	@echo "  fill             Fill empty directories"
 	@echo "  view             View source code"
 	@echo "  submodule        Update and initialize git submodules"
+	@echo "  rplidar_sdk      Build the RPLIDAR SDK (auto-inits submodule)"
 	@echo "  help             Print this help message"
