@@ -8,7 +8,7 @@ public:
 	mc::Result onFrame(const mc::proto::FrameView &f, mc::Context &ctx,
 					   uint32_t now_ms) override {
 		(void)now_ms;
-		if (f.payload_len < 1) {
+		if (f.payload_len != 1) {
 			if (ctx.log) {
 				ctx.log->log(mc::LogLevel::WARN, "proto",
 							 "RX MODE invalid len");

@@ -29,13 +29,7 @@ struct PingPayload {
 
 struct LogPayload {
 	uint8_t level;
-	uint8_t category;
-	uint16_t code_le;
-	uint32_t t_ms_le;
-	int32_t a0_le;
-	int32_t a1_le;
-	int32_t a2_le;
-	int32_t a3_le;
+	// uint8_t text[]; // UTF-8 text follows (variable length)
 };
 
 struct StatusPayload {

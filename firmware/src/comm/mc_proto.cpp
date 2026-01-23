@@ -3,7 +3,6 @@
 
 namespace mc::proto {
 
-static inline uint16_t le16(const uint16_t v) { return v; }
 static inline uint16_t rd16(const uint8_t *p) {
 	return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
@@ -107,8 +106,8 @@ bool PacketWriter::build(uint8_t *out, size_t out_cap, size_t &out_len,
 	h.ver = VERSION;
 	h.type = (uint8_t)type;
 	h.flags = flags;
-	h.seq_le = le16(seq);
-	h.len_le = le16(payload_len);
+	h.seq_le = host_to_le16(seq);
+	h.len_le = host_to_le16(payload_len);
 
 	memcpy(decoded, &h, sizeof(h));
 	decoded_len += sizeof(h);
@@ -182,7 +181,7 @@ bool PacketReader::decodeFrame_() {
 		return false;
 	}
 
-	uint16_t plen = h.len_le;
+	uint16_t plen = le16_to_host(h.len_le);
 	size_t need = sizeof(Header) + (size_t)plen + 2;
 	if (plen > MAX_PAYLOAD || _decodedLen != need) {
 		_badHdr++;

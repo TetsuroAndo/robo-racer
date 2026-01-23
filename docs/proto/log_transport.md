@@ -120,10 +120,8 @@
 | magic  | 2    | 固定 `0x4D 0x43` ("MC") |
 | ver    | 1    | プロトコル版（例: 1） |
 | type   | 1    | メッセージ種別 |
-| flags  | 1    | bitfield（圧縮/ACK要求など） |
-| level  | 1    | ログレベル（LOGのみ。CMD/STATEは0） |
+| flags  | 1    | bitfield（ACK要求など） |
 | seq    | 2    | 送信側連番（ロス/順序判定） |
-| t_us   | 4    | 送信側時刻（micros()低32bitでOK） |
 | len    | 2    | payload長 |
 | payload| N    | typeごとの構造体 |
 | crc16  | 2    | CRC16-CCITT-FALSE |
@@ -134,47 +132,39 @@
 
 ### ESP32 -> RPi
 
-- `0x10` LOG_EVENT: 構造化ログ
-- `0x11` LOG_TEXT: テキストログ（デバッグ専用）
-- `0x20` STATE_MIN: 最小状態（速度/ステア/fault/drop数）
-- `0x21` STATE_DIAG: 診断（電流/温度/バッファ使用率など）
+- `0x10` LOG: テキストログ（level + text）
+- `0x11` STATUS: 状態（速度/ステア/fault/age）
 
 ### RPi -> ESP32
 
-- `0x01` CMD_DRIVE: 角度/速度/TTL/距離/モード
-- `0x02` CMD_KILL: 非常停止（最優先）
-- `0x03` CMD_LOGCFG: ログレベル/送信レート/有効type
+- `0x01` DRIVE: 角度/速度/TTL/距離
+- `0x02` KILL: 非常停止（最優先）
+- `0x03` MODE_SET: MANUAL/AUTO 切替
+- `0x04` PING: 生存確認（ACK応答）
 
 ---
 
-## LOG_EVENT payload（構造化ログ）
+## LOG payload（テキストログ）
 
-最小構成の固定 + 可変に寄せる。
+| Field | Size | 説明 |
+| ----- | ---: | ---- |
+| level | 1    | ログレベル（0=TRACE..5=FATAL） |
+| text  | N    | UTF-8 テキスト（可変長） |
 
-| Field     | Size | 説明 |
-| --------- | ---: | ---- |
-| event_id  | 2    | 例: 0x0001=CMD_RX, 0x0002=MOTOR_APPLY |
-| component | 1    | 例: Drive=1, Engine=2, Steer=3, BT=4 |
-| argc      | 1    | 引数個数 |
-| args      | 4*argc | 各引数は int32（単位はevent定義側で固定） |
-
-※ 拡張性重視なら TLV へ移行可能（未知tagはスキップ）。
+※ 将来的に構造化ログへ拡張する場合は別typeで追加する。
 
 ---
 
 ## Logger設計（ESP32側）
 
-### 役割分離（SOLID志向）
+### 役割分離（現行）
 
-- LoggerCore: API、リングに push するだけ
-- EventRegistry: type -> encoder 登録
-- IEventEncoder: payload直列化
-- UartLogTransport: LogTxTask側で送信
+- AsyncLogger: level + text をフレーム化して enqueue
+- UartTx: LogTxTask側で送信
 
 ### 追記で増やすポイント
 
-- `events/*.cpp` を追加して event_id を増やす
-- 登録は `register_all_events(LoggerRegistry&)` で明示的に追加
+- 構造化ログを別typeで追加し、専用のencoderを用意
 
 ---
 
@@ -182,7 +172,7 @@
 
 ### 制御コマンド系
 
-- CMD_RX / CMD_APPLY / FAILSAFE_TTL / KILL
+- DRIVE_RX / DRIVE_APPLY / FAILSAFE_TTL / KILL
 
 ### モータ/ステア出力
 
@@ -213,7 +203,7 @@
 ## UART帯域の目安
 
 - **921600 bps**
-- 低重要度ログはサンプリング（STATEは20Hz、LINK_STATは1Hz）。
+- 低重要度ログはサンプリング（STATUSは20Hz、LINK_STATは1Hz）。
 
 ---
 
@@ -222,9 +212,9 @@
 ### ESP32
 
 - `firmware/src/comm/`
-  - `FramingCobs.*`, `Crc16.*`, `Message.*`, `Dispatch.*`
+  - `mc_proto.*`, `UartTx.*`
 - `firmware/src/log/`
-  - `LoggerCore.*`, `UartLogTransport.*`, `events/*.cpp`
+  - `AsyncLogger.*`
 
 ### RPi
 

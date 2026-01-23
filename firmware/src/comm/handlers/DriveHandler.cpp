@@ -37,7 +37,7 @@ public:
 			ttl_ms = 2000;
 
 		auto *st = ctx.st;
-		st->last_seq = (uint16_t)f.hdr.seq_le;
+		st->last_seq = mc::proto::le16_to_host(f.hdr.seq_le);
 		st->last_cmd_ms = now_ms;
 		st->cmd_expire_ms = now_ms + ttl_ms;
 

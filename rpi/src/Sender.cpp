@@ -47,6 +47,7 @@ Sender::~Sender() {
 
 void Sender::send(int speed, int angle) {
 	poll();
+	sendHeartbeatIfDue();
 	if (!auto_enabled_) {
 		return;
 	}
@@ -69,6 +70,23 @@ void Sender::send(int speed, int angle) {
 		reinterpret_cast< const uint8_t * >(&payload), sizeof(payload));
 	if (!ok || ::send(ipc_.fd(), out, out_len, MSG_NOSIGNAL) <= 0) {
 		std::cerr << "DRIVE send failed\n";
+	}
+}
+
+void Sender::sendHeartbeatIfDue() {
+	const uint32_t now = now_ms();
+	if ((uint32_t)(now - last_hb_ms_) < cfg::HEARTBEAT_INTERVAL_MS) {
+		return;
+	}
+	last_hb_ms_ = now;
+
+	const uint16_t seq = nextSeq();
+	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
+	size_t out_len = 0;
+	const bool ok = mc::proto::PacketWriter::build(
+		out, sizeof(out), out_len, mc::proto::Type::PING, 0, seq, nullptr, 0);
+	if (!ok || ::send(ipc_.fd(), out, out_len, MSG_NOSIGNAL) <= 0) {
+		std::cerr << "PING send failed\n";
 	}
 }
 

@@ -9,6 +9,24 @@
 
 namespace mc::proto {
 
+static inline uint16_t le16_to_host(uint16_t v) {
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+	(__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+	return (uint16_t)((v >> 8) | (v << 8));
+#else
+	return v;
+#endif
+}
+
+static inline uint16_t host_to_le16(uint16_t v) {
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+	(__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+	return (uint16_t)((v >> 8) | (v << 8));
+#else
+	return v;
+#endif
+}
+
 static constexpr uint8_t  MAGIC0 = 'M';
 static constexpr uint8_t  MAGIC1 = 'C';
 static constexpr uint8_t  VERSION = 1;

@@ -21,19 +21,6 @@
 #include <mc/serial/Uart.hpp>
 
 #pragma pack(push, 1)
-struct EspLogPayload {
-	uint8_t level;
-	uint8_t category;
-	uint16_t code_le;
-	uint32_t t_ms_le;
-	int32_t a0_le;
-	int32_t a1_le;
-	int32_t a2_le;
-	int32_t a3_le;
-};
-#pragma pack(pop)
-
-#pragma pack(push, 1)
 struct EspStatusPayload {
 	uint8_t seq_applied;
 	uint8_t auto_active;
@@ -48,12 +35,6 @@ static inline uint16_t rd16u(const uint8_t *p) {
 	return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 static inline int16_t rd16s(const uint8_t *p) { return (int16_t)rd16u(p); }
-static inline uint32_t rd32u(const uint8_t *p) {
-	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
-		   ((uint32_t)p[3] << 24);
-}
-static inline int32_t rd32s(const uint8_t *p) { return (int32_t)rd32u(p); }
-
 static LogLevel mapEspLv(uint8_t lv) {
 	if (lv > 5)
 		lv = 5;
@@ -217,25 +198,19 @@ int main(int argc, char **argv) {
 						const auto &f = pr.frame();
 
 						if (f.hdr.type == (uint8_t)mc::proto::Type::LOG &&
-							f.payload_len == sizeof(EspLogPayload)) {
+							f.payload_len >= 1) {
 							const uint8_t *p = f.payload;
 							uint8_t lv = p[0];
-							uint8_t cat = p[1];
-							uint16_t code = rd16u(p + 2);
-							uint32_t tms = rd32u(p + 4);
-							int32_t a0 = rd32s(p + 8);
-							int32_t a1 = rd32s(p + 12);
-							int32_t a2 = rd32s(p + 16);
-							int32_t a3 = rd32s(p + 20);
-
-							log.log(mapEspLv(lv),
-									"ESPLOG cat=" + std::to_string(cat) +
-										" code=" + std::to_string(code) +
-										" t_ms=" + std::to_string(tms) +
-										" a0=" + std::to_string(a0) +
-										" a1=" + std::to_string(a1) +
-										" a2=" + std::to_string(a2) +
-										" a3=" + std::to_string(a3));
+							std::string msg;
+							if (f.payload_len > 1) {
+								msg.assign(
+									reinterpret_cast< const char * >(p + 1),
+									f.payload_len - 1);
+							}
+							if (msg.empty()) {
+								msg = "ESPLOG (empty)";
+							}
+							log.log(mapEspLv(lv), msg);
 						} else if (f.hdr.type ==
 									   (uint8_t)mc::proto::Type::STATUS &&
 								   f.payload_len == sizeof(EspStatusPayload)) {

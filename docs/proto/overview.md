@@ -13,7 +13,7 @@
 * **ESP32**：下位（受信した命令を適用、フェイルセーフ、KILL）。
 * **MANUAL**：ESP32のBluetoothゲームパッド入力（Bluepad32）。
 * **AUTO**：RPiからUARTで送られる自律制御コマンド。
-* **KILL**：緊急停止。**どのモードでも最優先**。解除は CLEAR_KILL のみ。
+* **KILL**：緊急停止。**どのモードでも最優先**。解除は現状プロトコルでは行わない（再起動/ローカル操作）。
 
 ---
 
@@ -21,16 +21,16 @@
 
 ## 2.1 モードポリシー（確定）
 
-* **自律中（AUTO_ACTIVE=true）**：
+* **AUTOモード（mode=AUTO）**：
 
   * Bluetooth 手動入力は **無視**
   * 介入できるのは **KILL のみ**（BT でも UART でも可）
-* **自律でない（AUTO_ACTIVE=false）**：
+* **MANUALモード（mode=MANUAL）**：
 
   * Bluetooth 手動入力を Drive に反映して良い
-  * UART の AUTO コマンドを受けても適用しない（または受理するが AUTO_ACTIVE を上げない限り適用しない）
+  * UART の DRIVE コマンドを受けても適用しない（受理のみ）
 
-※この「自律中は手動無視」を成立させるため、**AUTO_ACTIVE を明示的に切り替えるメッセージ**をプロトコルに含めます（後述）。
+※この「自律中は手動無視」を成立させるため、**MODE_SET でモードを明示切り替え**します（後述）。
 
 ---
 
@@ -83,6 +83,12 @@
 | `seq`   | u16 LE | シーケンス（0-65535循環）      |
 | `len`   | u16 LE | payload長（0..MAX_PAYLOAD）  |
 
+**LE変換ルール（重要）**
+
+* `seq` / `len` は **wire上は little-endian**。受信側は必ず変換して扱う。
+* Pi/ESP32がともにlittle-endianでも、**仕様として rd16_le()/wr16_le() を通す**こと。
+* “たまたま動く”実装を防ぐため、サンプルコードも変換込みで示す。
+
 **flags（共通）定義**
 
 * bit0: `ACK_REQ`（1=ACKが欲しい）
@@ -90,7 +96,7 @@
 * bit2: `RESERVED`
 * bit3..7: 予約
 
-> MANUAL/AUTO は flags では表しません。理由：あなたの確定方針が「AUTO_ACTIVE時は手動無視」なので、入力の“出所”は ESP32 内部のソース（BT）と UART（RPi）で明確に分離でき、flags に混ぜると事故るためです。
+> MANUAL/AUTO は flags では表しません。理由：あなたの確定方針が「mode=AUTO時は手動無視」なので、入力の“出所”は ESP32 内部のソース（BT）と UART（RPi）で明確に分離でき、flags に混ぜると事故るためです。
 
 ---
 
@@ -98,35 +104,39 @@
 
 | type | 名前              | 方向      | payload  | 目的                             |
 | ---: | ---------------- | --------- | -------- | -----------------------         |
-| 0x01 | `AUTO_SETPOINT`  | RPi→ESP   | 固定      | 自律の操舵/速度/TTL               |
-| 0x02 | `AUTO_MODE`      | RPi→ESP   | 固定      | 自律開始/停止（AUTO_ACTIVEの切替） |
-| 0x03 | `HEARTBEAT`      | RPi→ESP   | なし      | 生存通知                         |
-| 0x04 | `KILL`           | 双方向     | なし      | 即時停止（ラッチ）                |
-| 0x05 | `CLEAR_KILL`     | 双方向     | なし      | KILL解除                        |
-| 0x81 | `ACK`            | ESP→RPi   | 固定      | 受信確認（要求時）                |
-| 0x82 | `STATUS`         | ESP→RPi   | 固定      | 状態通知（任意）                  |
+| 0x01 | `DRIVE`          | RPi→ESP   | 固定      | 操舵/速度/TTL                     |
+| 0x02 | `KILL`           | RPi→ESP   | なし      | 即時停止（ラッチ）                |
+| 0x03 | `MODE_SET`       | RPi→ESP   | 固定      | MANUAL/AUTO 切替                  |
+| 0x04 | `PING`           | RPi→ESP   | なし      | 生存確認（ACK応答）                |
+| 0x10 | `LOG`            | ESP→RPi   | 可変      | ログ（level + text）               |
+| 0x11 | `STATUS`         | ESP→RPi   | 固定      | 状態通知（任意）                  |
+| 0x80 | `ACK`            | ESP→RPi   | なし      | PING応答                          |
 
 ---
 
 ## 3.5 payload 定義
 
-### 3.5.1 `AUTO_MODE` (type=0x02) payload（2 bytes）
+### 3.5.1 `MODE_SET` (type=0x03) payload（1 bytes）
 
 | フィールド    |  型 | 説明                          |
 | -------- | -: | --------------------------- |
-| `enable` | u8 | 1=AUTO_ACTIVE true, 0=false |
-| `reason` | u8 | 予約（0）                       |
+| `mode`   | u8 | 0=MANUAL, 1=AUTO             |
 
 **挙動**
 
-* enable=1：以後、UARTの `AUTO_SETPOINT` を適用対象とする。BT入力は無視。
-* enable=0：以後、UARTの setpoint は受理しても適用しない（実装選択：破棄推奨）。BT入力が適用対象。
+* mode=1（AUTO）：以後、UARTの `DRIVE` を適用対象とする。BT入力は無視。
+* mode=0（MANUAL）：以後、UARTの `DRIVE` は受理のみ。BT入力が適用対象。
 
 > 自律中に手動を受けないための「唯一の切替」です。RPiが制御権を握っていることを明示します。
 
+**v1 固定仕様**
+
+* `len == 1` のみ許可。`len != 1` は無視（or NACK）。
+* `reason` は v2 で追加する（例：`MODE_SET_EX` など）。
+
 ---
 
-### 3.5.2 `AUTO_SETPOINT` (type=0x01) payload（8 bytes）
+### 3.5.2 `DRIVE` (type=0x01) payload（8 bytes）
 
 物理量寄りで固定し、後からPIDや車両スケールが変わっても仕様が安定するようにします。
 
@@ -151,50 +161,46 @@
 
 ---
 
-### 3.5.3 `HEARTBEAT` (type=0x03) payload なし
+### 3.5.3 `PING` (type=0x04) payload（0 bytes）
 
-* len=0
+* len=0 固定
 * 受理したら `last_hb_ms=now` を更新
+* 受理時に `ACK` を返す（payloadなし、headerのseqで応答）
+* **PINGは常にACK**（`FLAG_ACK_REQ` に依存しない）
+
+運用メモ：
+* RPi は **modeに関わらず** PING を送る（リンク監視目的）
+
+**v2 で nonce を入れるなら** `PING_EX` を追加する。
 
 ---
 
-### 3.5.4 `KILL` / `CLEAR_KILL` payload なし
+### 3.5.4 `KILL` payload なし
 
 * KILL受理：`kill_latched=true` にする（必ずラッチ）
-* CLEAR_KILL受理：`kill_latched=false` にする（ただし、AUTO_ACTIVEやTTL等の停止条件が残っていれば停止のまま）
+* 解除は現状プロトコルでは行わない（安全のためローカル操作/再起動）
 
 ---
 
-### 3.5.5 `ACK` (type=0x81) payload（4 bytes）
+### 3.5.5 `ACK` (type=0x80) payload なし
 
-| フィールド    | 型 | 説明          |
-| ----------- | -: | ------------ |
-| `type_echo` | u8 | 受理した元type |
-| `seq_echo`  | u8 | 受理した元seq  |
-| `code`      | u8 | 結果コード     |
-| `detail`    | u8 | 予約          |
-
-**code 定義**
-
-* 0: OK
-* 1: CRC_FAIL（※CRC failは通常ACKしない。統計にしたければ別途）
-* 2: BAD_VER
-* 3: BAD_LEN
-* 4: UNSUPPORTED_TYPE
-* 5: NOT_ALLOWED（例：AUTO_ACTIVE中に特定操作を拒否、など拡張用）
+* **ACK要求**：request側が `FLAG_ACK_REQ` を立てる
+* **ACK応答**：`type=ACK`、`flags=0`、payloadなし
+* headerの `seq` は受信フレームの `seq` と一致させる
+* payloadは将来拡張用（現状は空）
 
 ---
 
-### 3.5.6 `STATUS` (type=0x82) payload（10 bytes）
+### 3.5.6 `STATUS` (type=0x11) payload（10 bytes）
 
 | フィールド         |  型 | 単位       | 説明                          |
 | ---------------- | --: | -------- | ---------------------------------- |
-| `seq_applied`    |  u8 | -        | 最後に適用した `AUTO_SETPOINT.seq`    |
+| `seq_applied`    |  u8 | -        | 最後に適用した `DRIVE.seq`（下位8bit） |
 | `auto_active`    |  u8 | -        | 1/0                                |
 | `fault`          | u16 | bitfield | 故障/停止要因                        |
 | `speed_now_mm_s` | i16 | mm/s     | 現在速度（暫定は指令値でも良い）       |
 | `steer_now_cdeg` | i16 | 0.01°    | 現在舵角（暫定は指令値でも良い）        |
-| `age_ms`         | u16 | ms       | 最終AUTO_SETPOINT受理からの経過       |
+| `age_ms`         | u16 | ms       | 最終DRIVE受理からの経過       |
 
 ※ `seq_applied` は `seq` の下位8bitを載せる運用でも可。
 
@@ -203,16 +209,30 @@
 * bit0: KILL_LATCHED
 * bit1: HB_TIMEOUT
 * bit2: TTL_EXPIRED
-* bit3: AUTO_INACTIVE（AUTO_ACTIVE=falseなのにAUTO_SETPOINTが来ている等、運用監視）
+* bit3: AUTO_INACTIVE（MODE=MANUALなのにDRIVEが来ている等、運用監視）
 * bit4..15: 予約
+
+---
+
+### 3.5.7 `LOG` (type=0x10) payload（可変長）
+
+| フィールド |  型 | 説明 |
+| ------ | -: | ---- |
+| `level` | u8 | ログレベル（0=TRACE..5=FATAL） |
+| `text`  | u8[N] | UTF-8テキスト |
+
+* payloadの先頭1 byteが `level`、残りがテキスト
+* テキストは **NUL終端しない**（`len - 1` バイトが本文）
+* テキストは空でも可
+* 構造化ログは別type（例: `LOG_EVENT`）で拡張する
 
 ---
 
 ## 3.6 タイムアウト・周波数（推奨値）
 
-* RPi→ESP32 `AUTO_SETPOINT`：50〜200Hz
+* RPi→ESP32 `DRIVE`：50〜200Hz
 * `ttl_ms`：制御周期の2〜3倍（例：送信100Hzなら ttl=30〜50ms）
-* `HEARTBEAT`：10〜50Hz
+* `PING`：10〜50Hz
 * `hb_timeout_ms`（ESP32内部）：200ms（暫定）
 * `STATUS`：20Hz（必要なときだけ）
 
@@ -223,12 +243,12 @@
 制御ループ（例：200Hz = 5ms周期）で必ずこの順で評価します。
 
 1. **KILL**：`kill_latched==true` → `Engine.stop()` + `Steer.center()`（または安全角）
-2. **AUTO_ACTIVE==true のとき**：
+2. **mode==AUTO のとき**：
 
    * `hb_timeout`（HB使うなら）→ STOP
    * `ttl_expired` → STOP
-   * 有効なら `AUTO_SETPOINT` を適用
-3. **AUTO_ACTIVE==false のとき**：
+   * 有効なら `DRIVE` を適用
+3. **mode==MANUAL のとき**：
 
    * Bluetooth入力を適用（ただし KILL 優先）
 
@@ -242,14 +262,12 @@
 
 ## 5.1 追加するコンポーネント（提案）
 
-* `comm/Protocol.h`：ヘッダ構造体、type enum、payload struct
-* `comm/CobsFramer.*`：0x00区切り受信、COBS decode/encode
-* `comm/Crc16.*`：CRC16-CCITT
-* `comm/Dispatcher.*`：type→handler 登録（関数ポインタ or インタフェース）
-* `comm/handlers/*.cpp`：AUTO_SETPOINT/AUTO_MODE/HEARTBEAT/KILL/CLEAR_KILL
-* `control/SafetyState.*`：kill_latched, auto_active, timers, fault
-* `control/AutoCommandStore.*`：最新setpoint、受理時刻、seq 等
-* `control/InputSource.*`：BT/UART の入力を統一して Drive に渡す
+* `comm/mc_proto.*`：ヘッダ構造体、type enum、COBS/CRC/reader/writer
+* `comm/registry.*`：type→handler 登録（登録型ディスパッチ）
+* `comm/handlers/*.cpp`：DRIVE/MODE_SET/PING/KILL
+* `comm/registry.h`：ControlState（mode/killed/targets/timers）
+* `control/ControllerInput.*`：BT入力
+* `hardware/Drive.*`：実際の駆動適用
 
 ## 5.2 “ポリモーフィズム”
 
@@ -268,7 +286,7 @@
 以下は “仕様書を実装に落とすとこうなる” という最小骨格です。
 （あなたのリポジトリ構造に合わせたパスは例です。実際に配置する際は `src/comm/` などに入れてください。）
 
-## 6.1 Protocol 定義（例：`src/comm/Protocol.h`）
+## 6.1 Protocol 定義（例：`src/comm/mc_proto.h`）
 
 ```cpp
 #pragma once
@@ -280,13 +298,13 @@ static constexpr uint8_t VER = 1;
 static constexpr size_t MAX_PAYLOAD = 64; // 必要に応じて
 
 enum class Type : uint8_t {
-  AUTO_SETPOINT = 0x01,
-  AUTO_MODE     = 0x02,
-  HEARTBEAT     = 0x03,
-  KILL          = 0x04,
-  CLEAR_KILL    = 0x05,
-  ACK           = 0x81,
-  STATUS        = 0x82,
+  DRIVE    = 0x01,
+  KILL     = 0x02,
+  MODE_SET = 0x03,
+  PING     = 0x04,
+  LOG      = 0x10,
+  STATUS   = 0x11,
+  ACK      = 0x80,
 };
 
 enum : uint8_t {
@@ -303,23 +321,20 @@ struct Header {
   uint16_t len_le;  // little-endian on wire
 };
 
-struct AutoModePayload {
-  uint8_t enable; // 1 or 0
-  uint8_t reason; // reserved
+struct ModeSetPayload {
+  uint8_t mode;   // 0=MANUAL, 1=AUTO
 };
 
-struct AutoSetpointPayload {
+struct DrivePayload {
   int16_t  steer_cdeg;   // 0.01 deg
   int16_t  speed_mm_s;   // mm/s
   uint16_t ttl_ms;
   uint16_t distance_mm;  // 0なら無視
 };
 
-struct AckPayload {
-  uint8_t type_echo;
-  uint8_t seq_echo;
-  uint8_t code;
-  uint8_t detail;
+struct LogPayload {
+  uint8_t level;
+  // uint8_t text[]; // UTF-8 text follows (variable length)
 };
 
 struct StatusPayload {
@@ -365,20 +380,20 @@ struct SafetyState {
 };
 ```
 
-## 6.3 AutoCommandStore（例：`src/control/AutoCommandStore.h`）
+## 6.3 DriveCommandStore（例：`src/control/DriveCommandStore.h`）
 
 ```cpp
 #pragma once
 #include <stdint.h>
-#include "../comm/Protocol.h"
+#include "../comm/mc_proto.h"
 
-struct AutoCommandStore {
+struct DriveCommandStore {
   bool     has = false;
-  uint8_t  seq = 0;
-  proto::AutoSetpointPayload sp{};
+  uint16_t seq = 0;
+  proto::DrivePayload sp{};
   uint32_t rx_ms = 0;
 
-  void set(uint8_t s, const proto::AutoSetpointPayload& p, uint32_t now_ms) {
+  void set(uint16_t s, const proto::DrivePayload& p, uint32_t now_ms) {
     has = true;
     seq = s;
     sp = p;
@@ -397,7 +412,7 @@ struct AutoCommandStore {
 };
 ```
 
-## 6.4 Dispatcher（例：`src/comm/Dispatcher.h`）
+## 6.4 Dispatcher（例：`src/comm/registry.h`）
 
 ```cpp
 #pragma once
@@ -426,31 +441,31 @@ struct Dispatcher {
 };
 ```
 
-## 6.5 Context（例：`src/comm/Context.h`）
+## 6.5 Context（例：`src/comm/registry.h`）
 
 ```cpp
 #pragma once
 #include "../hardware/Drive.h"
 #include "../control/SafetyState.h"
-#include "../control/AutoCommandStore.h"
+#include "../control/DriveCommandStore.h"
 
 struct TxPort {
   // ACK/STATUS を返したくなった時に実装
-  void sendAck(uint8_t type_echo, uint8_t seq_echo, uint8_t code);
+  void sendAck(uint16_t seq);
 };
 
 struct Context {
   Drive& drive;
   SafetyState& safety;
-  AutoCommandStore& autoCmd;
+  DriveCommandStore& autoCmd;
   TxPort& tx;
 };
 ```
 
-## 6.6 ハンドラ例：AUTO_MODE（例：`src/comm/handlers/AutoModeHandler.cpp`）
+## 6.6 ハンドラ例：MODE_SET（例：`src/comm/handlers/ModeSetHandler.cpp`）
 
 ```cpp
-#include "../Protocol.h"
+#include "../mc_proto.h"
 #include "../Dispatcher.h"
 #include "../Context.h"
 #include <string.h>
@@ -458,26 +473,33 @@ struct Context {
 static inline const proto::Header* hdr(const FrameView& f) {
   return reinterpret_cast<const proto::Header*>(f.data);
 }
+static inline uint16_t rd16_le(uint16_t v_le) {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  return v_le;
+#else
+  return (uint16_t)((v_le >> 8) | (v_le << 8));
+#endif
+}
 
-bool handleAutoMode(const FrameView& f, Context& ctx) {
+bool handleModeSet(const FrameView& f, Context& ctx) {
   const auto* h = hdr(f);
-  if (h->len != sizeof(proto::AutoModePayload)) {
-    ctx.tx.sendAck(h->type, h->seq, 3); // BAD_LEN
+  const uint16_t len = rd16_le(h->len_le);
+  if (len < 1) {
     return true;
   }
-  proto::AutoModePayload p{};
-  memcpy(&p, f.data + sizeof(proto::Header), sizeof(p));
+  proto::ModeSetPayload p{};
+  const size_t copy_len = (len >= sizeof(p) ? sizeof(p) : 1);
+  memcpy(&p, f.data + sizeof(proto::Header), copy_len);
 
-  ctx.safety.auto_active = (p.enable != 0);
-  ctx.tx.sendAck(h->type, h->seq, 0);
+  ctx.safety.auto_active = (p.mode != 0);
   return true;
 }
 ```
 
-## 6.7 ハンドラ例：AUTO_SETPOINT（例：`src/comm/handlers/AutoSetpointHandler.cpp`）
+## 6.7 ハンドラ例：DRIVE（例：`src/comm/handlers/DriveHandler.cpp`）
 
 ```cpp
-#include "../Protocol.h"
+#include "../mc_proto.h"
 #include "../Dispatcher.h"
 #include "../Context.h"
 #include "../../lib/common/Time.h"
@@ -486,60 +508,55 @@ bool handleAutoMode(const FrameView& f, Context& ctx) {
 static inline const proto::Header* hdr(const FrameView& f) {
   return reinterpret_cast<const proto::Header*>(f.data);
 }
+static inline uint16_t rd16_le(uint16_t v_le) {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  return v_le;
+#else
+  return (uint16_t)((v_le >> 8) | (v_le << 8));
+#endif
+}
 
-bool handleAutoSetpoint(const FrameView& f, Context& ctx) {
+bool handleDrive(const FrameView& f, Context& ctx) {
   const auto* h = hdr(f);
-  if (h->len != sizeof(proto::AutoSetpointPayload)) {
-    ctx.tx.sendAck(h->type, h->seq, 3); // BAD_LEN
-    return true;
-  }
-  if (!ctx.safety.auto_active) {
-    // 自律が有効でないのに来た：受理するか破棄するか。仕様としては破棄推奨。
-    ctx.tx.sendAck(h->type, h->seq, 5); // NOT_ALLOWED
+  const uint16_t len = rd16_le(h->len_le);
+  if (len != sizeof(proto::DrivePayload)) {
     return true;
   }
 
-  proto::AutoSetpointPayload p{};
+  proto::DrivePayload p{};
   memcpy(&p, f.data + sizeof(proto::Header), sizeof(p));
 
   const uint32_t now = mc::Time::ms();
-  ctx.autoCmd.set(h->seq, p, now);
-
-  ctx.tx.sendAck(h->type, h->seq, 0);
+  ctx.autoCmd.set(rd16_le(h->seq_le), p, now);
   return true;
 }
 ```
 
-## 6.8 ハンドラ例：KILL/CLEAR_KILL（例：`src/comm/handlers/KillHandler.cpp`）
+## 6.8 ハンドラ例：KILL（例：`src/comm/handlers/KillHandler.cpp`）
 
 ```cpp
-#include "../Protocol.h"
+#include "../mc_proto.h"
 #include "../Dispatcher.h"
 #include "../Context.h"
 
 static inline const proto::Header* hdr(const FrameView& f) {
   return reinterpret_cast<const proto::Header*>(f.data);
 }
+static inline uint16_t rd16_le(uint16_t v_le) {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  return v_le;
+#else
+  return (uint16_t)((v_le >> 8) | (v_le << 8));
+#endif
+}
 
 bool handleKill(const FrameView& f, Context& ctx) {
   const auto* h = hdr(f);
-  if (h->len != 0) {
-    ctx.tx.sendAck(h->type, h->seq, 3);
+  const uint16_t len = rd16_le(h->len_le);
+  if (len != 0) {
     return true;
   }
   ctx.safety.kill_latched = true;
-  ctx.tx.sendAck(h->type, h->seq, 0);
-  return true;
-}
-
-bool handleClearKill(const FrameView& f, Context& ctx) {
-  const auto* h = hdr(f);
-  if (h->len != 0) {
-    ctx.tx.sendAck(h->type, h->seq, 3);
-    return true;
-  }
-  ctx.safety.kill_latched = false;
-  ctx.tx.sendAck(h->type, h->seq, 0);
   return true;
 }
 ```
@@ -549,7 +566,7 @@ bool handleClearKill(const FrameView& f, Context& ctx) {
 あなたの `main.cpp` は、次の3ブロックに整理します：
 
 1. `uart_rx_poll()`：Serial2 から受信し、フレーム抽出→ディスパッチ
-2. `bt_poll()`：Bluepad32 で pad 更新（ただし AUTO_ACTIVE なら適用しない。KILLボタンだけは許可）
+2. `bt_poll()`：Bluepad32 で pad 更新（ただし mode=AUTO なら適用しない。KILLボタンだけは許可）
 3. `apply_control()`：安全優先順位で Drive に反映→ `drive.control()`
 
 （COBSフレーマやCRC実装は長くなるのでここでは割愛しましたが、仕様は上記の通りです。）
@@ -560,7 +577,7 @@ bool handleClearKill(const FrameView& f, Context& ctx) {
 
 ## 7.1 自律中は手動無視（ただしKILLは許可）
 
-* `AUTO_ACTIVE==true`：
+* `mode==AUTO`：
 
   * `pad.update()` はしてもよい（接続維持・状態確認）
   * 走行コマンド（steer/speed）は **適用しない**
@@ -568,7 +585,7 @@ bool handleClearKill(const FrameView& f, Context& ctx) {
 
 ## 7.2 自律でないときは手動操作OK
 
-* `AUTO_ACTIVE==false`：
+* `mode==MANUAL`：
 
   * padから `Drive.setSpeed()`/`Drive.setAngle()` を更新して良い
   * `Drive` の timeout は手動でも更新される（安全停止）
@@ -580,7 +597,7 @@ bool handleClearKill(const FrameView& f, Context& ctx) {
 以下は仕様書として固定してください。そうしないと“運用が揺れて事故る”典型ポイントです。
 
 1. **KILL はラッチ**（必ず止まり続ける）
-2. **KILL 解除は CLEAR_KILL のみ**（AUTO_SETPOINT では解除されない）
+2. **KILL 解除は現状プロトコル外**（ローカル操作/再起動）
 3. **TTL は ESP32 受理時刻基準**（RPi時刻は不要）
-4. **AUTO_ACTIVE を明示切替**（AUTO_MODE enable/disable）
-5. **AUTO_ACTIVE 中は手動入力を無視**（KILL以外は無視）
+4. **MODE を明示切替**（MODE_SET で切替）
+5. **mode=AUTO 中は手動入力を無視**（KILL以外は無視）
