@@ -1,6 +1,6 @@
 #include "../../log/AsyncLogger.h"
-#include "../Ack.h"
 #include "../registry.h"
+#include <mc/proto/Ack.hpp>
 
 namespace {
 
@@ -33,8 +33,7 @@ public:
 						  (mode == 0 ? "MANUAL" : "AUTO"));
 		}
 		if (f.flags() & mc::proto::FLAG_ACK_REQ) {
-			const uint16_t seq = f.seq();
-			mc::send_ack(ctx, seq);
+			mc::proto::send_ack(ctx.tx, f.seq());
 		}
 		return mc::Result::Ok();
 	}

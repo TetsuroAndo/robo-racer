@@ -2,8 +2,9 @@
 seriald integration test (UART <-> IPC).
 
 @brief
-  Runs seriald against a PTY-backed UART and a UNIX dgram IPC socket, then
-  verifies UART->IPC and IPC->UART forwarding using mc_proto frames.
+  Runs seriald against a PTY-backed UART and a UNIX IPC socket (seqpacket on
+  Linux, dgram on macOS), then verifies UART->IPC and IPC->UART forwarding using
+  mc_proto frames.
 """
 
 import os
@@ -12,6 +13,7 @@ import select
 import socket
 import struct
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -22,6 +24,7 @@ MAGIC = b"MC"
 VER = 1
 
 TYPE_MODE_SET = 0x03
+TYPE_LOG = 0x10
 TYPE_STATUS = 0x11
 
 FLAG_ACK_REQ = 1 << 0
@@ -143,8 +146,9 @@ def read_frame_from_fd(fd: int, timeout_s: float) -> bytes:
 def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
     """
     @brief
-      IPC(dgram) -> UART: send MODE_SET and verify UART receives same frame.
-      UART -> IPC(dgram): send STATUS and verify IPC receives same frame.
+      IPC -> UART: send MODE_SET and verify UART receives same frame.
+      UART -> IPC: send STATUS and verify IPC receives same frame.
+      UART -> seriald logger: send LOG and verify log file contains message.
     """
     repo_root = Path(__file__).resolve().parents[3]
     seriald_dir = repo_root / "rpi/apps/seriald"
@@ -162,9 +166,7 @@ def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
         "-I",
         str(seriald_dir / "src"),
         "-I",
-        str(repo_root / "rpi/lib/mc_proto/include"),
-        "-I",
-        str(repo_root / "shared/proto"),
+        str(repo_root / "shared/proto/include"),
         "-I",
         str(repo_root / "rpi/lib/mc_ipc/include"),
         "-I",
@@ -175,7 +177,7 @@ def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
         str(seriald_dir / "src/async_logger.cpp"),
         str(seriald_dir / "src/sink_stdout.cpp"),
         str(seriald_dir / "src/sink_file.cpp"),
-        str(repo_root / "rpi/lib/mc_proto/src/mcproto.cpp"),
+        str(repo_root / "shared/proto/src/mcproto.cpp"),
         str(repo_root / "rpi/lib/mc_ipc/src/UdsSeqPacket.cpp"),
         str(repo_root / "rpi/lib/mc_serial/src/Uart.cpp"),
         str(repo_root / "rpi/lib/mc_core/src/Log.cpp"),
@@ -219,18 +221,21 @@ def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
         except FileNotFoundError:
             pass
         uds = None
+        use_dgram = sys.platform == "darwin"
+        sock_type = socket.SOCK_DGRAM if use_dgram else socket.SOCK_SEQPACKET
+        client_path = tmp_path / "seriald_client.sock"
         last_err = ""
         while time.time() < deadline:
             if proc.poll() is not None:
                 break
             try:
-                uds = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-                client_path = Path("/tmp/seriald_client.sock")
-                try:
-                    client_path.unlink()
-                except FileNotFoundError:
-                    pass
-                uds.bind(str(client_path))
+                uds = socket.socket(socket.AF_UNIX, sock_type)
+                if use_dgram:
+                    try:
+                        client_path.unlink()
+                    except FileNotFoundError:
+                        pass
+                    uds.bind(str(client_path))
                 uds.connect(str(sock_path))
                 last_err = ""
                 break
@@ -261,8 +266,15 @@ def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
         # IPC -> UART (MODE_SET)
         mode_payload = bytes([1])
         mode_frame = build_packet(TYPE_MODE_SET, 0x10, mode_payload, FLAG_ACK_REQ)
-        print("[INFO] send IPC->UART MODE_SET",
-              {"type": TYPE_MODE_SET, "seq": 0x10, "flags": FLAG_ACK_REQ, "payload": mode_payload})
+        print(
+            "[INFO] send IPC->UART MODE_SET",
+            {
+                "type": TYPE_MODE_SET,
+                "seq": 0x10,
+                "flags": FLAG_ACK_REQ,
+                "payload": mode_payload,
+            },
+        )
         uds.send(mode_frame)
 
         rx_uart = read_frame_from_fd(master_fd, 1.0)
@@ -272,10 +284,14 @@ def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
         print("[INFO] uart decoded:", dec)
         assert dec is not None
         ptype, flags, seq, payload = dec
-        print("[EXPECT] uart type/flags/seq/payload:",
-              TYPE_MODE_SET, FLAG_ACK_REQ, 0x10, mode_payload)
-        print("[ACTUAL] uart type/flags/seq/payload:",
-              ptype, flags, seq, payload)
+        print(
+            "[EXPECT] uart type/flags/seq/payload:",
+            TYPE_MODE_SET,
+            FLAG_ACK_REQ,
+            0x10,
+            mode_payload,
+        )
+        print("[ACTUAL] uart type/flags/seq/payload:", ptype, flags, seq, payload)
         assert ptype == TYPE_MODE_SET
         assert flags == FLAG_ACK_REQ
         assert seq == 0x10
@@ -284,8 +300,10 @@ def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
         # UART -> IPC (STATUS)
         status_payload = struct.pack("<BBHhhH", 0x22, 1, 0x0002, -10, 25, 100)
         status_frame = build_packet(TYPE_STATUS, 0x33, status_payload, 0)
-        print("[INFO] send UART->IPC STATUS",
-              {"type": TYPE_STATUS, "seq": 0x33, "flags": 0, "payload": status_payload})
+        print(
+            "[INFO] send UART->IPC STATUS",
+            {"type": TYPE_STATUS, "seq": 0x33, "flags": 0, "payload": status_payload},
+        )
         os.write(master_fd, status_frame)
 
         r, _, _ = select.select([uds], [], [], 1.0)
@@ -297,15 +315,46 @@ def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
         print("[INFO] ipc decoded:", dec2)
         assert dec2 is not None
         ptype2, flags2, seq2, payload2 = dec2
-        print("[EXPECT] ipc type/flags/seq/payload:",
-              TYPE_STATUS, 0, 0x33, status_payload)
-        print("[ACTUAL] ipc type/flags/seq/payload:",
-              ptype2, flags2, seq2, payload2)
+        print(
+            "[EXPECT] ipc type/flags/seq/payload:", TYPE_STATUS, 0, 0x33, status_payload
+        )
+        print("[ACTUAL] ipc type/flags/seq/payload:", ptype2, flags2, seq2, payload2)
         assert ptype2 == TYPE_STATUS
         assert flags2 == 0
         assert seq2 == 0x33
         assert payload2 == status_payload
+
+        # UART -> LOG (LOG payload)
+        log_text = "test-log-msg"
+        log_payload = bytes([2]) + log_text.encode("utf-8")
+        log_frame = build_packet(TYPE_LOG, 0x44, log_payload, 0)
+        print(
+            "[INFO] send UART->LOG",
+            {"type": TYPE_LOG, "seq": 0x44, "flags": 0, "payload": log_payload},
+        )
+        os.write(master_fd, log_frame)
+
+        # wait log file to contain message
+        deadline = time.time() + 2.0
+        found = False
+        while time.time() < deadline:
+            if log_path.exists():
+                txt = log_path.read_text(errors="replace")
+                if log_text in txt:
+                    found = True
+                    break
+            time.sleep(0.05)
+        print("[EXPECT] log contains:", log_text)
+        print("[ACTUAL] log found:", found)
+        assert found
     finally:
+        if "uds" in locals() and uds is not None:
+            uds.close()
+        if "client_path" in locals() and client_path.exists():
+            try:
+                client_path.unlink()
+            except OSError:
+                pass
         proc.terminate()
         try:
             proc.wait(timeout=2.0)

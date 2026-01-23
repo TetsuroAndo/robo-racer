@@ -1,6 +1,6 @@
 #include "../../log/AsyncLogger.h"
-#include "../Ack.h"
 #include "../registry.h"
+#include <mc/proto/Ack.hpp>
 
 namespace {
 
@@ -16,8 +16,7 @@ public:
 			ctx.log->log(mc::LogLevel::WARN, "proto", "RX KILL -> killed=1");
 		}
 		if (f.flags() & mc::proto::FLAG_ACK_REQ) {
-			const uint16_t seq = f.seq();
-			mc::send_ack(ctx, seq);
+			mc::proto::send_ack(ctx.tx, f.seq());
 		}
 		return mc::Result::Ok();
 	}

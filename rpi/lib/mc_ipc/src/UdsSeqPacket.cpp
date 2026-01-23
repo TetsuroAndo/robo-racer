@@ -5,12 +5,21 @@
 #include <errno.h>
 #include <string.h>
 
+#include <atomic>
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 
 namespace mc::ipc {
+
+static std::string make_client_path() {
+	static std::atomic< unsigned int > counter{0};
+	const unsigned int id = counter.fetch_add(1);
+	const int pid = ::getpid();
+	return "/tmp/mc_ipc_client_" + std::to_string(pid) + "_" +
+		   std::to_string(id) + ".sock";
+}
 
 static bool set_nonblock(int fd) {
 	int fl = fcntl(fd, F_GETFL, 0);
@@ -107,6 +116,20 @@ bool UdsClient::connect(const std::string &path) {
 		return false;
 	}
 
+	if (sock_type_ == SOCK_DGRAM) {
+		bound_path_ = make_client_path();
+		::unlink(bound_path_.c_str());
+		sockaddr_un local{};
+		local.sun_family = AF_UNIX;
+		snprintf(local.sun_path, sizeof(local.sun_path), "%s",
+				 bound_path_.c_str());
+		if (::bind(fd_, (sockaddr *)&local, sizeof(local)) != 0) {
+			MC_LOGE("uds", "bind failed: " + std::string(::strerror(errno)));
+			close();
+			return false;
+		}
+	}
+
 	sockaddr_un addr{};
 	addr.sun_family = AF_UNIX;
 	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path.c_str());
@@ -124,6 +147,10 @@ void UdsClient::close() {
 	if (fd_ >= 0) {
 		::close(fd_);
 		fd_ = -1;
+	}
+	if (!bound_path_.empty()) {
+		::unlink(bound_path_.c_str());
+		bound_path_.clear();
 	}
 }
 

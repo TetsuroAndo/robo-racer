@@ -1,0 +1,12 @@
+{
+  "name": "mc_proto_shared",
+  "version": "0.1.0",
+  "description": "Shared mc_proto implementation for firmware and RPi",
+  "keywords": "proto, cobs, crc",
+  "authors": [
+    { "name": "TOYOTA42 team" }
+  ],
+  "license": "MIT",
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"]
+}

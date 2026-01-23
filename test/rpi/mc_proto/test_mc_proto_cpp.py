@@ -6,13 +6,17 @@ import pytest
 
 
 def test_rpi_mc_proto_cpp(tmp_path: Path):
+    """
+    @brief
+      Build and run RPi mc_proto roundtrip tests on host.
+    """
     if shutil.which("g++") is None:
         pytest.skip("g++ not available")
 
     repo_root = Path(__file__).resolve().parents[3]
     test_cpp = repo_root / "test/rpi/mc_proto/cpp/proto_tests.cpp"
     proto_src = [
-        repo_root / "rpi/lib/mc_proto/src/mcproto.cpp",
+        repo_root / "shared/proto/src/mcproto.cpp",
     ]
 
     output = tmp_path / "mc_proto_tests"
@@ -24,9 +28,7 @@ def test_rpi_mc_proto_cpp(tmp_path: Path):
         "-Wpedantic",
         "-O2",
         "-I",
-        str(repo_root / "rpi/lib/mc_proto/include"),
-        "-I",
-        str(repo_root / "shared/proto"),
+        str(repo_root / "shared/proto/include"),
         str(test_cpp),
         *[str(path) for path in proto_src],
         "-o",
@@ -34,7 +36,9 @@ def test_rpi_mc_proto_cpp(tmp_path: Path):
     ]
 
     build = subprocess.run(cmd, capture_output=True, text=True)
+    print("\n[INFO] build cmd:", " ".join(cmd))
     assert build.returncode == 0, build.stdout + build.stderr
 
     run = subprocess.run([str(output)], capture_output=False, text=True)
+    print("\n[INFO] run bin:", output)
     assert run.returncode == 0, run.stdout + run.stderr

@@ -1,7 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <stdint.h>
-#include "../comm/mc_proto.h"
+#include <mc/proto/Proto.hpp>
 #include "../comm/UartTx.h"
 
 namespace mc {

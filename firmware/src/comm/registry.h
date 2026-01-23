@@ -1,7 +1,9 @@
 #pragma once
-#include <stdint.h>
-#include "mc_proto.h"
 #include "../../lib/common/Result.h"
+#include <mc/proto/Proto.hpp>
+#include <stdint.h>
+
+class HardwareSerial;
 
 namespace mc {
 

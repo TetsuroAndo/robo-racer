@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <unity.h>
 
-#include "comm/mc_proto.h"
+#include <mc/proto/Proto.hpp>
 
 static void test_crc16_vector() {
 	const uint8_t data[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};

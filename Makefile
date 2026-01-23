@@ -107,6 +107,7 @@ $(LOG_DIR):
 .PHONY: test activate
 
 test: $(PYTHON_LOCAL)
+	$(MAKE) all
 	$(VENV)/bin/pytest -svv
 
 activate: $(PYTHON_LOCAL)

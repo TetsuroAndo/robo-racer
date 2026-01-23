@@ -8,14 +8,14 @@ SRC := \
   src/async_logger.cpp \
   src/sink_stdout.cpp \
   src/sink_file.cpp \
-  ../../lib/mc_proto/src/mcproto.cpp \
+  ../../shared/proto/src/mcproto.cpp \
   ../../lib/mc_ipc/src/UdsSeqPacket.cpp \
   ../../lib/mc_serial/src/Uart.cpp
 
 all: $(BIN)
 
 $(BIN): $(SRC)
-	$(CXX) $(CXXFLAGS) -Iinclude -Isrc -I../../lib/mc_proto/include -I../../lib/mc_ipc/include -I../../lib/mc_serial/include -I../../lib/mc_core/include -o $@ $(SRC) $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -Iinclude -Isrc -I../../shared/proto/include -I../../shared/proto -I../../lib/mc_ipc/include -I../../lib/mc_serial/include -I../../lib/mc_core/include -o $@ $(SRC) $(LDFLAGS)
 
 clean:
 	rm -f $(BIN)

@@ -3,11 +3,17 @@
 #include <sys/socket.h>
 #include <vector>
 
+#ifdef __APPLE__
+#define MC_IPC_DEFAULT_SOCK_TYPE SOCK_DGRAM
+#else
+#define MC_IPC_DEFAULT_SOCK_TYPE SOCK_SEQPACKET
+#endif
+
 namespace mc::ipc {
 
 class UdsServer {
 public:
-	explicit UdsServer(int sock_type = SOCK_SEQPACKET)
+	explicit UdsServer(int sock_type = MC_IPC_DEFAULT_SOCK_TYPE)
 		: sock_type_(sock_type) {}
 	~UdsServer();
 
@@ -25,14 +31,14 @@ public:
 
 private:
 	int fd_{-1};
-	int sock_type_{SOCK_SEQPACKET};
+	int sock_type_{MC_IPC_DEFAULT_SOCK_TYPE};
 	std::string path_;
 	std::vector< int > clients_;
 };
 
 class UdsClient {
 public:
-	explicit UdsClient(int sock_type = SOCK_SEQPACKET)
+	explicit UdsClient(int sock_type = MC_IPC_DEFAULT_SOCK_TYPE)
 		: sock_type_(sock_type) {}
 	~UdsClient();
 
@@ -43,7 +49,8 @@ public:
 
 private:
 	int fd_{-1};
-	int sock_type_{SOCK_SEQPACKET};
+	int sock_type_{MC_IPC_DEFAULT_SOCK_TYPE};
+	std::string bound_path_;
 };
 
 } // namespace mc::ipc

@@ -1,27 +1,36 @@
 #pragma once
 
+#ifdef ARDUINO
+#include <Arduino.h>
+#else
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#endif
 
 #include "mc_proto.h"
 
 namespace mc::proto {
 
 static constexpr size_t MAX_PAYLOAD = 64;
-
 static constexpr size_t MAX_FRAME_DECODED = sizeof(Header) + MAX_PAYLOAD + 2;
 static constexpr size_t MAX_FRAME_ENCODED =
 	MAX_FRAME_DECODED + (MAX_FRAME_DECODED / 254) + 4;
 
 static inline uint16_t to_le16(uint16_t v) {
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) &&             \
+	(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 	return v;
-#else
+#elif defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) &&              \
+	(__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
 	return (uint16_t)((v >> 8) | (v << 8));
+#else
+	return v;
 #endif
 }
 static inline uint16_t from_le16(uint16_t v) { return to_le16(v); }
+static inline uint16_t host_to_le16(uint16_t v) { return to_le16(v); }
+static inline uint16_t le16_to_host(uint16_t v) { return from_le16(v); }
 
 class Frame {
 public:
@@ -37,17 +46,18 @@ public:
 private:
 	Header _hdr{};
 	friend class PacketReader;
-	friend bool
-	decode_one(const uint8_t *enc, size_t enc_len, Frame &out,
-			   std::array< uint8_t, MAX_FRAME_DECODED > &decoded_buf);
+	friend bool decode_one(const uint8_t *enc, size_t enc_len, Frame &out,
+						   uint8_t *decoded_buf, size_t decoded_cap);
 };
 
-uint16_t crc16_ccitt(const uint8_t *data, size_t len);
+using FrameView = Frame;
 
+uint16_t crc16_ccitt(const uint8_t *data, size_t len);
 size_t cobs_encode(const uint8_t *in, size_t len, uint8_t *out, size_t out_cap);
 size_t cobs_decode(const uint8_t *in, size_t len, uint8_t *out, size_t out_cap);
 
-struct PacketWriter {
+class PacketWriter {
+public:
 	static bool build(uint8_t *out, size_t out_cap, size_t &out_len, Type type,
 					  uint8_t flags, uint16_t seq, const uint8_t *payload,
 					  uint16_t payload_len);
@@ -68,9 +78,9 @@ public:
 private:
 	bool decodeFrame_();
 
-	std::array< uint8_t, MAX_FRAME_ENCODED > _raw;
+	uint8_t _raw[MAX_FRAME_ENCODED];
 	size_t _rawLen;
-	std::array< uint8_t, MAX_FRAME_DECODED > _decoded;
+	uint8_t _decoded[MAX_FRAME_DECODED];
 	size_t _decodedLen;
 	Frame _frame;
 	bool _hasFrame;
@@ -80,6 +90,15 @@ private:
 };
 
 bool decode_one(const uint8_t *enc, size_t enc_len, Frame &out,
-				std::array< uint8_t, MAX_FRAME_DECODED > &decoded_buf);
+				uint8_t *decoded_buf, size_t decoded_cap);
+
+#ifndef ARDUINO
+template < size_t N >
+inline bool decode_one(const uint8_t *enc, size_t enc_len, Frame &out,
+					   std::array< uint8_t, N > &decoded_buf) {
+	return decode_one(enc, enc_len, out, decoded_buf.data(),
+					  decoded_buf.size());
+}
+#endif
 
 } // namespace mc::proto

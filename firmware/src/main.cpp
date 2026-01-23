@@ -6,9 +6,9 @@
 #include "../lib/common/Math.h"
 #include "../lib/common/Time.h"
 #include "comm/UartTx.h"
-#include "comm/mc_proto.h"
 #include "comm/registry.h"
 #include "log/AsyncLogger.h"
+#include <mc/proto/Proto.hpp>
 
 static constexpr int SERIAL_RXD = 16;
 static constexpr int SERIAL_TXD = 17;
