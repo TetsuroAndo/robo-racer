@@ -120,11 +120,13 @@
 | magic  | 2    | 固定 `0x4D 0x43` ("MC") |
 | ver    | 1    | プロトコル版（例: 1） |
 | type   | 1    | メッセージ種別 |
-| flags  | 1    | bitfield（ACK要求など） |
+| flags  | 1    | bit0: ACK_REQ（要求側がACKを要求） |
 | seq    | 2    | 送信側連番（ロス/順序判定） |
 | len    | 2    | payload長 |
 | payload| N    | typeごとの構造体 |
 | crc16  | 2    | CRC16-CCITT-FALSE |
+
+※ v1では `flags` の bit0（ACK_REQ）のみ使用。その他は予約（0固定）。
 
 ---
 
@@ -134,6 +136,7 @@
 
 - `0x10` LOG: テキストログ（level + text）
 - `0x11` STATUS: 状態（速度/ステア/fault/age）
+- `0x80` ACK: ACK応答（payloadなし）
 
 ### RPi -> ESP32
 
@@ -152,6 +155,23 @@
 | text  | N    | UTF-8 テキスト（可変長） |
 
 ※ 将来的に構造化ログへ拡張する場合は別typeで追加する。
+
+## STATUS payload（状態通知）
+
+| Field | Size | 説明 |
+| ----- | ---: | ---- |
+| seq_applied | 1 | 最後に適用した `DRIVE.seq`（下位8bit） |
+| auto_active | 1 | 1=自律有効 |
+| faults | 2 | bitfield（KILL/HB_TIMEOUT/TTL_EXPIRED/AUTO_INACTIVE） |
+| speed_mm_s | 2 | 現在速度（i16 LE） |
+| steer_cdeg | 2 | 現在ステア（i16 LE） |
+| age_ms | 2 | 最終コマンドからの経過（u16 LE, 0xFFFFで飽和） |
+
+## ACK（応答）
+
+- 受信側は `flags & ACK_REQ` のとき **ACKを返す**。
+- `ACK` は `type=0x80`、`payload_len=0`、`seq` は要求側の `seq` をそのまま返す。
+- **PINGは常にACK**（`ACK_REQ` に依存しない）。
 
 ---
 

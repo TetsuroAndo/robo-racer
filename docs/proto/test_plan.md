@@ -17,7 +17,7 @@
   - `magic[2] = 'M','C'`
   - `ver = 1`
   - `type = u8`
-  - `flags = u8`（`ACK_REQ=0x01`, `ACK=0x02`, `ERR=0x04`）
+  - `flags = u8`（`ACK_REQ=0x01` のみ、他はv1未使用）
   - `seq = u16 LE`
   - `len = u16 LE`
 - CRC16-CCITT（poly 0x1021, init 0xFFFF）を `Header + payload` に対して計算
@@ -31,7 +31,7 @@
 - ESP32 -> RPi
   - `0x10 LOG`（len>=1）
   - `0x11 STATUS`（len=10）
-  - `0x80 ACK`（len=0、FLAG_ACK付与）
+  - `0x80 ACK`（len=0、flags=0、seqをエコー）
 
 ### 2.3 payload 定義
 - DRIVE（8 bytes）
@@ -82,8 +82,8 @@
 - encoded長オーバー
 
 ### 4.2 ヘッダ/flags
-- FLAG_ACK_REQ の有無（現行は挙動に影響なし）
-- ACKフレームは FLAG_ACK が立っていること
+- FLAG_ACK_REQ 有効時に ACK を返すこと（PINGは常にACK）
+- ACKフレームは `payload_len=0` かつ `flags=0` であること
 - 未対応type受信時にクラッシュしないこと
 
 ### 4.3 RPi -> ESP32 type
@@ -122,7 +122,8 @@
 - level範囲のクランプ（0..5）
 
 **ACK**
-- FLAG_ACKが立つ
+- payload_len=0
+- flags=0
 - seqが要求側と一致
 
 ## 5. ESP32側テスト計画

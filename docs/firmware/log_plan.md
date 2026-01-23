@@ -1,113 +1,71 @@
-# LOG/HILS 設計ドキュメント（Plan）
+# LOG 設計ドキュメント（mc_proto LOG v1）
 
-このドキュメントは、ESP32ファームウェアにおけるログ（LOG）の
-設計思想、構成、データフロー、プロトコル仕様をまとめた計画書です。
+このドキュメントは、ESP32 ファームウェアにおけるログ（LOG）の
+設計思想、構成、データフロー、プロトコル仕様をまとめた運用設計書です。
+**wire 上の値は `shared/proto/mc_proto.h` を正とし、本書は運用・設計の補助です。**
 
 ## 目的
 
 - 低遅延の制御ループを阻害しないログ出力を提供する
-- RPi側で再利用できる共通フレーム（COBS+CRC）でログを送る
-- 将来のプロトコル統合（Status/Command）に備えた拡張性を確保する
+- RPi 側で再利用できる共通フレーム（COBS + CRC）でログを送る
+- mc_proto の LOG(0x10) に統合して、仕様の単一正を保つ
 
 ## 設計方針
 
 1. 制御経路の安定性最優先
    - ログは「捨てられても良い副経路」扱い
-   - レベル/トピックで出力量を制御
-2. ログと制御のフレーム統一
-   - `Protocol.h` の `MsgType::Log` を使用
-   - UART/UDPの双方でCOBS+CRCフレームを利用
-3. 拡張に強いプロトコル設計
-   - ログ送出はSinkで拡張できる
+2. フレーム統一
+   - LOG は mc_proto v1 の `Type::LOG(0x10)` を使用
+   - UART 伝送は COBS + CRC16 で再同期性を確保
+3. 実装はシンプルに
+   - `AsyncLogger -> UartTx` の単一経路でベストエフォート
 
-## コンポーネント構成
+## 実装コンポーネント
 
-### ログ
+- `firmware/src/log/AsyncLogger.*`
+  - `LogLevel` とメッセージ文字列を LOG フレームへ変換
+  - 送信キュー満杯時は drop（`dropped()` でカウント）
+- `firmware/src/comm/UartTx.*`
+  - 送信専用キュー（低優先度タスク）
+- `firmware/src/comm/mc_proto.*`
+  - PacketWriter / COBS / CRC16
 
-- `firmware/src/log/Log.h`
-- `firmware/src/log/Log.cpp`
-- `Logger`, `Sink`, `StreamSink`
-- レベル/トピック定義、ログマクロ
-
-### ログ出力拡張
-
-- `firmware/src/log/LogSinks.h`
-- `firmware/src/log/LogSinks.cpp`
-- `ProtocolSink`（UART/COBS+CRC）
-- `UdpSink`（Wi-Fi UDP/COBS+CRC）
-
-### プロトコル
-
-- `firmware/src/comm/protocol/Protocol.h`
-  - `MsgType::Log`, `LogPayloadHeader`
-- `firmware/src/comm/protocol/Codec.h`
-- `firmware/src/comm/protocol/Codec.cpp`
-  - COBSエンコード、CRC16-CCITT
-- `firmware/src/comm/protocol/PacketWriter.h`
-- `firmware/src/comm/protocol/PacketWriter.cpp`
-  - 送信側のパケット組み立て
-
-HILSの設計は `docs/firmware/hils_plan.md` を参照してください。
-
-## データフロー設計
-
-### テキストログ（Serial/BLE）
+## データフロー
 
 ```
-MC_LOGI(...) -> Logger -> StreamSink -> Serial/BLE
+MC_LOGI(...) -> AsyncLogger -> UartTx -> COBS+CRC frame -> UART
 ```
 
-### UARTのCOBS+CRCログ
+## LOG プロトコル仕様（mc_proto v1）
+
+フレーミングは `docs/proto/log_transport.md` を参照。
+ここでは LOG の payload 仕様のみ記す。
 
 ```
-MC_LOGI(...) -> Logger -> ProtocolSink -> COBS+CRC frame -> UART
+type = 0x10 (LOG)
+payload:
+  [0]   level : u8
+  [1..] text  : UTF-8 bytes (NUL終端なし)
 ```
 
-### UDPログ（高頻度用途）
+- `level` は `LogLevel` の 0..5 を使用
+- `text` は `tag + ": " + msg` 形式（`AsyncLogger` 実装）
 
-```
-MC_LOGI(...) -> Logger -> UdpSink -> COBS+CRC frame -> UDP
-```
+## 制約・注意点（現行実装に基づく）
 
-## ログプロトコル仕様（MsgType::Log）
+- payload の最大長は `mc::proto::MAX_PAYLOAD`（64 bytes）
+  - `text` は最大 63 bytes に切り詰められる
+- 送信キューが詰まった場合は **drop** される（制御を止めない）
+- LOG の送信はベストエフォートで、順序/完全性は保証しない
 
-`Protocol.h` のヘッダに `LogPayloadHeader` + message bytes が続きます。
-messageはNUL終端されません（`msg_len` で長さを示します）。
+## 運用（推奨）
 
-```
-Header:
-  u8  version
-  u8  msg_type = 0x90
-  u8  seq
-  u8  flags
-  u16 payload_len
-  u16 crc16_ccitt (header[version..payload] を対象)
+- 重要イベント（KILL/TTL_EXPIRED など）を優先し、DEBUG を抑制する
+- 帯域を占有しないよう **ログ量を制限** する
+  - 例: 1 秒あたりの上限 bytes / 1 ループあたりの上限件数
+  - 上限は `AsyncLogger` 側で制御（将来の拡張ポイント）
 
-LogPayloadHeader:
-  u32 now_ms
-  u8  level
-  u8  topic
-  u16 msg_len
-  u8  msg[msg_len]
-```
+## 参考
 
-フレーミング:
-
-```
-COBS(frame) + 0x00 terminator
-```
-
-UART/UDPとも同一フレーム仕様です。
-
-## 制約・注意点
-
-- ログメッセージは固定長バッファ（128 bytes）で整形される
-- COBSログ/UDPログは最大96文字に切り詰められる
-- `Logger` のSink数は最大3
-- COBSログとテキストログを同じUARTに同時出力すると解析が困難
-
-## 拡張の方向性
-
-- `PacketReader` を追加し、ESP32側の受信も同一プロトコルで統一
-- `MsgType::Status` とログ送信頻度のレート制御
-- HILS関連は `docs/firmware/hils_plan.md` を参照
+- `shared/proto/mc_proto.h`（wire 上の正）
+- `docs/proto/log_transport.md`（フレーミングと UART 運用）
