@@ -1,0 +1,24 @@
+[Unit]
+Description=@DESC@
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+Group=@GROUP@
+WorkingDirectory=@WORKDIR@
+ExecStart=@EXEC_START@
+Restart=on-failure
+RestartSec=0.5
+KillSignal=SIGINT
+TimeoutStopSec=5
+
+# 必要なら conf 側で設定
+@SUPP_GROUPS_LINE@
+
+NoNewPrivileges=true
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target
