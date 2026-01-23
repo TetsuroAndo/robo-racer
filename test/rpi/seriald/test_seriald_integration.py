@@ -2,8 +2,8 @@
 seriald integration test (UART <-> IPC).
 
 @brief
-  Runs seriald against a PTY-backed UART and a UNIX IPC socket (seqpacket on
-  Linux, dgram on macOS), then verifies UART->IPC and IPC->UART forwarding using
+  Runs seriald against a PTY-backed UART and a UNIX IPC socket (seqpacket),
+  then verifies UART->IPC and IPC->UART forwarding using
   mc_proto frames.
 """
 
@@ -13,7 +13,6 @@ import select
 import socket
 import struct
 import subprocess
-import sys
 import time
 from pathlib import Path
 
@@ -229,22 +228,13 @@ def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
         except FileNotFoundError:
             pass
         uds = None
-        use_dgram = sys.platform == "darwin"
-        sock_type = socket.SOCK_DGRAM if use_dgram else socket.SOCK_SEQPACKET
-        # macOS: AF_UNIX sun_path has a short length limit; tmp_path can exceed it.
-        client_path = Path("/tmp") / f"seriald_client_{os.getpid()}.sock"
+        sock_type = socket.SOCK_SEQPACKET
         last_err = ""
         while time.time() < deadline:
             if proc.poll() is not None:
                 break
             try:
                 uds = socket.socket(socket.AF_UNIX, sock_type)
-                if use_dgram:
-                    try:
-                        client_path.unlink()
-                    except FileNotFoundError:
-                        pass
-                    uds.bind(str(client_path))
                 uds.connect(str(sock_path))
                 last_err = ""
                 break
@@ -359,11 +349,6 @@ def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
     finally:
         if "uds" in locals() and uds is not None:
             uds.close()
-        if "client_path" in locals() and client_path.exists():
-            try:
-                client_path.unlink()
-            except OSError:
-                pass
         proc.terminate()
         try:
             proc.wait(timeout=2.0)

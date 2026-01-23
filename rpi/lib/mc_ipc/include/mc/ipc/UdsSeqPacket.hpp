@@ -3,11 +3,7 @@
 #include <sys/socket.h>
 #include <vector>
 
-#ifdef __APPLE__
-#define MC_IPC_DEFAULT_SOCK_TYPE SOCK_DGRAM
-#else
 #define MC_IPC_DEFAULT_SOCK_TYPE SOCK_SEQPACKET
-#endif
 
 namespace mc::ipc {
 

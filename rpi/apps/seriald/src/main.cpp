@@ -89,11 +89,6 @@ int main(int argc, char **argv) {
 	int baud = seriald_cfg::DEFAULT_BAUD;
 	std::string sock = seriald_cfg::DEFAULT_SOCK;
 	std::string logpath = seriald_cfg::DEFAULT_LOG;
-#ifdef __APPLE__
-	bool ipc_dgram = true;
-#else
-	bool ipc_dgram = false;
-#endif
 
 	for (int i = 1; i < argc; i++) {
 		std::string a = argv[i];
@@ -124,7 +119,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	mc::ipc::UdsServer ipc(ipc_dgram ? SOCK_DGRAM : SOCK_SEQPACKET);
+	mc::ipc::UdsServer ipc(SOCK_SEQPACKET);
 	if (!ipc.listen(sock)) {
 		log.log(LogLevel::FATAL, "failed to open ipc " + sock);
 		return 1;
@@ -133,12 +128,6 @@ int main(int argc, char **argv) {
 	mc::proto::PacketReader pr;
 
 	std::atomic< bool > run{true};
-	struct DgramClient {
-		sockaddr_un addr{};
-		socklen_t len = 0;
-	};
-	std::vector< DgramClient > dgram_clients;
-
 	std::thread txThread([&] {
 		while (run) {
 			TxMsg m{};
@@ -174,19 +163,17 @@ int main(int argc, char **argv) {
 		srv_fd.events = POLLIN;
 		fds.push_back(srv_fd);
 
-		if (!ipc_dgram) {
-			const auto &clients = ipc.clients();
-			size_t client_count = clients.size();
-			if (client_count > (size_t)seriald_cfg::MAX_CLIENT_FDS)
-				client_count = seriald_cfg::MAX_CLIENT_FDS;
+		const auto &clients = ipc.clients();
+		size_t client_count = clients.size();
+		if (client_count > (size_t)seriald_cfg::MAX_CLIENT_FDS)
+			client_count = seriald_cfg::MAX_CLIENT_FDS;
 
-			for (size_t i = 0; i < client_count; ++i) {
-				int cfd = clients[i];
-				pollfd p{};
-				p.fd = cfd;
-				p.events = POLLIN;
-				fds.push_back(p);
-			}
+		for (size_t i = 0; i < client_count; ++i) {
+			int cfd = clients[i];
+			pollfd p{};
+			p.fd = cfd;
+			p.events = POLLIN;
+			fds.push_back(p);
 		}
 
 		int r = ::poll(fds.data(), (nfds_t)fds.size(),
@@ -195,38 +182,10 @@ int main(int argc, char **argv) {
 			continue;
 
 		if (fds[1].revents & POLLIN) {
-			if (!ipc_dgram) {
-				while (true) {
-					int cfd = ipc.accept_client();
-					if (cfd < 0)
-						break;
-				}
-			} else {
-				uint8_t buf[mc::proto::MAX_FRAME_ENCODED];
-				sockaddr_un addr{};
-				socklen_t alen = sizeof(addr);
-				ssize_t n = ::recvfrom(ipc.fd(), buf, sizeof(buf), 0,
-									   (sockaddr *)&addr, &alen);
-				if (n > 0) {
-					bool known = false;
-					for (const auto &c : dgram_clients) {
-						if (c.len == alen &&
-							strncmp(c.addr.sun_path, addr.sun_path,
-									sizeof(addr.sun_path)) == 0) {
-							known = true;
-							break;
-						}
-					}
-					if (!known) {
-						DgramClient c{};
-						c.addr = addr;
-						c.len = alen;
-						dgram_clients.push_back(c);
-					}
-					tx_enqueue(buf, (uint16_t)n);
-					log.log(LogLevel::DEBUG, "IPC(dgram)->UART forward bytes=" +
-												 std::to_string(n));
-				}
+			while (true) {
+				int cfd = ipc.accept_client();
+				if (cfd < 0)
+					break;
 			}
 		}
 
@@ -294,17 +253,8 @@ int main(int argc, char **argv) {
 								enc, sizeof(enc), enc_len,
 								static_cast< mc::proto::Type >(f.type()),
 								f.flags(), seq, f.payload, f.payload_len)) {
-							if (!ipc_dgram) {
-								for (int cfd : ipc.clients()) {
-									(void)::send(cfd, enc, enc_len,
-												 MSG_NOSIGNAL);
-								}
-							} else {
-								for (const auto &c : dgram_clients) {
-									(void)::sendto(ipc.fd(), enc, enc_len, 0,
-												   (const sockaddr *)&c.addr,
-												   c.len);
-								}
+							for (int cfd : ipc.clients()) {
+								(void)::send(cfd, enc, enc_len, MSG_NOSIGNAL);
 							}
 						}
 
@@ -314,20 +264,18 @@ int main(int argc, char **argv) {
 			}
 		}
 
-		if (!ipc_dgram) {
-			for (size_t i = 2; i < fds.size(); ++i) {
-				if (!(fds[i].revents & POLLIN))
-					continue;
-				uint8_t buf[mc::proto::MAX_FRAME_ENCODED];
-				ssize_t n = ::recv(fds[i].fd, buf, sizeof(buf), 0);
-				if (n <= 0) {
-					ipc.remove_client(fds[i].fd);
-					continue;
-				}
-				tx_enqueue(buf, (uint16_t)n);
-				log.log(LogLevel::DEBUG,
-						"IPC->UART forward bytes=" + std::to_string(n));
+		for (size_t i = 2; i < fds.size(); ++i) {
+			if (!(fds[i].revents & POLLIN))
+				continue;
+			uint8_t buf[mc::proto::MAX_FRAME_ENCODED];
+			ssize_t n = ::recv(fds[i].fd, buf, sizeof(buf), 0);
+			if (n <= 0) {
+				ipc.remove_client(fds[i].fd);
+				continue;
 			}
+			tx_enqueue(buf, (uint16_t)n);
+			log.log(LogLevel::DEBUG,
+					"IPC->UART forward bytes=" + std::to_string(n));
 		}
 	}
 
