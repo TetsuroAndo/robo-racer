@@ -127,6 +127,12 @@ EXCLUDE_PATHS=(
 	"*/lib/minilibx/*"
 	"*/tools/*"
 	"*/playground/*"
+	"*/.vscode/*"
+	"*/.idea/*"
+	"*/__pycache__/*"
+	"*/.pytest_cache/*"
+	"*/rplidar_sdk/*"
+	"*/build/*"
 )
 # .Gitignoreからも除外PATHを取得
 if [[ -f "$TARGET_PATH/.gitignore" ]]; then
