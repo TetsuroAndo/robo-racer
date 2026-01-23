@@ -36,14 +36,15 @@ static constexpr size_t   MAX_FRAME_DECODED = 2 + 1 + 1 + 1 + 2 + 2 + MAX_PAYLOA
 static constexpr size_t   MAX_FRAME_ENCODED = MAX_FRAME_DECODED + (MAX_FRAME_DECODED / 254) + 2;
 
 enum class Type : uint8_t {
-	DRIVE     = 0x01,
-	KILL      = 0x02,
-	MODE_SET  = 0x03,
-	PING      = 0x04,
+	DRIVE      = 0x01,
+	KILL       = 0x02,
+	MODE_SET   = 0x03,
+	PING       = 0x04,
 
-	LOG       = 0x10,
-	STATUS    = 0x11,
-	ACK       = 0x80,
+	LOG        = 0x10,
+	STATUS     = 0x11,
+	HILS_STATE = 0x12,
+	ACK        = 0x80,
 };
 
 enum : uint8_t {
@@ -60,6 +61,13 @@ struct Header {
 	uint8_t flags;
 	uint16_t seq_le;
 	uint16_t len_le;
+};
+
+struct HilsStatePayload {
+    uint32_t timestamp;
+    int16_t throttle_raw;
+    int16_t steer_cdeg;
+    uint8_t flags;
 };
 #pragma pack(pop)
 

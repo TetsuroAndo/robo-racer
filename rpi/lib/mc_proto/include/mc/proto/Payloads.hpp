@@ -47,6 +47,13 @@ struct AckPayload {
 	uint8_t status;
 };
 
+struct HilsStatePayload {
+	uint32_t timestamp;
+	int16_t throttle_raw;
+	int16_t steer_cdeg;
+	uint8_t flags;
+};
+
 #pragma pack(pop)
 
 } // namespace mc::proto

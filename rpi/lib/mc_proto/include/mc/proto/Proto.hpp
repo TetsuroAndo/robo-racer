@@ -32,6 +32,7 @@ enum class Type : uint8_t {
 
 	LOG = 0x10,
 	STATUS = 0x11,
+	HILS_STATE = 0x12,
 	ACK = 0x80,
 };
 

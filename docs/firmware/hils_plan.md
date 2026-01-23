@@ -146,13 +146,22 @@ class Sink {
 複数Sinkに送出するための集約クラス。
 最大3つまで登録可能。
 
-### hils::StreamSink
+### 3.1 通信プロトコル
 
-テキスト出力の標準Sink。
+低遅延性と既存資産の再利用のため、`comm/mc_proto` (COBS + CRC16) を使用する。
+新しいパケットタイプ `CMD_HILS_STATE (0x12)` を定義し、バイナリで転送する。
 
-```
-HILS <ms> <throttle> <steer>
-```
+**パケット構造:**
+`[Header] [Type=0x12] [Seq] [Len] [Payload] [CRC]`
+
+**Payload (HilsStatePayload):**
+
+| フィールド | 型 (Byte) | 説明 | スケーリング |
+| :--- | :--- | :--- | :--- |
+| timestamp | uint32 (4) | 内部時刻 | 1ms |
+| throttle | int16 (2) | スロットル | Raw値 (-1000~1000等) |
+| steer | int16 (2) | ステアリング | センチ度 (cdeg) |
+| flags | uint8 (1) | 状態フラグ | Bitmask |
 
 ## 制約・注意点
 
