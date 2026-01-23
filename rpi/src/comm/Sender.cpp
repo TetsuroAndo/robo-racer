@@ -32,6 +32,8 @@ int16_t clamp_cdeg(int32_t cdeg) {
 		mc::common::clamp< int32_t >(cdeg, -limit, limit));
 }
 
+uint32_t last_debug_ms = 0;
+
 } // namespace
 
 namespace comm {
@@ -44,7 +46,9 @@ Sender::~Sender() {
 	}
 }
 
-void Sender::send(int speed, int angle) {
+void Sender::send(int speed, int angle) { send(speed, angle, 0); }
+
+void Sender::send(int speed, int angle, int distance_mm) {
 	poll();
 	sendHeartbeatIfDue();
 	if (!auto_enabled_) {
@@ -59,7 +63,8 @@ void Sender::send(int speed, int angle) {
 		(int32_t)speed_input * cfg::SPEED_MM_S_MAX / cfg::SPEED_INPUT_LIMIT;
 	payload.speed_mm_s = static_cast< int16_t >(speed_mm_s);
 	payload.ttl_ms_le = mc::proto::to_le16(cfg::AUTO_TTL_MS);
-	payload.dist_mm_le = mc::proto::to_le16(0);
+	payload.dist_mm_le =
+		mc::proto::to_le16(static_cast< uint16_t >(std::max(0, distance_mm)));
 
 	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
 	size_t out_len = 0;
@@ -69,6 +74,13 @@ void Sender::send(int speed, int angle) {
 		reinterpret_cast< const uint8_t * >(&payload), sizeof(payload));
 	if (!ok || ::send(ipc_.fd(), out, out_len, MSG_NOSIGNAL) <= 0) {
 		std::cerr << "DRIVE send failed\n";
+	}
+
+	const uint32_t now = now_ms();
+	if ((uint32_t)(now - last_debug_ms) >= cfg::STATUS_LOG_INTERVAL_MS) {
+		last_debug_ms = now;
+		std::cerr << "DRIVE cmd speed=" << speed << " steer=" << angle
+				  << " dist_mm=" << distance_mm << "\n";
 	}
 }
 

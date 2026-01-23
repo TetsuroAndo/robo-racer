@@ -2,10 +2,13 @@ file(GLOB TEST_SOURCES
     tests_main.cpp
     test_planner_ftg_stop.cpp
     test_speed_policy.cpp
+    test_pipeline_integration.cpp
+    test_golden_scans.cpp
 )
 
 add_executable(rpi_tests
     ${TEST_SOURCES}
+    ../src/perception/ScanPreprocessor.cpp
     ../src/planning/PlannerFTG.cpp
     ../src/control/SpeedPolicy.cpp
     ../src/control/SteeringSmoother.cpp

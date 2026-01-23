@@ -2,7 +2,7 @@
 
 #include "config/Params.h"
 #include "planning/planning_types.h"
-#include "perception/LidarReceiver.h"
+#include "perception/LidarTypes.h"
 
 #include <vector>
 

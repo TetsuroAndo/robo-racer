@@ -15,6 +15,7 @@ public:
 	~Sender();
 
 	void send(int speed, int angle);
+	void send(int speed, int angle, int distance_mm);
 	void sendAutoMode(bool enable);
 	void sendKill();
 	void poll();

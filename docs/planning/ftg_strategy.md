@@ -167,6 +167,8 @@ FTGを安定して実装するため、入力は必ず **等角度配列**に正
 - `free_threshold_mm = 700`
 - `bubble_radius_mm = 250`
 - `disparity_threshold_mm = 300`
+- `smoothing_window = 1`（1=無効、3/5で平滑化）
+- `smoothing_mode = 1`（0=off, 1=移動平均, 2=移動中央値）
 
 ### Speed / Safety
 - `stop_distance_mm = 300`

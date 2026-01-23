@@ -21,6 +21,9 @@ struct Params {
 	int bubble_radius_mm = 250;
 	int disparity_threshold_mm = 300;
 
+	int smoothing_window = 1;
+	int smoothing_mode = 1; // 0: off, 1: mean, 2: median
+
 	float steer_slowdown_gain = 0.8f;
 	float steer_slowdown_angle_deg = 30.0f;
 	float steer_smooth_beta = 0.25f;

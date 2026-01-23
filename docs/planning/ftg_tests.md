@@ -131,6 +131,13 @@ CMakeは `add_executable(rpi_tests ...tests...)` → `target_link_libraries(rpi_
 
 出力監視項目：`steer_deg`/`stop`/`target_distance_mm`/`front_min_distance_mm`/`speed_input`
 
+### 形式（暫定）
+テスト導入を軽くするため、当面は `*.txt` を使い、以下の形式で読み込む。
+
+- `# angle_min=...` / `# angle_step=...` / `# expected_stop=...` / `# expected_steer=...` / `# expected_speed_hint=...`
+- 以降は1行1距離（mm）
+※現在の fixtures は `angle_min=-90` / `angle_step=1` の 181 ビン（-90〜+90）で統一。
+
 ---
 
 ## 8. 実装上の細かな工夫

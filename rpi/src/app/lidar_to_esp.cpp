@@ -34,11 +34,10 @@ std::unique_ptr< planning::IPlanner > createPlanner(const std::string &name) {
 } // namespace
 
 int run_lidar_to_esp(const char *lidar_dev, int lidar_baud, const char *esp_dev,
-					 const char *planner_name) {
+					 const cfg::Params &params, const char *planner_name) {
 	signal(SIGINT, on_sig);
 	signal(SIGTERM, on_sig);
 
-	cfg::Params params;
 	perception::LidarReceiver receiver(lidar_dev, lidar_baud);
 	perception::ScanPreprocessor preprocessor;
 	control::SteeringSmoother smoother;
@@ -52,7 +51,7 @@ int run_lidar_to_esp(const char *lidar_dev, int lidar_baud, const char *esp_dev,
 		auto output = planner->plan(scan, params);
 		int steer = smoother.update(output.steer_deg, params);
 		int speed = speed_policy.computeSpeedInput(output, steer, params);
-		sender.send(speed, steer);
+		sender.send(speed, steer, output.target_distance_mm);
 	}
 
 	return 0;

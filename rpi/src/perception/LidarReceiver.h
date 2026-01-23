@@ -1,15 +1,9 @@
 #pragma once
 
+#include "perception/LidarTypes.h"
 #include "sl_lidar.h"
 #include "sl_lidar_driver.h"
 #include <vector>
-
-struct LidarData {
-	int distance;
-	float angle;
-
-	LidarData(int distance, float angle) : distance(distance), angle(angle) {}
-};
 
 namespace perception {
 

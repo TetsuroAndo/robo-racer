@@ -48,6 +48,44 @@ planning::Scan ScanPreprocessor::process(const std::vector< LidarData > &points,
 		}
 	}
 
+	if (params.smoothing_window > 1 && params.smoothing_mode != 0 &&
+		scan.bin_count() > 0) {
+		const int window = params.smoothing_window;
+		const int half = window / 2;
+		std::vector< int > smoothed(scan.bin_count(),
+									planning::kInvalidDistance);
+		for (size_t i = 0; i < scan.bin_count(); ++i) {
+			int sum = 0;
+			int count = 0;
+			std::vector< int > samples;
+			const int start = (static_cast< int >(i) - half < 0)
+								  ? 0
+								  : static_cast< int >(i) - half;
+			const int end = std::min(static_cast< int >(scan.bin_count() - 1),
+									 static_cast< int >(i) + half);
+			for (int idx = start; idx <= end; ++idx) {
+				const int value = scan.ranges_mm[static_cast< size_t >(idx)];
+				if (value >= planning::kInvalidDistance)
+					continue;
+				if (params.smoothing_mode == 2) {
+					samples.push_back(value);
+				} else {
+					sum += value;
+					++count;
+				}
+			}
+			if (params.smoothing_mode == 2) {
+				if (!samples.empty()) {
+					std::sort(samples.begin(), samples.end());
+					smoothed[i] = samples[samples.size() / 2];
+				}
+			} else if (count > 0) {
+				smoothed[i] = sum / count;
+			}
+		}
+		scan.ranges_mm.swap(smoothed);
+	}
+
 	return scan;
 }
 
