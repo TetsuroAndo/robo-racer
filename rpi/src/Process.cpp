@@ -33,6 +33,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData) const {
 	// 基本速度を計算
 	int baseSpeed = maxDistance / cfg::PROCESS_SPEED_DIV;
 
+	// 最大速度でクリップ
+	baseSpeed = (baseSpeed > cfg::PROCESS_MAX_SPEED) ? cfg::PROCESS_MAX_SPEED : baseSpeed;
+
 	// 計算される角度（クリップ前）
 	float calculatedAngle = min * cfg::PROCESS_MIN_ANGLE_SIGN * cfg::PROCESS_STEER_GAIN;
 	float absAngle = std::fabs(calculatedAngle);
