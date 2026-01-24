@@ -78,5 +78,9 @@ static constexpr int PROCESS_MIN_DIST_SAFE_MM    = 400;   // 安全距離: こ�
 static constexpr int PROCESS_MIN_DIST_STOP_MM    = 150;   // 停止距離: これ以下なら停止
 static constexpr float PROCESS_MIN_DIST_SPEED_FACTOR = 0.5f; // 減速係数: 0.5 = 50% 速度
 
+// 急カーブによる速度制限
+static constexpr int STEER_ANGLE_MAX_DEG         = 30;    // サーボの物理的上限
+static constexpr float STEER_CURVE_SPEED_FACTOR  = 0.7f;  // 曲率係数: 計算角度/上限 の比率で速度を調整
+
 // clang-format on
 } // namespace cfg

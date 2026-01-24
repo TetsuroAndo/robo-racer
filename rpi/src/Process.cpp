@@ -33,6 +33,10 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData) const {
 	// 基本速度を計算
 	int baseSpeed = maxDistance / cfg::PROCESS_SPEED_DIV;
 
+	// 計算される角度（クリップ前）
+	float calculatedAngle = min * cfg::PROCESS_MIN_ANGLE_SIGN * cfg::PROCESS_STEER_GAIN;
+	float absAngle = std::fabs(calculatedAngle);
+
 	// 障害物距離に基づいて速度を制限
 	int limitedSpeed = baseSpeed;
 	if (minDistance <= cfg::PROCESS_MIN_DIST_STOP_MM) {
@@ -47,6 +51,17 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData) const {
 				  << baseSpeed << " → " << limitedSpeed << std::endl;
 	}
 
-	return ProcResult(limitedSpeed,
-					  min * cfg::PROCESS_MIN_ANGLE_SIGN * cfg::PROCESS_STEER_GAIN);
+	// 急カーブによる速度制限
+	// 計算角度が物理上限を超える場合、その比率に応じて速度を減速
+	if (absAngle > cfg::STEER_ANGLE_MAX_DEG) {
+		float curveRatio = (float)cfg::STEER_ANGLE_MAX_DEG / absAngle;
+		float curveFactor = cfg::STEER_CURVE_SPEED_FACTOR + (1.0f - cfg::STEER_CURVE_SPEED_FACTOR) * curveRatio;
+		int curveReducedSpeed = (int)(limitedSpeed * curveFactor);
+		std::cout << "CURVE: sharp turn needed (" << absAngle << "°), ratio: "
+				  << curveRatio << ", speed: " << limitedSpeed << " → "
+				  << curveReducedSpeed << std::endl;
+		limitedSpeed = curveReducedSpeed;
+	}
+
+	return ProcResult(limitedSpeed, calculatedAngle);
 }
