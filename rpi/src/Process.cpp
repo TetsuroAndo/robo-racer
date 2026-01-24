@@ -29,6 +29,24 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData) const {
 	}
 	std::cout << "MaxDist: " << maxDistance << " at " << max
 			  << " | MinDist: " << minDistance << " at " << min << "\n";
-	return ProcResult(maxDistance / cfg::PROCESS_SPEED_DIV,
-					  min * cfg::PROCESS_MIN_ANGLE_SIGN);
+
+	// 基本速度を計算
+	int baseSpeed = maxDistance / cfg::PROCESS_SPEED_DIV;
+
+	// 障害物距離に基づいて速度を制限
+	int limitedSpeed = baseSpeed;
+	if (minDistance <= cfg::PROCESS_MIN_DIST_STOP_MM) {
+		// 停止距離以下 → 停止
+		limitedSpeed = 0;
+		std::cout << "STOP: obstacle too close (" << minDistance << "mm)"
+				  << std::endl;
+	} else if (minDistance < cfg::PROCESS_MIN_DIST_SAFE_MM) {
+		// 安全距離未満 → 減速
+		limitedSpeed = (int)(baseSpeed * cfg::PROCESS_MIN_DIST_SPEED_FACTOR);
+		std::cout << "SLOW: obstacle near (" << minDistance << "mm), speed: "
+				  << baseSpeed << " → " << limitedSpeed << std::endl;
+	}
+
+	return ProcResult(limitedSpeed,
+					  min * cfg::PROCESS_MIN_ANGLE_SIGN * cfg::PROCESS_STEER_GAIN);
 }
