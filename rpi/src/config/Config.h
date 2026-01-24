@@ -63,8 +63,8 @@ static constexpr unsigned int LIDAR_DIST_MIN_MM  = 5;
 //------------------------------------------------------------------------------
 
 // 角度範囲
-static constexpr float PROCESS_ANGLE_MIN_DEG     = -70.0f;
-static constexpr float PROCESS_ANGLE_MAX_DEG     = 70.0f;
+static constexpr float PROCESS_ANGLE_MIN_DEG     = -80.0f;
+static constexpr float PROCESS_ANGLE_MAX_DEG     = 80.0f;
 
 // 出力スケール
 static constexpr int PROCESS_SPEED_DIV           = 50;
