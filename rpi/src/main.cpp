@@ -5,10 +5,14 @@
 #include "lidar_to_esp.h"
 #include <csignal>
 #include <cstdlib>
+#include <iostream>
 #include <unistd.h>
 
 static volatile sig_atomic_t g_stop = 0;
-static void on_sig(int) { g_stop = 1; }
+static void on_sig(int sig) {
+	std::cout << "\nSignal " << sig << " received, shutting down..." << std::endl;
+	g_stop = 1;
+}
 
 int main(int argc, char **argv) {
 	signal(SIGINT, on_sig);
@@ -23,11 +27,29 @@ int main(int argc, char **argv) {
 	Process process;
 	Sender sender(seriald_sock);
 
+	// バックグラウンドスレッドで LiDAR 受信開始
+	lidarReceiver.startReceivingThread();
+	std::cout << "Main thread: LiDAR receiving thread started" << std::endl;
+
+	// メインスレッドでは評価・送信を実行
 	while (!g_stop) {
-		const std::vector< LidarData > &res = lidarReceiver.receive();
-		const ProcResult procResult = process.proc(res);
-		// usleep(1 * 1000); // 適度に空白を開けて送りすぎないようにする。
-		sender.send(procResult.speed, procResult.angle);
+		std::vector< LidarData > lidarData;
+
+		// 最新のLiDARデータを取得（スレッドセーフ）
+		if (lidarReceiver.getLatestData(lidarData)) {
+			// データが利用可能
+			const ProcResult procResult = process.proc(lidarData);
+			sender.send(procResult.speed, procResult.angle);
+		} else {
+			// データがまだ来ていない場合は少し待機
+			usleep(1 * 1000);
+		}
 	}
+
+	// 正常なシャットダウン
+	std::cout << "Main thread: stopping LiDAR receiving thread..." << std::endl;
+	lidarReceiver.stopReceivingThread();
+	std::cout << "Main thread: shutdown complete" << std::endl;
+
 	return 0;
 }

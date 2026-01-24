@@ -39,11 +39,14 @@ float normalize(double angle) {
 
 } // namespace
 
-LidarReceiver::LidarReceiver(const char *lidar_dev_c, int lidar_baud) {
+LidarReceiver::LidarReceiver(const char *lidar_dev_c, int lidar_baud)
+	: _channel(nullptr), _lidar(nullptr), _isReceiving(false) {
 	_init(lidar_dev_c, lidar_baud);
 }
 
 LidarReceiver::~LidarReceiver() {
+	stopReceivingThread();
+
 	if (_lidar) {
 		_lidar->stop();
 		_lidar->setMotorSpeed(0);
@@ -54,11 +57,11 @@ LidarReceiver::~LidarReceiver() {
 	delete _lidar;
 }
 
-std::vector< LidarData > LidarReceiver::receive() {
+std::vector< LidarData > LidarReceiver::_receiveOnce() {
 	sl_lidar_response_measurement_node_hq_t nodes[cfg::LIDAR_NODE_MAX];
 	size_t nodeCount = sizeof(nodes) / sizeof(nodes[0]);
 
-	// 1) まずデータ取得（nodeCount が “実データ数” に更新される）
+	// 1) まずデータ取得（nodeCount が "実データ数" に更新される）
 	sl_result ans = _lidar->grabScanDataHq(nodes, nodeCount);
 	if (!SL_IS_OK(ans) || nodeCount == 0) {
 		return {};
@@ -92,6 +95,61 @@ std::vector< LidarData > LidarReceiver::receive() {
 		res.emplace_back(dist, angle);
 	}
 	return res;
+}
+
+// 従来のインターフェース（互換性用）
+std::vector< LidarData > LidarReceiver::receive() {
+	return _receiveOnce();
+}
+
+void LidarReceiver::startReceivingThread() {
+	if (_isReceiving)
+		return;
+
+	_isReceiving = true;
+	_receivingThread = std::thread(&LidarReceiver::_receivingThreadLoop, this);
+	std::cout << "LiDAR receiving thread started" << std::endl;
+}
+
+void LidarReceiver::stopReceivingThread() {
+	if (!_isReceiving)
+		return;
+
+	_isReceiving = false;
+	if (_receivingThread.joinable()) {
+		_receivingThread.join();
+	}
+	std::cout << "LiDAR receiving thread stopped" << std::endl;
+}
+
+bool LidarReceiver::getLatestData(std::vector< LidarData > &out) {
+	std::lock_guard< std::mutex > lock(_dataMutex);
+
+	if (_dataQueue.empty())
+		return false;
+
+	out = _dataQueue.front();
+	_dataQueue.pop();
+	return true;
+}
+
+void LidarReceiver::_receivingThreadLoop() {
+	while (_isReceiving) {
+		std::vector< LidarData > data = _receiveOnce();
+
+		if (!data.empty()) {
+			{
+				std::lock_guard< std::mutex > lock(_dataMutex);
+
+				// キューサイズを制限（最新フレームのみ保持）
+				if (_dataQueue.size() > 1) {
+					_dataQueue.pop();
+				}
+				_dataQueue.push(data);
+			}
+			_dataCV.notify_one();
+		}
+	}
 }
 
 void LidarReceiver::_init(const char *lidar_dev_c, int lidar_baud) {
