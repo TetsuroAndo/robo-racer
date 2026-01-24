@@ -68,7 +68,7 @@ static constexpr float PROCESS_ANGLE_MAX_DEG     = 70.0f;
 
 // 出力スケール
 static constexpr int PROCESS_SPEED_DIV           = 50;
-static constexpr int PROCESS_MAX_SPEED           = 50;  // Raspberry Pi内部での最大速度
+static constexpr int PROCESS_MAX_SPEED           = 100;  // Raspberry Pi内部での最大速度
 static constexpr float PROCESS_MIN_ANGLE_SIGN    = -1.0f;
 
 // ステアリングゲイン（浅めの角度を補正: 1.0 = 補正なし、> 1.0 で角度を強める）
