@@ -11,24 +11,42 @@ Process::~Process() {}
 ProcResult Process::proc(const std::vector< LidarData > &lidarData) const {
 	float max = 0;
 	int maxDistance = -1;
-	float min = 0;
-	int minDistance = INT32_MAX;
+	float minHandleAngle = 0;
+	int minHandleDistance = INT32_MAX;
+	int minSlowDistance = INT32_MAX;
 	// std::cout << lidarData.size() << "\n";
 	for (const auto &i : lidarData) {
-		if (cfg::PROCESS_ANGLE_MIN_DEG <= i.angle &&
-			i.angle <= cfg::PROCESS_ANGLE_MAX_DEG) {
+		// ハンドリング評価（±90deg）
+		if (cfg::PROCESS_HANDLE_ANGLE_MIN_DEG <= i.angle &&
+			i.angle <= cfg::PROCESS_HANDLE_ANGLE_MAX_DEG) {
 			if (maxDistance < i.distance) {
 				max = i.angle;
 				maxDistance = i.distance;
 			}
-			if (i.distance < minDistance) {
-				min = i.angle;
-				minDistance = i.distance;
+			if (i.distance < minHandleDistance) {
+				minHandleAngle = i.angle;
+				minHandleDistance = i.distance;
+			}
+		}
+
+		// 減速評価（±70deg）
+		if (cfg::PROCESS_SLOW_ANGLE_MIN_DEG <= i.angle &&
+			i.angle <= cfg::PROCESS_SLOW_ANGLE_MAX_DEG) {
+			if (i.distance < minSlowDistance) {
+				minSlowDistance = i.distance;
 			}
 		}
 	}
 	std::cout << "MaxDist: " << maxDistance << " at " << max
-			  << " | MinDist: " << minDistance << " at " << min << "\n";
+			  << " | MinHandleDist: " << minHandleDistance << " at "
+			  << minHandleAngle << " | MinSlowDist: " << minSlowDistance
+			  << "\n";
+
+	// データが無い場合は安全側で停止
+	if (maxDistance < 0) {
+		std::cout << "WARN: no lidar points in handling window" << std::endl;
+		return ProcResult(0, 0);
+	}
 
 	// 基本速度を計算
 	int baseSpeed = maxDistance / cfg::PROCESS_SPEED_DIV;
@@ -37,20 +55,22 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData) const {
 	baseSpeed = (baseSpeed > cfg::PROCESS_MAX_SPEED) ? cfg::PROCESS_MAX_SPEED : baseSpeed;
 
 	// 計算される角度（クリップ前）
-	float calculatedAngle = min * cfg::PROCESS_MIN_ANGLE_SIGN * cfg::PROCESS_STEER_GAIN;
+	// ハンドリング用の最近接角度が無い場合は直進
+	float steerSourceAngle = (minHandleDistance == INT32_MAX) ? 0.0f : minHandleAngle;
+	float calculatedAngle = steerSourceAngle * cfg::PROCESS_MIN_ANGLE_SIGN * cfg::PROCESS_STEER_GAIN;
 	float absAngle = std::fabs(calculatedAngle);
 
 	// 障害物距離に基づいて速度を制限
 	int limitedSpeed = baseSpeed;
-	if (minDistance <= cfg::PROCESS_MIN_DIST_STOP_MM) {
+	if (minSlowDistance <= cfg::PROCESS_MIN_DIST_STOP_MM) {
 		// 停止距離以下 → 停止
 		limitedSpeed = 0;
-		std::cout << "STOP: obstacle too close (" << minDistance << "mm)"
+		std::cout << "STOP: obstacle too close (" << minSlowDistance << "mm)"
 				  << std::endl;
-	} else if (minDistance < cfg::PROCESS_MIN_DIST_SAFE_MM) {
+	} else if (minSlowDistance < cfg::PROCESS_MIN_DIST_SAFE_MM) {
 		// 安全距離未満 → 減速
 		limitedSpeed = (int)(baseSpeed * cfg::PROCESS_MIN_DIST_SPEED_FACTOR);
-		std::cout << "SLOW: obstacle near (" << minDistance << "mm), speed: "
+		std::cout << "SLOW: obstacle near (" << minSlowDistance << "mm), speed: "
 				  << baseSpeed << " → " << limitedSpeed << std::endl;
 	}
 

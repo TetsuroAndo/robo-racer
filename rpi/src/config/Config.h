@@ -62,9 +62,11 @@ static constexpr unsigned int LIDAR_DIST_MIN_MM  = 5;
 // Process（簡易戦略）
 //------------------------------------------------------------------------------
 
-// 角度範囲
-static constexpr float PROCESS_ANGLE_MIN_DEG     = -90.0f;
-static constexpr float PROCESS_ANGLE_MAX_DEG     = 90.0f;
+// 角度範囲（操舵判定と減速判定を分離）
+static constexpr float PROCESS_HANDLE_ANGLE_MIN_DEG = -90.0f; // ハンドリング評価
+static constexpr float PROCESS_HANDLE_ANGLE_MAX_DEG = 90.0f;
+static constexpr float PROCESS_SLOW_ANGLE_MIN_DEG   = -70.0f; // 減速評価
+static constexpr float PROCESS_SLOW_ANGLE_MAX_DEG   = 70.0f;
 
 // 出力スケール
 static constexpr int PROCESS_SPEED_DIV           = 50;
