@@ -18,7 +18,7 @@ TimeoutStopSec=5
 @SUPP_GROUPS_LINE@
 
 NoNewPrivileges=true
-PrivateTmp=true
+PrivateTmp=false
 
 [Install]
 WantedBy=multi-user.target
