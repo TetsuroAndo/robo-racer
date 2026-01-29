@@ -1,6 +1,6 @@
-# 担当B/C タスクフロー&実装計画 ステート管理
+# タスクB（ルールベース/SLAM/安全）・タスクC（AI/データ/推論入口） タスクフロー&実装計画 ステート管理
 
-目的: 担当B（ルールベース/SLAM/センサー安全）と担当C（AI/データ/推論入口）のタスクフローと実装計画の進行状況を追跡する。
+目的: タスクB（ルールベース/SLAM/センサー安全）とタスクC（AI/データ/推論入口）のタスクフローと実装計画の進行状況を追跡する。
 
 ## 状態凡例
 - 未着手
@@ -19,9 +19,15 @@
 ### ドキュメント作成
 | 項目 | 状態 | メモ |
 | --- | --- | --- |
-| B/Cタスクフロー&実装計画書の新規作成 | 完了 | docs/planning/bc_taskflow_plan.md を作成 |
+| タスクB/タスクCタスクフロー&実装計画書の新規作成 | 完了 | docs/planning/bc_taskflow_plan.md を作成 |
+| FTG実装計画（v1） | 完了 | docs/planning/ftg_v1.md を作成 |
+| ROS2/SLAM手順（v1） | 完了 | docs/slam/ros2_setup_v1.md を作成 |
+| Dataset schema（v1） | 完了 | docs/ml/dataset_schema_v1.md を作成 |
+| Policy plugin 仕様（v1） | 完了 | docs/ml/policy_plugin_v1.md を作成 |
+| IPC payload 定義（v1） | 完了 | docs/interfaces/ipc_payloads_v1.md を作成 |
+| タスクA/B/C 定義書（v1） | 完了 | docs/planning/role_definitions_v1.md を作成 |
 
-### 担当B（ルールベース/SLAM/安全）
+### タスクB（ルールベース/SLAM/安全）
 | 項目 | 状態 | メモ |
 | --- | --- | --- |
 | FTGタスクフロー定義 | 進行中 | 入出力・周期・安全条件を明記 |
@@ -30,7 +36,7 @@
 | セーフティ拡張（single-point/IMU） | 進行中 | ESP32責務優先 |
 | ROS2/SLAM手順 | 進行中 | 再現可能な手順を優先 |
 
-### 担当C（AI/データ/推論入口）
+### タスクC（AI/データ/推論入口）
 | 項目 | 状態 | メモ |
 | --- | --- | --- |
 | データ収集フロー定義 | 進行中 | ログ仕様v1を参照 |

@@ -1,12 +1,12 @@
-# 担当B/C タスクフロー & 実装計画（10日版）
+# タスクB（ルールベース/SLAM/安全）・タスクC（AI/データ/推論入口） タスクフロー & 実装計画（10日版）
 
 ## 目的
-担当B（ルールベース/SLAM/センサー安全）と担当C（AI/データ/推論入口）の
+タスクB（ルールベース/SLAM/センサー安全）とタスクC（AI/データ/推論入口）の
 **タスクフロー**と**実装計画**を明文化し、
 Interface Freeze 後に**並行開発**できる状態を作る。
 
 ## 前提となる契約（Interface Freeze）
-以下を**契約（v1）として凍結**し、B/C はこの前提で実装する。
+以下を**契約（v1）として凍結**し、タスクB/タスクCはこの前提で実装する。
 
 - RPi↔ESP32 プロトコル: `docs/proto/overview.md`
 - RPi内IPCトピック: `docs/interfaces/ipc_topics_v1.md`
@@ -14,17 +14,21 @@ Interface Freeze 後に**並行開発**できる状態を作る。
 - 固定責務の前提: `docs/architecture/overview.md`
 
 重要:
-- **DRIVE は TTL 前提の安全設計**。B/C は送信周期・TTL を厳守する。
+- **DRIVE は TTL 前提の安全設計**。タスクB/タスクCは送信周期・TTL を厳守する。
 - **AUTO中は MANUAL を無視**、介入は KILL のみ。
 
 ---
 
-# 担当B: ルールベース（FTG）/ SLAM / セーフティ
+# タスクB: ルールベース（FTG）/ SLAM / セーフティ
 
 ## 役割
 - LiDAR入力からの**FTG走行**を成立させる
 - 走行の**安全停止条件**を強化する
 - ROS2 + SLAM で**再現可能な地図生成手順**を整備する
+
+## 関連ドキュメント
+- `docs/planning/ftg_v1.md`
+- `docs/slam/ros2_setup_v1.md`
 
 ## タスクフロー（論理フロー）
 ```
@@ -83,12 +87,16 @@ ESP32 STATUS -> RPi -> VEHICLE_STATUS (IPC)
 
 ---
 
-# 担当C: AI/データ/推論入口
+# タスクC: AI/データ/推論入口
 
 ## 役割
 - 走行ログからの**dataset生成**
 - imitation学習の**最小ループ**
 - racerd への**policy plugin**（FTG/AI切替）
+
+## 関連ドキュメント
+- `docs/ml/dataset_schema_v1.md`
+- `docs/ml/policy_plugin_v1.md`
 
 ## タスクフロー（論理フロー）
 ```
@@ -139,10 +147,10 @@ LOG_RECORD/IPC topics
 ---
 
 # 依存関係・リスク
-- Interface Freeze（proto/log/IPC）が遅れると B/C がブロック
+- Interface Freeze（proto/log/IPC）が遅れるとタスクB/タスクCがブロック
 - TTL/周期が守れないと安全設計が崩れる
 - dataset schema が曖昧だと学習が再現不能
 
-# 次のアクション（B/C同時並行）
+# 次のアクション（タスクB/タスクC同時並行）
 - B: FTG v0 と lidard IPC を先行着手
 - C: dataset schema と変換ツール v0 を先行着手
