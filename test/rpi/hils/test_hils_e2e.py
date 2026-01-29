@@ -182,8 +182,10 @@ def test_hils_e2e_seriald_sim_esp32d(tmp_path: Path):
     repo_root = Path(__file__).resolve().parents[3]
     seriald_dir = repo_root / "rpi/apps/seriald"
     sim_dir = repo_root / "rpi/apps/sim_esp32d"
+    stub_dir = repo_root / "test/rpi/hils/cpp"
     seriald_bin = tmp_path / "seriald"
     sim_bin = tmp_path / "sim_esp32d"
+    stub_bin = tmp_path / "racerd_stub"
 
     build_seriald = [
         "g++",
@@ -236,9 +238,25 @@ def test_hils_e2e_seriald_sim_esp32d(tmp_path: Path):
         str(sim_bin),
     ]
 
+    build_stub = [
+        "g++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-O2",
+        "-I",
+        str(repo_root / "shared/proto/include"),
+        str(stub_dir / "racerd_stub.cpp"),
+        str(repo_root / "shared/proto/src/mcproto.cpp"),
+        "-o",
+        str(stub_bin),
+    ]
+
     build = subprocess.run(build_seriald, capture_output=True, text=True)
     assert build.returncode == 0, build.stdout + build.stderr
     build = subprocess.run(build_sim, capture_output=True, text=True)
+    assert build.returncode == 0, build.stdout + build.stderr
+    build = subprocess.run(build_stub, capture_output=True, text=True)
     assert build.returncode == 0, build.stdout + build.stderr
 
     m1, s1 = os.openpty()
@@ -294,12 +312,10 @@ def test_hils_e2e_seriald_sim_esp32d(tmp_path: Path):
     try:
         uds = wait_for_socket(sock_path, 2.5)
 
-        # MODE_SET AUTO
-        uds.send(build_packet(TYPE_MODE_SET, 1, bytes([1]), 0))
-
-        # DRIVE with short TTL
-        drive_payload = struct.pack("<hhHH", 100, 200, 50, 0)
-        uds.send(build_packet(TYPE_DRIVE, 2, drive_payload, 0))
+        stub_run = subprocess.run(
+            [str(stub_bin), str(sock_path)], capture_output=True, text=True
+        )
+        assert stub_run.returncode == 0, stub_run.stdout + stub_run.stderr
 
         status = None
         deadline = time.time() + 1.0
@@ -387,4 +403,3 @@ def test_hils_e2e_seriald_sim_esp32d(tmp_path: Path):
                 os.close(fd)
             except OSError:
                 pass
-

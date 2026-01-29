@@ -78,3 +78,4 @@
   - PTYを共有し、sim_esp32dを subprocess で起動
   - IPCからMODE_SET/DRIVEを送信し、STATUS/ACKを検証
 - 追加テスト: `test/rpi/hils/test_hils_e2e.py`
+  - `racerd_stub`（テスト専用）で MODE_SET/DRIVE を送信
