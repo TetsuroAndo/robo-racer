@@ -1,4 +1,5 @@
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <poll.h>
 #include <queue>
@@ -14,9 +15,7 @@
 #include <vector>
 
 #include "../config/Config.h"
-#include "async_logger.h"
-#include "sink_file.h"
-#include "sink_stdout.h"
+#include <mc/core/Log.hpp>
 #include <mc/ipc/UdsSeqPacket.hpp>
 #include <mc/proto/Proto.hpp>
 #include <mc/serial/Uart.hpp>
@@ -36,10 +35,10 @@ static inline uint16_t rd16u(const uint8_t *p) {
 	return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 static inline int16_t rd16s(const uint8_t *p) { return (int16_t)rd16u(p); }
-static LogLevel mapEspLv(uint8_t lv) {
+static mc::core::LogLevel mapEspLv(uint8_t lv) {
 	if (lv > 5)
 		lv = 5;
-	return (LogLevel)lv;
+	return (mc::core::LogLevel)lv;
 }
 
 struct TxMsg {
@@ -105,23 +104,24 @@ int main(int argc, char **argv) {
 	ensure_dir_(dir_of_(sock));
 	ensure_dir_(dir_of_(logpath));
 
-	AsyncLogger log;
-	log.addSink(std::make_unique< StdoutSink >());
-	log.addSink(std::make_unique< FileSink >(logpath));
-	log.start();
+	auto &logger = mc::core::Logger::instance();
+	logger.addSink(std::make_shared< mc::core::FileSink >(logpath));
 
-	log.log(LogLevel::INFO, "seriald starting dev=" + dev + " baud=" +
-								std::to_string(baud) + " sock=" + sock);
+	logger.log(mc::core::LogLevel::Info, "seriald",
+			   "starting dev=" + dev + " baud=" + std::to_string(baud) +
+				   " sock=" + sock);
 
 	mc::serial::Uart uart;
 	if (!uart.open(dev, baud)) {
-		log.log(LogLevel::FATAL, "failed to open uart " + dev);
+		logger.log(mc::core::LogLevel::Fatal, "seriald",
+				   "failed to open uart " + dev);
 		return 1;
 	}
 
 	mc::ipc::UdsServer ipc(SOCK_SEQPACKET);
 	if (!ipc.listen(sock)) {
-		log.log(LogLevel::FATAL, "failed to open ipc " + sock);
+		logger.log(mc::core::LogLevel::Fatal, "seriald",
+				   "failed to open ipc " + sock);
 		return 1;
 	}
 
@@ -136,7 +136,8 @@ int main(int argc, char **argv) {
 				while (off < (int)m.len) {
 					int w = uart.write(m.data + off, (int)m.len - off);
 					if (w < 0) {
-						log.log(LogLevel::ERROR, "uart write failed");
+						logger.log(mc::core::LogLevel::Error, "seriald",
+								   "uart write failed");
 						break;
 					}
 					if (w == 0)
@@ -210,7 +211,7 @@ int main(int argc, char **argv) {
 							if (msg.empty()) {
 								msg = "ESPLOG (empty)";
 							}
-							log.log(mapEspLv(lv), msg);
+							logger.log(mapEspLv(lv), "esp32", msg);
 						} else if (f.type() ==
 									   (uint8_t)mc::proto::Type::STATUS &&
 								   f.payload_len == sizeof(EspStatusPayload)) {
@@ -222,8 +223,8 @@ int main(int argc, char **argv) {
 							int16_t scd = rd16s(p + 6);
 							uint16_t age_ms = rd16u(p + 8);
 
-							log.log(
-								LogLevel::INFO,
+							logger.log(
+								mc::core::LogLevel::Info, "seriald",
 								"STATUS seq=" + std::to_string(seq) +
 									" auto=" + std::to_string(auto_active) +
 									" v_mm_s=" + std::to_string(vmm) +
@@ -235,8 +236,8 @@ int main(int argc, char **argv) {
 										return std::string(b);
 									}(faults));
 						} else {
-							log.log(
-								LogLevel::DEBUG,
+							logger.log(
+								mc::core::LogLevel::Debug, "seriald",
 								"RX type=0x" +
 									[](uint8_t x) {
 										char b[8];
@@ -274,8 +275,8 @@ int main(int argc, char **argv) {
 				continue;
 			}
 			tx_enqueue(buf, (uint16_t)n);
-			log.log(LogLevel::DEBUG,
-					"IPC->UART forward bytes=" + std::to_string(n));
+			logger.log(mc::core::LogLevel::Debug, "seriald",
+					   "IPC->UART forward bytes=" + std::to_string(n));
 		}
 	}
 
@@ -284,6 +285,6 @@ int main(int argc, char **argv) {
 		txThread.join();
 	ipc.close();
 	uart.close();
-	log.stop();
+	logger.shutdown();
 	return 0;
 }
