@@ -77,4 +77,4 @@
 - 既存 `test/rpi/seriald/test_seriald_integration.py` を拡張
   - PTYを共有し、sim_esp32dを subprocess で起動
   - IPCからMODE_SET/DRIVEを送信し、STATUS/ACKを検証
-
+- 追加テスト: `test/rpi/hils/test_hils_e2e.py`
