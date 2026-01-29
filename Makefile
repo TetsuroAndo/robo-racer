@@ -104,7 +104,16 @@ $(LOG_DIR):
 # ================================
 # Runs
 # ================================
-.PHONY: test activate
+.PHONY: test activate hils-build hils-local
+
+hils-build:
+	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
+	$(CMAKE) --build $(RPI_BUILD_DIR) --target seriald sim_esp32d -j $(shell nproc)
+
+hils-local: hils-build $(PYTHON_LOCAL)
+	$(PYTHON_LOCAL) $(ROOT)/tools/hils/run_local_e2e.py \
+		--seriald $(RPI_BUILD_DIR)/apps/seriald/seriald \
+		--sim $(RPI_BUILD_DIR)/apps/sim_esp32d/sim_esp32d
 
 test: $(PYTHON_LOCAL)
 	$(MAKE) all

@@ -25,6 +25,9 @@
   - PTY master/slave
   - UDS socket: `/tmp/seriald.sock`
 
+## ローカル実行（簡易）
+- `make hils-local`（seriald + sim_esp32d を起動し STATUS を確認）
+
 ## テストケース（最小）
 
 ### TC1: MODE_SET + DRIVE → STATUS
