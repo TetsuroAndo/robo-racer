@@ -23,6 +23,13 @@ struct MetricsSample {
 	uint32_t mem_total_kb = 0;
 };
 
+struct Thresholds {
+	uint16_t temp_warn_cdeg = 7000;
+	uint16_t temp_crit_cdeg = 8000;
+	uint16_t cpu_warn_permille = 800;
+	uint16_t cpu_crit_permille = 950;
+};
+
 bool read_cpu_temp_cdeg(uint16_t &out) {
 	std::ifstream ifs("/sys/class/thermal/thermal_zone0/temp");
 	if (!ifs.is_open())
@@ -117,6 +124,7 @@ int main(int argc, char **argv) {
 	uint32_t interval_ms = 1000;
 	std::string log_path;
 	std::string sock_path;
+	Thresholds th;
 
 	for (int i = 1; i < argc; ++i) {
 		std::string a = argv[i];
@@ -126,6 +134,14 @@ int main(int argc, char **argv) {
 			log_path = argv[++i];
 		} else if (a == "--sock" && i + 1 < argc) {
 			sock_path = argv[++i];
+		} else if (a == "--temp-warn-cdeg" && i + 1 < argc) {
+			th.temp_warn_cdeg = (uint16_t)std::atoi(argv[++i]);
+		} else if (a == "--temp-crit-cdeg" && i + 1 < argc) {
+			th.temp_crit_cdeg = (uint16_t)std::atoi(argv[++i]);
+		} else if (a == "--cpu-warn-permille" && i + 1 < argc) {
+			th.cpu_warn_permille = (uint16_t)std::atoi(argv[++i]);
+		} else if (a == "--cpu-crit-permille" && i + 1 < argc) {
+			th.cpu_crit_permille = (uint16_t)std::atoi(argv[++i]);
 		}
 	}
 	if (interval_ms == 0)
@@ -146,10 +162,15 @@ int main(int argc, char **argv) {
 	(void)read_cpu_times(prev);
 	while (true) {
 		MetricsSample m{};
-		read_cpu_temp_cdeg(m.cpu_temp_cdeg);
-		read_mem_kb(m.mem_used_kb, m.mem_total_kb);
+		const bool temp_ok = read_cpu_temp_cdeg(m.cpu_temp_cdeg);
+		const bool mem_ok = read_mem_kb(m.mem_used_kb, m.mem_total_kb);
+		if (!mem_ok) {
+			m.mem_used_kb = 0;
+			m.mem_total_kb = 0;
+		}
 		CpuTimes cur{};
-		if (read_cpu_times(cur)) {
+		const bool cpu_ok = read_cpu_times(cur);
+		if (cpu_ok) {
 			m.cpu_usage_permille = compute_cpu_permille(prev, cur);
 			prev = cur;
 		}
@@ -159,6 +180,30 @@ int main(int argc, char **argv) {
 					   " cpu_permille=" + std::to_string(m.cpu_usage_permille) +
 					   " mem_kb=" + std::to_string(m.mem_used_kb) + "/" +
 					   std::to_string(m.mem_total_kb));
+
+		if (temp_ok) {
+			if (m.cpu_temp_cdeg >= th.temp_crit_cdeg) {
+				logger.log(mc::core::LogLevel::Error, "metrics",
+						   "cpu_temp_crit cdeg=" +
+							   std::to_string(m.cpu_temp_cdeg));
+			} else if (m.cpu_temp_cdeg >= th.temp_warn_cdeg) {
+				logger.log(mc::core::LogLevel::Warn, "metrics",
+						   "cpu_temp_warn cdeg=" +
+							   std::to_string(m.cpu_temp_cdeg));
+			}
+		}
+
+		if (cpu_ok) {
+			if (m.cpu_usage_permille >= th.cpu_crit_permille) {
+				logger.log(mc::core::LogLevel::Error, "metrics",
+						   "cpu_usage_crit permille=" +
+							   std::to_string(m.cpu_usage_permille));
+			} else if (m.cpu_usage_permille >= th.cpu_warn_permille) {
+				logger.log(mc::core::LogLevel::Warn, "metrics",
+						   "cpu_usage_warn permille=" +
+							   std::to_string(m.cpu_usage_permille));
+			}
+		}
 
 		if (has_ipc) {
 			const uint32_t ts_ms = mc::core::Time::ms();
