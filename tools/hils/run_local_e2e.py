@@ -151,6 +151,10 @@ def main() -> int:
     parser.add_argument("--sock", default="/tmp/seriald.sock")
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--duration", type=float, default=2.0)
+    parser.add_argument("--steer-cdeg", type=int, default=100)
+    parser.add_argument("--speed-mm-s", type=int, default=200)
+    parser.add_argument("--ttl-ms", type=int, default=200)
+    parser.add_argument("--drive-every-ms", type=int, default=50)
     args = parser.parse_args()
 
     m1, s1 = os.openpty()
@@ -204,12 +208,24 @@ def main() -> int:
 
         # MODE_SET AUTO
         uds.send(build_packet(TYPE_MODE_SET, 1, bytes([1])))
-        # DRIVE
-        drive_payload = struct.pack("<hhHH", 100, 200, 50, 0)
-        uds.send(build_packet(TYPE_DRIVE, 2, drive_payload))
+        drive_seq = 2
+        next_drive = 0.0
 
         end = time.time() + args.duration
         while time.time() < end:
+            now = time.time()
+            if args.drive_every_ms > 0 and now >= next_drive:
+                drive_payload = struct.pack(
+                    "<hhHH",
+                    args.steer_cdeg,
+                    args.speed_mm_s,
+                    args.ttl_ms,
+                    0,
+                )
+                uds.send(build_packet(TYPE_DRIVE, drive_seq, drive_payload))
+                drive_seq = (drive_seq + 1) & 0xFFFF
+                next_drive = now + (args.drive_every_ms / 1000.0)
+
             r, _, _ = select.select([uds], [], [], 0.2)
             if not r:
                 continue

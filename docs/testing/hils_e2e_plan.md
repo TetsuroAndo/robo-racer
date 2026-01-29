@@ -27,6 +27,7 @@
 
 ## ローカル実行（簡易）
 - `make hils-local`（seriald + sim_esp32d を起動し STATUS を確認）
+  - 既定で DRIVE を周期送信（TTLは送信周期より大きく設定）
 
 ## テストケース（最小）
 
