@@ -26,3 +26,7 @@
 - 実機HILSは **出力観測経路**（Shadow/Hilsモード）として維持
 - sim_esp32d は **机上の代替ESP32** として扱う
 
+## fault injection（sim_esp32d）
+- `--status-delay-ms <ms>`: STATUS送信の遅延
+- `--status-drop-every <N>`: N回に1回 STATUS を送らない
+- `--status-corrupt-every <N>`: N回に1回 STATUS のCRCを破壊

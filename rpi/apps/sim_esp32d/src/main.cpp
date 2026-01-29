@@ -33,6 +33,7 @@ struct SimState {
 	bool auto_mode = false;
 	bool kill_latched = false;
 	bool has_drive = false;
+	uint32_t status_seq = 0;
 	uint16_t last_drive_seq = 0;
 	uint32_t last_drive_ms = 0;
 	uint32_t last_ping_ms = 0;
@@ -45,11 +46,14 @@ struct Config {
 	std::string dev;
 	int baud = 921600;
 	uint32_t status_interval_ms = 50;
+	uint32_t status_delay_ms = 0;
+	uint32_t status_drop_every = 0;
+	uint32_t status_corrupt_every = 0;
 	uint32_t hb_timeout_ms = 200;
 };
 
 bool send_status(mc::serial::Uart &uart, SimState &st, uint32_t now_ms,
-				 uint32_t hb_timeout_ms) {
+				 uint32_t hb_timeout_ms, bool corrupt) {
 	uint8_t payload[sizeof(mc::proto::StatusPayload)]{};
 
 	const bool hb_timeout =
@@ -101,6 +105,9 @@ bool send_status(mc::serial::Uart &uart, SimState &st, uint32_t now_ms,
 										mc::proto::Type::STATUS, 0, 0, payload,
 										sizeof(payload))) {
 		return false;
+	}
+	if (corrupt && frame_len > 2) {
+		frame[1] ^= 0xFF;
 	}
 	return uart.write(frame, (int)frame_len) > 0;
 }
@@ -163,6 +170,12 @@ Config parse_args(int argc, char **argv) {
 			cfg.baud = std::atoi(argv[++i]);
 		} else if (a == "--status-ms" && i + 1 < argc) {
 			cfg.status_interval_ms = (uint32_t)std::atoi(argv[++i]);
+		} else if (a == "--status-delay-ms" && i + 1 < argc) {
+			cfg.status_delay_ms = (uint32_t)std::atoi(argv[++i]);
+		} else if (a == "--status-drop-every" && i + 1 < argc) {
+			cfg.status_drop_every = (uint32_t)std::atoi(argv[++i]);
+		} else if (a == "--status-corrupt-every" && i + 1 < argc) {
+			cfg.status_corrupt_every = (uint32_t)std::atoi(argv[++i]);
 		} else if (a == "--hb-ms" && i + 1 < argc) {
 			cfg.hb_timeout_ms = (uint32_t)std::atoi(argv[++i]);
 		}
@@ -218,8 +231,21 @@ int main(int argc, char **argv) {
 		}
 
 		if ((int32_t)(now_ms - next_status_ms) >= 0) {
-			(void)send_status(uart, st, now_ms, cfg.hb_timeout_ms);
-			next_status_ms = now_ms + cfg.status_interval_ms;
+			st.status_seq++;
+			if (cfg.status_delay_ms > 0) {
+				usleep(cfg.status_delay_ms * 1000u);
+			}
+			const bool drop = cfg.status_drop_every > 0 &&
+							  (st.status_seq % cfg.status_drop_every) == 0;
+			const bool corrupt =
+				cfg.status_corrupt_every > 0 &&
+				(st.status_seq % cfg.status_corrupt_every) == 0;
+			const uint32_t send_ms = mc::core::Time::ms();
+			if (!drop) {
+				(void)send_status(uart, st, send_ms, cfg.hb_timeout_ms,
+								  corrupt);
+			}
+			next_status_ms = send_ms + cfg.status_interval_ms;
 		}
 	}
 
