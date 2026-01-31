@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+set +u
 source /opt/ros/humble/setup.bash
+set -u
 
 if [ $# -lt 1 ]; then
   echo "usage: $0 <bag_path> [rate]"

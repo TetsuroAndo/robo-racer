@@ -16,6 +16,10 @@ compile_commands.json
 .cache/
 # bin
 robo-racer
+# ROS
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
 
 # Created by https://www.toptal.com/developers/gitignore/api/c
 # Edit at https://www.toptal.com/developers/gitignore?templates=c

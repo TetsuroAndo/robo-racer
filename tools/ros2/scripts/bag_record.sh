@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+set +u
 source /opt/ros/humble/setup.bash
+set -u
 
 RUN_ID=${RUN_ID:-$(python3 - <<'PY'
 import uuid
