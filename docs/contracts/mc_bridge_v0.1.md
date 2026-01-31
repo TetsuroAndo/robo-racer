@@ -47,7 +47,8 @@ B/C が **実機なしでも ROS2 上で可視化/検証**できる状態を作�
 
 ## タイムスタンプ/メタデータ
 - `header.stamp`: **受信時刻**を付与（mc_protoに時刻が無い前提）
-- `run_id`: 環境変数 or 引数で受け取り、`LogRecord.run_id` に付与
+- `run_id`: 環境変数 or `/mc/run_id` を受け取り、`LogRecord.run_id` に **必ず** 付与
+  - `run_id` が取得できない場合は `/mc/log` を **発行しない**（完全トレーサビリティ優先）
 - `seq`: mc_proto の `seq` を各 message に含める
 
 ---
