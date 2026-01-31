@@ -104,7 +104,8 @@ $(LOG_DIR):
 # ================================
 # Runs
 # ================================
-.PHONY: test activate hils-build hils-local
+.PHONY: test activate hils-build hils-local ros2-up ros2-shell ros2-build \
+	ros2-bag-record ros2-bag-play ros2-session-up
 
 hils-build:
 	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
@@ -114,6 +115,38 @@ hils-local: hils-build $(PYTHON_LOCAL)
 	$(PYTHON_LOCAL) $(ROOT)/tools/hils/run_local_e2e.py \
 		--seriald $(RPI_BUILD_DIR)/apps/seriald/seriald \
 		--sim $(RPI_BUILD_DIR)/apps/sim_esp32d/sim_esp32d
+
+ros2-up:
+	docker compose -f tools/ros2/compose.yml up -d
+
+ros2-shell:
+	docker compose -f tools/ros2/compose.yml run --rm ros2 bash
+
+ros2-build:
+	docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash /ws/tools/ros2/scripts/ros2_build.sh
+
+ros2-bag-record:
+	docker compose -f tools/ros2/compose.yml run --rm \
+		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID \
+		-e WAIT_SEC -e REQUIRE_AT_LEAST_ONE \
+		ros2 \
+		bash /ws/tools/ros2/scripts/bag_record.sh
+
+ros2-bag-play:
+	@if [ -z "$(BAG)" ]; then \
+		echo "Error: BAG パラメータが未設定です。例: make ros2-bag-play BAG=/path/to/bag"; \
+		exit 1; \
+	fi
+	docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash /ws/tools/ros2/scripts/bag_play.sh $(BAG)
+
+ros2-session-up:
+	docker compose -f tools/ros2/compose.yml run --rm \
+		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID \
+		-e WAIT_SEC -e REQUIRE_AT_LEAST_ONE -e SESSION_CMD -e SESSION_WAIT_SEC \
+		ros2 \
+		bash /ws/tools/ros2/scripts/session_up.sh
 
 test: $(PYTHON_LOCAL)
 	$(MAKE) all
