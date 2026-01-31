@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
 			sender.send(procResult.speed, procResult.angle);
 			
 			// 次のループのために今回のステアリング角度を保存
-			lastSteerAngle = static_cast<float>(procResult.angle);
+			lastSteerAngle = procResult.angle;
 		} else {
 			// データがまだ来ていない場合は少し待機
 			usleep(1 * 1000);
