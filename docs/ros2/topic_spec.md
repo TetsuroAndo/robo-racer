@@ -13,7 +13,7 @@
 - range_min/max: センサ仕様に合わせる
 
 ### /mc/drive_cmd
-- 型: `mc_msgs/DriveCmd`（仮）
+- 型: `mc_msgs/DriveCmd`
 - 意味: `mc::proto::DrivePayload` と同等
 - 出所: `seriald.telemetry` に **RPi→ESP32 送信フレームをミラー**して可視化
 - フィールド:
@@ -23,7 +23,7 @@
   - `dist_mm` (uint16, mm)
 
 ### /mc/status
-- 型: `mc_msgs/Status`（仮）
+- 型: `mc_msgs/Status`
 - 意味: `mc::proto::StatusPayload` と同等
 - フィールド:
   - `seq_applied` (uint8)
@@ -34,7 +34,7 @@
   - `age_ms` (uint16)
 
 ### /mc/hils_state
-- 型: `mc_msgs/HilsState`（仮）
+- 型: `mc_msgs/HilsState`
 - 意味: `mc::proto::HilsStatePayload` と同等
 - フィールド:
   - `timestamp` (uint32)
@@ -43,7 +43,7 @@
   - `flags` (uint8)
 
 ### /mc/log
-- 型: `mc_msgs/LogRecord`（仮）
+- 型: `mc_msgs/LogRecord`
 - 意味: ログ統一仕様
 - フィールド:
   - `ts_ms` (uint32)
