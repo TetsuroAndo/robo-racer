@@ -1,3 +1,5 @@
+import threading
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import (
@@ -19,6 +21,7 @@ class RunIdCache:
         qos.history = QoSHistoryPolicy.KEEP_LAST
 
         self._node = node
+        self._lock = threading.Lock()
         self._run_id = ""
         self._sub = node.create_subscription(
             String,
@@ -29,11 +32,13 @@ class RunIdCache:
 
     @property
     def run_id(self) -> str:
-        return self._run_id
+        with self._lock:
+            return self._run_id
 
     def _on_run_id(self, msg: String) -> None:
         if msg.data:
-            self._run_id = msg.data
+            with self._lock:
+                self._run_id = msg.data
 
 
 class LogPublisher:
