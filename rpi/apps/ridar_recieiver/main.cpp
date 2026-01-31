@@ -1,30 +1,29 @@
-#include "include/sl_lidar.h"
-#include "include/sl_lidar_driver.h"
-#include "LidarScanData.hpp"
 #include "../../src/config/Config.h"
+#include "LidarScanData.hpp"
+#include "sl_lidar.h"
+#include "sl_lidar_driver.h"
 #include <csignal>
 #include <iostream>
-#include <unistd.h>
 #include <semaphore.h>
+#include <unistd.h>
 
-static sl::ILidarDriver* g_lidar = 0;
-static sl::IChannel*     g_ch    = 0;
+static sl::ILidarDriver *g_lidar = 0;
+static sl::IChannel *g_ch = 0;
 
-static int               g_shm_fd = -1;
-static ShmLidarScanData* g_shm    = 0;
-static sem_t*            g_sem    = SEM_FAILED;
+static int g_shm_fd = -1;
+static ShmLidarScanData *g_shm = 0;
+static sem_t *g_sem = SEM_FAILED;
 
 static volatile sig_atomic_t g_stop = 0;
-static void on_sig(int sig)
-{
-	// std::cout << "\nSignal " << sig << " received, shutting down..." << std::endl;
+static void on_sig(int sig) {
+	// std::cout << "\nSignal " << sig << " received, shutting down..." <<
+	// std::endl;
 	g_stop = 1;
 }
 
-bool	start_ridar()
-{
-	const char*	dev = DEFAULT_LIDAR_DEVICE;
-	int			baud = DEFAULT_LIDAR_BAUD;
+bool start_ridar() {
+	const char *dev = DEFAULT_LIDAR_DEVICE;
+	int baud = DEFAULT_LIDAR_BAUD;
 
 	g_ch = *sl::createSerialPortChannel(dev, baud);
 	if (!g_ch)
@@ -37,7 +36,7 @@ bool	start_ridar()
 	if (SL_IS_FAIL(g_lidar->connect(g_ch)))
 		return (false);
 
-	sl_lidar_response_device_info_t	info;
+	sl_lidar_response_device_info_t info;
 	if (SL_IS_FAIL(g_lidar->getDeviceInfo(info)))
 		return (false);
 
@@ -53,13 +52,9 @@ bool	start_ridar()
 	return (true);
 }
 
-bool	init_sem()
-{
+bool init_sem() {}
 
-}
-
-static bool	receiveScanData()
-{
+static bool receiveScanData() {
 	sl_lidar_response_measurement_node_hq_t nodes[cfg::LIDAR_NODE_MAX];
 	size_t nodeCount = sizeof(nodes) / sizeof(nodes[0]);
 
@@ -67,14 +62,13 @@ static bool	receiveScanData()
 	if (!SL_IS_OK(ans) || nodeCount == 0)
 		return (false);
 
-	//上記の取得だけではソートされていないため以下の関数でソートする
+	// 上記の取得だけではソートされていないため以下の関数でソートする
 	ans = g_lidar->ascendScanData(nodes, nodeCount);
 	if (!SL_IS_OK(ans))
 		return (false);
 
-	//四捨五入した角度を格納する。値が無い空ビンは0をセットする
-	//同じビンに複数値の候補がある場合は距離が近いほうを採用する
-
+	// 四捨五入した角度を格納する。値が無い空ビンは0をセットする
+	// 同じビンに複数値の候補がある場合は距離が近いほうを採用する
 
 	// for (int i = 0; i < 180; ++i)
 	// 	out_mm[i] = -1;
@@ -101,8 +95,7 @@ static bool	receiveScanData()
 	// }
 }
 
-int	main()
-{
+int main() {
 	signal(SIGINT, on_sig);
 	signal(SIGTERM, on_sig);
 
@@ -110,8 +103,7 @@ int	main()
 		return (1);
 	if (init_sem())
 		return (1);
-	while (!g_stop)
-	{
+	while (!g_stop) {
 		receiveScanData();
 		write_to_mem();
 	}
@@ -119,8 +111,6 @@ int	main()
 	// 終了処理
 	// int fd = shm_open("/lidar_scan", O_CREAT | O_RDWR, 0666);
 }
-
-
 
 // // ===== stop flag =====
 // static volatile sig_atomic_t g_stop = 0;
@@ -193,7 +183,8 @@ int	main()
 //     g_shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
 //     if (g_shm_fd < 0) return false;
 
-//     if (ftruncate(g_shm_fd, (off_t)sizeof(ShmLidarScanData)) < 0) return false;
+//     if (ftruncate(g_shm_fd, (off_t)sizeof(ShmLidarScanData)) < 0) return
+//     false;
 
 //     void* p = mmap(NULL, sizeof(ShmLidarScanData),
 //                    PROT_READ | PROT_WRITE, MAP_SHARED,

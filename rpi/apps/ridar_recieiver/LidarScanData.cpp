@@ -1,31 +1,25 @@
 #include "LidarScanData.hpp"
 
-LidarScanData::LidarScanData()
-{
+LidarScanData::LidarScanData() {
 	for (int i = 0; i < 180; ++i)
 		distance_mm[i] = 0;
 }
 
+LidarScanData::~LidarScanData() {}
 
-LidarScanData::~LidarScanData()
-{
-}
-
-int32_t	LidarScanData::getDistance(int32_t angle) const
-{
+int32_t LidarScanData::getDistance(int32_t angle) const {
 	if (angle < -90 || angle > 90)
 		return (-1);
 
-	int32_t	index = angle + 90;
+	int32_t index = angle + 90;
 	return (distance_mm[index]);
 }
 
-bool	LidarScanData::setDistance(int32_t angle, int32_t value)
-{
+bool LidarScanData::setDistance(int32_t angle, int32_t value) {
 	if (angle < -90 || angle > 90)
 		return (false);
 
-	int32_t	index = angle + 90;
+	int32_t index = angle + 90;
 	distance_mm[index] = value;
 	return (true);
 }
