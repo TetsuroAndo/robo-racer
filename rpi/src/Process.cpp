@@ -15,12 +15,12 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData, float lastSt
 	int minHandleDistance = INT32_MAX;
 	int minObstacleOnPath = INT32_MAX;
 	
-	// 前回のステアリング角度を±30度にクリップ
+	// 前回のステアリング角度を±cfg::STEER_ANGLE_MAX_DEGにクリップ
 	float clampedSteerAngle = lastSteerAngle;
-	if (clampedSteerAngle > 30.0f) {
-		clampedSteerAngle = 30.0f;
-	} else if (clampedSteerAngle < -30.0f) {
-		clampedSteerAngle = -30.0f;
+	if (clampedSteerAngle > cfg::STEER_ANGLE_MAX_DEG) {
+		clampedSteerAngle = cfg::STEER_ANGLE_MAX_DEG;
+	} else if (clampedSteerAngle < -cfg::STEER_ANGLE_MAX_DEG) {
+		clampedSteerAngle = -cfg::STEER_ANGLE_MAX_DEG;
 	}
 	
 	// クリップされたステアリング角度を中心とした評価範囲を計算
