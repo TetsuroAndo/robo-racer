@@ -52,7 +52,7 @@ class LogPublisher:
         if not run_id:
             now_ns = self._node.get_clock().now().nanoseconds
             if now_ns - self._last_warn_ns > 5_000_000_000:
-                self._node.get_logger().warn("run_id not set; dropping /mc/log")
+                self._node.get_logger().warning("run_id not set; dropping /mc/log")
                 self._last_warn_ns = now_ns
             return False
 
