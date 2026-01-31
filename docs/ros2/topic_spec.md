@@ -15,6 +15,7 @@
 ### /mc/drive_cmd
 - 型: `mc_msgs/DriveCmd`（仮）
 - 意味: `mc::proto::DrivePayload` と同等
+- 出所: `seriald.telemetry` に **RPi→ESP32 送信フレームをミラー**して可視化
 - フィールド:
   - `steer_cdeg` (int16, 0.01deg)
   - `speed_mm_s` (int16, mm/s)
@@ -49,4 +50,3 @@
   - `level` (uint8)
   - `text` (string)
   - `run_id` (string)
-

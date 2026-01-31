@@ -98,12 +98,11 @@ std::vector< LidarData > LidarReceiver::_receiveOnce() {
 }
 
 // 従来のインターフェース（互換性用）
-std::vector< LidarData > LidarReceiver::receive() {
-	return _receiveOnce();
-}
+std::vector< LidarData > LidarReceiver::receive() { return _receiveOnce(); }
 
 void LidarReceiver::startReceivingThread() {
-	// If we think we're already receiving, verify that the thread is actually running.
+	// If we think we're already receiving, verify that the thread is actually
+	// running.
 	if (_isReceiving) {
 		if (_receivingThread.joinable()) {
 			// A receiving thread is already active; nothing to do.
