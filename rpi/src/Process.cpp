@@ -76,9 +76,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData, float lastSt
 		float angleDiff = std::abs(steerSourceAngle - clampedSteerAngle);
 		// 角度差に基づいた重み（0°:1.0、90°:減少）
 		float directionWeight = 1.0f - (angleDiff / 90.0f) * cfg::PROCESS_DIRECTION_WEIGHT;
-		// 現在の方向との平均を取ることで滑らかに遷移
-		float blendFactor = cfg::PROCESS_DIRECTION_WEIGHT;
-		steerSourceAngle = steerSourceAngle * (1.0f - blendFactor) + clampedSteerAngle * blendFactor * directionWeight;
+		// 現在の方向との平均を取ることで滑らかに遷移（角度差に応じて重みを変化）
+		steerSourceAngle = steerSourceAngle * (1.0f - directionWeight)
+		                 + clampedSteerAngle * directionWeight;
 	}
 	
 	float calculatedAngle = steerSourceAngle * cfg::PROCESS_MIN_ANGLE_SIGN * cfg::PROCESS_STEER_GAIN;
