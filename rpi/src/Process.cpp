@@ -110,5 +110,6 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData, float lastSt
 		limitedSpeed = curveReducedSpeed;
 	}
 
-	return ProcResult(limitedSpeed, calculatedAngle);
+	int roundedAngle = static_cast<int>(std::round(calculatedAngle));
+	return ProcResult(limitedSpeed, roundedAngle);
 }
