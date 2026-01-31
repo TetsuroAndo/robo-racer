@@ -161,6 +161,8 @@ NAME_PATTERNS=(
 	"*.yml"
 	"*.md"
 	"*.ini"
+	"*.sh"
+	"*.txt"
 	"Makefile"
 )
 
