@@ -49,4 +49,17 @@
   - `ts_ms` (uint32)
   - `level` (uint8)
   - `text` (string)
-  - `run_id` (string)
+  - `run_id` (string, **必須**。`/mc/run_id` と一致させる)
+
+### /mc/run_id
+- 型: `std_msgs/String`
+- 意味: セッション唯一の run_id（bag_record が生成）
+- QoS: transient_local 推奨（遅延参加でも受け取れる）
+
+### /tf_static（推奨）
+- 型: `tf2_msgs/TFMessage`
+- 意味: 静的な座標変換（例: `base_link -> laser`）
+
+### /tf（推奨、出ている場合）
+- 型: `tf2_msgs/TFMessage`
+- 意味: 動的な座標変換（例: `odom -> base_link`, `map -> odom`）

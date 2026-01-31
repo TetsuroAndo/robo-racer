@@ -47,4 +47,5 @@ xhost + 127.0.0.1
 
 ## 5) bag の record/play
 - record: `./tools/ros2/scripts/bag_record.sh`
+- session: `./tools/ros2/scripts/session_up.sh`（run_id 伝播を固定したい場合）
 - play: `./tools/ros2/scripts/bag_play.sh <bag_path> [rate]`

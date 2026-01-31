@@ -20,6 +20,7 @@ robo-racer
 ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
+/training/data/bags/
 
 # Created by https://www.toptal.com/developers/gitignore/api/c
 # Edit at https://www.toptal.com/developers/gitignore?templates=c

@@ -1,0 +1,13 @@
+# slam: core + TFs are effectively required
+/scan
+/mc/status
+/mc/drive_cmd
+/mc/hils_state
+/mc/log
+/mc/run_id
+/tf_static
+/tf
+
+# optional depending on your stack
+/map
+/odom

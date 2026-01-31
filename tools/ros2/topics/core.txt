@@ -1,0 +1,11 @@
+# core: race operation minimal + future-proof
+/scan
+/mc/status
+/mc/drive_cmd
+/mc/hils_state
+/mc/log
+/mc/run_id
+
+# recommended (if available)
+/tf_static
+/tf
