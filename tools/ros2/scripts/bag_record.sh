@@ -27,8 +27,11 @@ RECORD_ALL=0
 TOPICS_FILE=""
 
 if [ -n "${TOPICS:-}" ]; then
-  # shellcheck disable=SC2206
-  DESIRED_TOPICS=(${TOPICS})
+  # NOTE:
+  # - ROS2のトピック名にはスペースを含めない前提
+  # - TOPICSにはスペース区切りのトピック一覧を渡す想定
+  # - グロブ展開を防ぐために、ダブルクォート付きでread -aを使用する
+  IFS=' ' read -r -a DESIRED_TOPICS <<< "$TOPICS"
 elif [ "${PROFILE}" = "all" ]; then
   RECORD_ALL=1
 else
