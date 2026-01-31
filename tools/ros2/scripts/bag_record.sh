@@ -16,7 +16,17 @@ OUT_DIR=${OUT_DIR:-/ws/training/data/bags/${STAMP}_${RUN_ID}}
 PROFILE=${PROFILE:-core}
 WAIT_SEC=${WAIT_SEC:-2.0}
 PUBLISH_RUN_ID=${PUBLISH_RUN_ID:-1}
+RUN_ID_PUB_KEEPALIVE=${RUN_ID_PUB_KEEPALIVE:-1}
+RUN_ID_PUB_RATE=${RUN_ID_PUB_RATE:-1}
 REQUIRE_AT_LEAST_ONE=${REQUIRE_AT_LEAST_ONE:-1}
+RUN_ID_PUB_PID=""
+
+cleanup() {
+  if [ -n "${RUN_ID_PUB_PID}" ]; then
+    kill "${RUN_ID_PUB_PID}" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
 
 mkdir -p "$OUT_DIR"
 
@@ -50,10 +60,16 @@ else
 fi
 
 if [ "${PUBLISH_RUN_ID}" = "1" ]; then
-  if /ws/tools/ros2/scripts/publish_run_id.sh "$RUN_ID"; then
-    echo "[INFO] published /mc/run_id=${RUN_ID}"
+  if [ "${RUN_ID_PUB_KEEPALIVE}" = "1" ]; then
+    /ws/tools/ros2/scripts/publish_run_id.sh --keepalive --rate "${RUN_ID_PUB_RATE}" "$RUN_ID" &
+    RUN_ID_PUB_PID=$!
+    echo "[INFO] keepalive publishing /mc/run_id=${RUN_ID}"
   else
-    echo "[WARN] failed to publish /mc/run_id (continuing)"
+    if /ws/tools/ros2/scripts/publish_run_id.sh "$RUN_ID"; then
+      echo "[INFO] published /mc/run_id=${RUN_ID}"
+    else
+      echo "[WARN] failed to publish /mc/run_id (continuing)"
+    fi
   fi
 fi
 
@@ -70,7 +86,8 @@ META
 
 if [ "${RECORD_ALL}" = "1" ]; then
   echo "[INFO] ros2 bag record --all -> ${OUT_DIR}/bag"
-  exec ros2 bag record -o "$OUT_DIR/bag" --all
+  ros2 bag record -o "$OUT_DIR/bag" --all
+  exit 0
 fi
 
 if [ ${#DESIRED_TOPICS[@]} -eq 0 ]; then
@@ -133,4 +150,4 @@ fi
 } >> "$OUT_DIR/meta.txt"
 
 echo "[INFO] ros2 bag record topics -> ${OUT_DIR}/bag"
-exec ros2 bag record -o "$OUT_DIR/bag" "${DESIRED_TOPICS[@]}"
+ros2 bag record -o "$OUT_DIR/bag" "${DESIRED_TOPICS[@]}"

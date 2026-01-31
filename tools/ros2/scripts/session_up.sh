@@ -10,6 +10,8 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   echo "  RUN_ID           : optional, force run_id"
   echo "  SESSION_WAIT_SEC : optional, wait before recording (default 1.0)"
   echo "  PUBLISH_RUN_ID   : optional, 1 to publish /mc/run_id (default 1)"
+  echo "  RUN_ID_PUB_KEEPALIVE : optional, 1 to keep publishing run_id (default 1)"
+  echo "  RUN_ID_PUB_RATE  : optional, keepalive rate in Hz (default 1)"
   echo "  SESSION_CMD      : optional, command string to run (bash -lc)"
   exit 0
 fi
@@ -27,13 +29,23 @@ export RUN_ID
 
 SESSION_WAIT_SEC=${SESSION_WAIT_SEC:-1.0}
 PUBLISH_RUN_ID=${PUBLISH_RUN_ID:-1}
+RUN_ID_PUB_KEEPALIVE=${RUN_ID_PUB_KEEPALIVE:-1}
+RUN_ID_PUB_RATE=${RUN_ID_PUB_RATE:-1}
 SESSION_CMD=${SESSION_CMD:-}
 
 if [ "${PUBLISH_RUN_ID}" = "1" ]; then
-  if /ws/tools/ros2/scripts/publish_run_id.sh "$RUN_ID"; then
-    echo "[INFO] published /mc/run_id=${RUN_ID}"
+  if [ "${RUN_ID_PUB_KEEPALIVE}" = "1" ]; then
+    /ws/tools/ros2/scripts/publish_run_id.sh --keepalive --rate "${RUN_ID_PUB_RATE}" "$RUN_ID" &
+    RUN_ID_PUB_PID=$!
+    PUBLISH_RUN_ID=0
+    export PUBLISH_RUN_ID
+    echo "[INFO] keepalive publishing /mc/run_id=${RUN_ID}"
   else
-    echo "[WARN] failed to publish /mc/run_id (continuing)"
+    if /ws/tools/ros2/scripts/publish_run_id.sh "$RUN_ID"; then
+      echo "[INFO] published /mc/run_id=${RUN_ID}"
+    else
+      echo "[WARN] failed to publish /mc/run_id (continuing)"
+    fi
   fi
 fi
 
@@ -44,12 +56,16 @@ fi
 
 SESSION_PID=""
 SESSION_PGID=""
+RUN_ID_PUB_PID=""
 cleanup() {
   if [ -n "${SESSION_PID}" ]; then
     if [ -n "${SESSION_PGID}" ]; then
       kill -- -"${SESSION_PGID}" 2>/dev/null || true
     fi
     kill "${SESSION_PID}" 2>/dev/null || true
+  fi
+  if [ -n "${RUN_ID_PUB_PID}" ]; then
+    kill "${RUN_ID_PUB_PID}" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT INT TERM
@@ -93,4 +109,4 @@ if [ -n "${SESSION_PID}" ] && ! kill -0 "${SESSION_PID}" 2>/dev/null; then
   exit 1
 fi
 
-exec /ws/tools/ros2/scripts/bag_record.sh
+/ws/tools/ros2/scripts/bag_record.sh
