@@ -43,8 +43,8 @@ xhost + 127.0.0.1
 ```
 ./tools/ros2/scripts/ros2_build.sh
 ```
+`ros2_ws/src/mc_msgs` がメッセージ定義の雛形です。
 
 ## 5) bag の record/play
 - record: `./tools/ros2/scripts/bag_record.sh`
 - play: `./tools/ros2/scripts/bag_play.sh <bag_path> [rate]`
-
