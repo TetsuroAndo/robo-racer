@@ -15,5 +15,5 @@ public:
 	Process();
 	~Process();
 
-	ProcResult proc(const std::vector< LidarData > &lidarData) const;
+	ProcResult proc(const std::vector< LidarData > &lidarData, float lastSteerAngle = 0.0f) const;
 };
