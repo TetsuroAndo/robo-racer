@@ -102,7 +102,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData, float lastSt
 	// 計算角度が物理上限を超える場合、その比率に応じて速度を減速
 	if (absAngle > cfg::STEER_ANGLE_MAX_DEG) {
 		float curveRatio = (float)cfg::STEER_ANGLE_MAX_DEG / absAngle;
-		float curveFactor = cfg::STEER_CURVE_SPEED_FACTOR + (1.0f - cfg::STEER_CURVE_SPEED_FACTOR) * curveRatio;
+		float curveFactor = cfg::STEER_CURVE_SPEED_FACTOR * curveRatio;
 		int curveReducedSpeed = (int)(limitedSpeed * curveFactor);
 		std::cout << "CURVE: sharp turn needed (" << absAngle << "°), ratio: "
 				  << curveRatio << ", speed: " << limitedSpeed << " → "
