@@ -80,6 +80,11 @@ class BridgeNode(Node):
         self.declare_parameter("demo_period_sec", 1.0)
         if self.get_parameter("demo_log").value:
             period = float(self.get_parameter("demo_period_sec").value)
+            if period <= 0.0:
+                self.get_logger().warning(
+                    "demo_period_sec must be > 0; demo_log disabled"
+                )
+                return
             self.create_timer(period, self._demo_log)
 
     def _demo_log(self) -> None:

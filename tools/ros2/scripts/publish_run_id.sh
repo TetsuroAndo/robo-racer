@@ -19,7 +19,12 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     --rate)
-      RATE="${2:-}"
+      if [ -z "${2:-}" ] || [[ "${2:-}" == -* ]]; then
+        echo "[ERROR] --rate requires a numeric argument"
+        usage
+        exit 1
+      fi
+      RATE="$2"
       shift 2
       ;;
     -h|--help)

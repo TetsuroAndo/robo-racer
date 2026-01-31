@@ -27,6 +27,7 @@ bag 運用の再現性・トレーサビリティを強化し、run_id をセッ
 | SESSION_CMD の安全注意を明記 | 完了 | 外部入力の禁止を明文化 |
 | session_up のプロセスグループ分離 | 完了 | kill で子プロセスを残さない |
 | /mc/run_id の keepalive 配信 | 完了 | セッション中の遅延参加に対応 |
+| publish_run_id の --rate 引数検証 | 完了 | 空値/不正値を防止 |
 
 ## 検証タスク
 | 項目 | 状態 | 備考 |
@@ -55,3 +56,5 @@ bag 運用の再現性・トレーサビリティを強化し、run_id をセッ
 - 2026-01-31: session_up の起動に setsid を使用し、終了時にプロセスグループごとに終了するよう修正。
 - 2026-01-31: /mc/run_id の keepalive 配信対応を開始。
 - 2026-01-31: bag_record/session_up で keepalive publish を起動し、終了時に停止するよう修正。
+- 2026-01-31: publish_run_id の --rate 引数検証追加に着手。
+- 2026-01-31: publish_run_id の --rate に空値/不正値ガードを追加。
