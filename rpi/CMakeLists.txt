@@ -11,4 +11,6 @@ add_subdirectory(lib/mc_ipc)
 
 add_subdirectory(apps/seriald)
 add_subdirectory(apps/serialctl)
+add_subdirectory(apps/sim_esp32d)
+add_subdirectory(apps/metricsd)
 add_subdirectory(src)

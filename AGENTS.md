@@ -46,3 +46,9 @@
   them from `ServoSteering::begin(...)`.
 - Treat `training/data/` as local data; avoid committing large datasets.
 - Update `models/production/` only for release-ready model artifacts.
+
+## Development Workflow Expectations
+- 開発を始める前に `docs/` 内の関連資料を必ず参照し、仕様を確認してください。
+- 実装前には、進捗と差異を追跡するためのステート管理用 Markdown ファイル（例: `docs/planning/ftg_implementation_status.md`）を作成し、進行中/完了/再検討などの状態を記録した上で実装に入ってください。
+- 実装が完了したら、対応するステートファイルをこまめに更新し、どの機能がどの状態かを明示してください。
+- これらの追加メモやステート記録は、**日本語**で記述してください。

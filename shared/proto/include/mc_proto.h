@@ -26,6 +26,15 @@ enum class Type : uint8_t {
 	LOG = 0x10,
 	STATUS = 0x11,
 	HILS_STATE = 0x12,
+
+	// IPC topics (RPi internal)
+	IPC_LIDAR_SCAN = 0x20,
+	IPC_LIDAR_SUMMARY = 0x21,
+	IPC_IMU_SAMPLE = 0x22,
+	IPC_DRIVE_CMD = 0x23,
+	IPC_VEHICLE_STATUS = 0x24,
+	IPC_METRICS = 0x25,
+	IPC_LOG_RECORD = 0x26,
 	ACK = 0x80,
 };
 
@@ -86,6 +95,89 @@ struct StatusPayload {
 	uint16_t age_ms_le;
 };
 static_assert(sizeof(StatusPayload) == 10, "StatusPayload must be 10 bytes");
+
+// IPC_LIDAR_SCAN (RPi internal)
+// Chunked scan payload header (data follows as uint16 mm array).
+struct LidarScanChunkPayload {
+	uint32_t ts_ms;
+	uint16_t scan_id;
+	int16_t angle_start_cdeg;
+	int16_t angle_step_cdeg;
+	uint8_t chunk_index;
+	uint8_t chunk_count;
+	uint8_t point_count;
+	uint8_t encoding; // 0=uint16 mm
+};
+static_assert(sizeof(LidarScanChunkPayload) == 14,
+			  "LidarScanChunkPayload must be 14 bytes");
+
+// IPC_LIDAR_SUMMARY (RPi internal)
+struct LidarSummaryPayload {
+	uint32_t ts_ms;
+	int16_t best_heading_cdeg;
+	uint16_t best_distance_mm;
+	uint16_t min_distance_mm;
+	int16_t min_distance_heading_cdeg;
+	uint8_t confidence;
+	uint8_t flags;
+};
+static_assert(sizeof(LidarSummaryPayload) == 14,
+			  "LidarSummaryPayload must be 14 bytes");
+
+// IPC_IMU_SAMPLE (RPi internal)
+struct ImuSamplePayload {
+	uint32_t ts_ms;
+	int16_t ax_mg;
+	int16_t ay_mg;
+	int16_t az_mg;
+	int16_t gx_mdps;
+	int16_t gy_mdps;
+	int16_t gz_mdps;
+};
+static_assert(sizeof(ImuSamplePayload) == 16,
+			  "ImuSamplePayload must be 16 bytes");
+
+// IPC_DRIVE_CMD (RPi internal)
+struct DriveCmdPayload {
+	uint32_t ts_ms;
+	int16_t steer_cdeg;
+	int16_t speed_mm_s;
+	uint16_t ttl_ms;
+	uint8_t source;
+	uint8_t flags;
+};
+static_assert(sizeof(DriveCmdPayload) == 12,
+			  "DriveCmdPayload must be 12 bytes");
+
+// IPC_VEHICLE_STATUS (RPi internal)
+struct VehicleStatusPayload {
+	uint32_t ts_ms;
+	StatusPayload status;
+};
+static_assert(sizeof(VehicleStatusPayload) == 14,
+			  "VehicleStatusPayload must be 14 bytes");
+
+// IPC_METRICS (RPi internal)
+struct MetricsPayload {
+	uint32_t ts_ms;
+	uint16_t cpu_temp_cdeg;
+	uint16_t cpu_usage_permille;
+	uint32_t mem_used_kb;
+	uint32_t mem_total_kb;
+};
+static_assert(sizeof(MetricsPayload) == 16, "MetricsPayload must be 16 bytes");
+
+// IPC_LOG_RECORD (RPi internal)
+// text follows with length text_len (UTF-8).
+struct LogRecordPayload {
+	uint32_t ts_ms;
+	uint8_t level;
+	uint8_t text_len;
+	uint8_t flags;
+	uint8_t reserved;
+};
+static_assert(sizeof(LogRecordPayload) == 8,
+			  "LogRecordPayload must be 8 bytes");
 
 // Other commands (KILL, PING, LOG, ACK) have no fixed payload struct.
 
