@@ -103,9 +103,22 @@ std::vector< LidarData > LidarReceiver::receive() {
 }
 
 void LidarReceiver::startReceivingThread() {
-	if (_isReceiving)
-		return;
+	// If we think we're already receiving, verify that the thread is actually running.
+	if (_isReceiving) {
+		if (_receivingThread.joinable()) {
+			// A receiving thread is already active; nothing to do.
+			return;
+		}
+		// The flag says "receiving", but the thread is not joinable anymore.
+		// Reset the flag so we can safely start a new receiving thread.
+		_isReceiving = false;
+	}
 
+	// Defensive: if for some reason a previous thread is still joinable while
+	// _isReceiving is false, clean it up before starting a new one.
+	if (_receivingThread.joinable()) {
+		_receivingThread.join();
+	}
 	_isReceiving = true;
 	_receivingThread = std::thread(&LidarReceiver::_receivingThreadLoop, this);
 	std::cout << "LiDAR receiving thread started" << std::endl;
