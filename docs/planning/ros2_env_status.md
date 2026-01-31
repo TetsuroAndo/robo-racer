@@ -19,6 +19,7 @@ ROS2（RViz含む）を Ubuntu/Mac の Docker で再現可能にし、B/C が ba
 | Make 導線（ros2-up/shell/build/record/play） | 完了 | 2026-02-04 | 既存Makeと干渉しない |
 | docs/ros2/{dev_env,bag_ops,topic_spec}.md | 完了 | 2026-02-04 | B/Cが質問なしで進める |
 | ros2_ws/mc_msgs（msg雛形） | 完了 | 2026-02-04 | topic_spec に対応 |
+| docs/ros2/dev_env.md の DISPLAY 注意追記 | 完了 | 2026-01-31 | Ubuntu/Mac の差分を強調 |
 
 ## 残タスク（順序付きTODO）
 | 順番 | タスク | 状態 | 期限 | 依存 | 根拠 | 備考 |
@@ -30,6 +31,7 @@ ROS2（RViz含む）を Ubuntu/Mac の Docker で再現可能にし、B/C が ba
 | 5 | docs/ros2/bag_ops.md | 完了 | 2026-02-04 | 4 | スクリプトが決まらないと運用が書けない | 命名/保存規則 |
 | 6 | Make 導線（ros2-up/shell/build/record/play） | 完了 | 2026-02-04 | 1 | Docker環境が必要 | 既存Makeと干渉しない |
 | 7 | ros2_ws/mc_msgs（msg雛形） | 完了 | 2026-02-04 | 3 | topic_spec と整合させる | Drive/Status/Hils/Log |
+| 8 | docs/ros2/dev_env.md の DISPLAY 注意追記 | 完了 | 2026-01-31 | 2 | RViz の起動失敗を防ぐ | compose のデフォルト注意 |
 
 ## 進行メモ
 - 2026-02-01: ros2_setup_v1.md を精査開始。
@@ -37,3 +39,5 @@ ROS2（RViz含む）を Ubuntu/Mac の Docker で再現可能にし、B/C が ba
 - 2026-02-01: tools/ros2（Docker/compose）実装を開始。
 - 2026-02-01: tools/ros2 と docs/ros2、Make導線、bagスクリプトまで実装完了。
 - 2026-02-01: ros2_ws/mc_msgs の雛形を追加。
+- 2026-01-31: DISPLAY のプラットフォーム差分を docs に追記する作業を開始。
+- 2026-01-31: docs/ros2/dev_env.md に DISPLAY 事前設定の注意を追記。

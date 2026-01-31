@@ -20,6 +20,10 @@ docker compose -f tools/ros2/compose.yml run --rm ros2 bash
 ```
 
 ## 3) RViz 起動（GUI）
+### 事前注意（DISPLAY）
+`docker compose up` / `make ros2-up` は **DISPLAY を自動設定しない**。ホストの環境変数に従うため、
+Ubuntu は `DISPLAY=:0`、Mac は `DISPLAY=host.docker.internal:0` を **事前に設定**してから起動すること。
+
 ### Ubuntu（X11）
 ```
 xhost +local:root
