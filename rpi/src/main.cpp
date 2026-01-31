@@ -31,6 +31,9 @@ int main(int argc, char **argv) {
 	lidarReceiver.startReceivingThread();
 	std::cout << "Main thread: LiDAR receiving thread started" << std::endl;
 
+	// 前回のステアリング角度を保持
+	float lastSteerAngle = 0.0f;
+
 	// メインスレッドでは評価・送信を実行
 	while (!g_stop) {
 		std::vector< LidarData > lidarData;
@@ -38,8 +41,11 @@ int main(int argc, char **argv) {
 		// 最新のLiDARデータを取得（スレッドセーフ）
 		if (lidarReceiver.getLatestData(lidarData)) {
 			// データが利用可能
-			const ProcResult procResult = process.proc(lidarData);
+			const ProcResult procResult = process.proc(lidarData, lastSteerAngle);
 			sender.send(procResult.speed, procResult.angle);
+			
+			// 次のループのために今回のステアリング角度を保存
+			lastSteerAngle = static_cast<float>(procResult.angle);
 		} else {
 			// データがまだ来ていない場合は少し待機
 			usleep(1 * 1000);

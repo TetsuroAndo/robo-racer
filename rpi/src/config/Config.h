@@ -85,5 +85,11 @@ static constexpr float PROCESS_MIN_DIST_SPEED_FACTOR = 0.5f; // 減速係数: 0.
 static constexpr int STEER_ANGLE_MAX_DEG         = 30;    // サーボの物理的上限
 static constexpr float STEER_CURVE_SPEED_FACTOR  = 0.7f;  // 曲率係数: 計算角度/上限 の比率で速度を調整
 
+// 前回ステアリング角度を考慮した障害物評価
+static constexpr float PROCESS_STEER_WINDOW_HALF_DEG = 25.0f;  // 前回ステアリング角度の±25度を評価範囲とする
+
+// ステアリング方向への優先度: 現在の方向に近い角度を優先（0.0=優先度なし、1.0=最大優先度）
+static constexpr float PROCESS_DIRECTION_WEIGHT = 0.5f;  // 現在方向との角度差を考慮する程度
+
 // clang-format on
 } // namespace cfg
