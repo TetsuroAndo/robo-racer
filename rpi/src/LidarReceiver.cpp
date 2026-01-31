@@ -155,7 +155,7 @@ void LidarReceiver::_receivingThreadLoop() {
 				std::lock_guard< std::mutex > lock(_dataMutex);
 
 				// キューサイズを制限（最新フレームのみ保持）
-				if (_dataQueue.size() > 1) {
+				if (!_dataQueue.empty()) {
 					_dataQueue.pop();
 				}
 				_dataQueue.push(data);
