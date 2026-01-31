@@ -134,6 +134,10 @@ ros2-bag-record:
 		bash /ws/tools/ros2/scripts/bag_record.sh
 
 ros2-bag-play:
+	@if [ -z "$(BAG)" ]; then \
+		echo "Error: BAG パラメータが未設定です。例: make ros2-bag-play BAG=/path/to/bag"; \
+		exit 1; \
+	fi
 	docker compose -f tools/ros2/compose.yml run --rm ros2 \
 		bash /ws/tools/ros2/scripts/bag_play.sh $(BAG)
 
