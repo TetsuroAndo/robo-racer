@@ -104,7 +104,8 @@ $(LOG_DIR):
 # ================================
 # Runs
 # ================================
-.PHONY: test activate hils-build hils-local
+.PHONY: test activate hils-build hils-local ros2-up ros2-shell ros2-build \
+	ros2-bag-record ros2-bag-play
 
 hils-build:
 	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
@@ -114,6 +115,24 @@ hils-local: hils-build $(PYTHON_LOCAL)
 	$(PYTHON_LOCAL) $(ROOT)/tools/hils/run_local_e2e.py \
 		--seriald $(RPI_BUILD_DIR)/apps/seriald/seriald \
 		--sim $(RPI_BUILD_DIR)/apps/sim_esp32d/sim_esp32d
+
+ros2-up:
+	docker compose -f tools/ros2/compose.yml up -d
+
+ros2-shell:
+	docker compose -f tools/ros2/compose.yml run --rm ros2 bash
+
+ros2-build:
+	docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash /ws/tools/ros2/scripts/ros2_build.sh
+
+ros2-bag-record:
+	docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash /ws/tools/ros2/scripts/bag_record.sh
+
+ros2-bag-play:
+	docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash /ws/tools/ros2/scripts/bag_play.sh $(BAG)
 
 test: $(PYTHON_LOCAL)
 	$(MAKE) all

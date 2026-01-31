@@ -1,12 +1,14 @@
-# ROS2 / SLAM 手順 v1（タスクB）
+# ROS2 / SLAM 手順 v1（タスクA）
 
 ## 目的
-- SLAM環境を **再現可能** に用意する
+- SLAM/可視化（RViz含む）環境を **再現可能** に用意する
 - 別PC/別人でも同じ手順で地図生成できる状態にする
+- bag 運用を含む標準I/Fを固定し、B/C の並行開発を可能にする
 
 ## 前提
 - ROS2: Humble（推奨）
 - 方式: Docker優先（OS差分を最小化）
+- ホスト: **Ubuntuを主**、**Macも同等に対応**
 - 入力: LiDARのログ（IPC/ログから変換）
 
 ---
@@ -33,13 +35,23 @@
 
 ### 1) Docker環境の用意
 - `tools/ros2/` に Dockerfile/compose を配置する
-- コンテナ内で `ros2` と `slam_toolbox` を使用可能にする
+- コンテナ内で `ros2` と `slam_toolbox` と `rviz2` を使用可能にする
 
 **例（方針）**
 ```
 docker build -t robo-racer-ros2 -f tools/ros2/Dockerfile .
 docker run --rm -it -v $PWD:/ws robo-racer-ros2
 ```
+
+#### GUI（RViz）を使う場合
+**Ubuntu（X11）**
+- `xhost +local:root`
+- `-e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix:rw`
+
+**Mac（Docker Desktop + XQuartz）**
+- XQuartz を起動し「接続を許可」を有効化
+- `DISPLAY=host.docker.internal:0` を指定
+- 必要に応じて `xhost + 127.0.0.1` を許可
 
 ### 2) bag の準備
 - `training/data/` または `logs/` から bag を生成
@@ -68,3 +80,4 @@ ros2 run nav2_map_server map_saver_cli -f docs/slam/maps/track
 - `tools/ros2/` の Dockerfile/compose を追加
 - bag 変換ツールの最小実装（`tools/ros2/scripts/convert_ipc_lidar_to_rosbag.py`）
 - slam_toolbox のパラメータセット（scan_matcher など）
+- RViz の起動手順（Ubuntu/Mac）を確定
