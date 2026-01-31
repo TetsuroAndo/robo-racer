@@ -38,6 +38,8 @@ SESSION_CMD="ros2 launch <pkg> <file.launch.py>" \
 - Make 経由: `SESSION_CMD="ros2 launch <pkg> <file.launch.py>" make ros2-session-up`
 - `session_up.sh` が `RUN_ID` を生成・publish し、同じ `RUN_ID` で `bag_record.sh` を起動
 - `SESSION_CMD` 未指定なら bag 記録のみ
+- 注意: `SESSION_CMD` は `bash -lc` で実行されるため、**信頼できる文字列のみ**を渡すこと（外部入力の直接連結は禁止）
+- 安全に実行したい場合は引数で渡す: `./tools/ros2/scripts/session_up.sh -- ros2 launch <pkg> <file.launch.py>`
 
 ## 推奨トピック
 - `/scan` (sensor_msgs/LaserScan)

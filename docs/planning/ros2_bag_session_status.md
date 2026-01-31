@@ -24,6 +24,8 @@ bag 運用の再現性・トレーサビリティを強化し、run_id をセッ
 | session_up の安全装置強化 | 完了 | trap/待機/環境伝播 |
 | bag_record の present_topics 記録 | 完了 | meta.txt に可視トピックを追記 |
 | run_id 運用の実装側強制（契約更新） | 完了 | mc_bridge 契約へ反映 |
+| SESSION_CMD の安全注意を明記 | 完了 | 外部入力の禁止を明文化 |
+| session_up のプロセスグループ分離 | 完了 | kill で子プロセスを残さない |
 
 ## 検証タスク
 | 項目 | 状態 | 備考 |
@@ -46,3 +48,7 @@ bag 運用の再現性・トレーサビリティを強化し、run_id をセッ
 - 2026-01-31: mc_bridge 契約に run_id 必須・未取得時の発行禁止を明記。
 - 2026-01-31: session_up/bag_record の bash -n を再実行。
 - 2026-01-31: Docker デーモン未起動のため session_up 再検証は保留。
+- 2026-01-31: SESSION_CMD の安全注意を docs に追記する作業を開始。
+- 2026-01-31: bag_ops に SESSION_CMD の安全注意と引数渡しの回避策を追記。
+- 2026-01-31: session_up のプロセスグループ分離に着手。
+- 2026-01-31: session_up の起動に setsid を使用し、終了時にプロセスグループごとに終了するよう修正。

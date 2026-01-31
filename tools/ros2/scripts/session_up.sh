@@ -43,19 +43,45 @@ if [ $# -gt 0 ] && [ -n "${SESSION_CMD}" ]; then
 fi
 
 SESSION_PID=""
+SESSION_PGID=""
 cleanup() {
   if [ -n "${SESSION_PID}" ]; then
-    kill -- -"${SESSION_PID}" 2>/dev/null || kill "${SESSION_PID}" 2>/dev/null || true
+    if [ -n "${SESSION_PGID}" ]; then
+      kill -- -"${SESSION_PGID}" 2>/dev/null || true
+    fi
+    kill "${SESSION_PID}" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT INT TERM
 
+start_session_cmd() {
+  if command -v setsid >/dev/null 2>&1; then
+    RUN_ID="${RUN_ID}" setsid bash -lc "${SESSION_CMD}" &
+    SESSION_PID=$!
+    SESSION_PGID="${SESSION_PID}"
+  else
+    echo "[WARN] setsid not found; child processes may remain on exit"
+    RUN_ID="${RUN_ID}" bash -lc "${SESSION_CMD}" &
+    SESSION_PID=$!
+  fi
+}
+
+start_session_args() {
+  if command -v setsid >/dev/null 2>&1; then
+    RUN_ID="${RUN_ID}" setsid -- "$@" &
+    SESSION_PID=$!
+    SESSION_PGID="${SESSION_PID}"
+  else
+    echo "[WARN] setsid not found; child processes may remain on exit"
+    RUN_ID="${RUN_ID}" "$@" &
+    SESSION_PID=$!
+  fi
+}
+
 if [ -n "${SESSION_CMD}" ]; then
-  RUN_ID="${RUN_ID}" bash -lc "${SESSION_CMD}" &
-  SESSION_PID=$!
+  start_session_cmd
 elif [ $# -gt 0 ]; then
-  RUN_ID="${RUN_ID}" "$@" &
-  SESSION_PID=$!
+  start_session_args "$@"
 fi
 
 if [ "${SESSION_WAIT_SEC}" != "0" ]; then
