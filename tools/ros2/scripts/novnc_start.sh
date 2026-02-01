@@ -31,6 +31,19 @@ trap cleanup EXIT INT TERM
 Xvfb "${NOVNC_DISPLAY}" -screen 0 "${NOVNC_RESOLUTION}" -ac +extension GLX +render -noreset &
 XVFB_PID=$!
 
+DISPLAY_NUM="${NOVNC_DISPLAY#:}"
+XSOCK="/tmp/.X11-unix/X${DISPLAY_NUM}"
+for _ in $(seq 1 50); do
+  if [ -S "${XSOCK}" ]; then
+    break
+  fi
+  sleep 0.1
+done
+if [ ! -S "${XSOCK}" ]; then
+  echo "[ERROR] Xvfb did not create ${XSOCK}"
+  exit 1
+fi
+
 fluxbox -display "${NOVNC_DISPLAY}" >/tmp/fluxbox.log 2>&1 &
 FLUXBOX_PID=$!
 
