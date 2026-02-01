@@ -7,6 +7,7 @@
 ## 状態
 - 完了: 共通ユーティリティを `rpi/lib/mc_core` に追加
 - 完了: 各アプリの参照先を `mc::core::ensure_dir` / `mc::core::dir_of` に切替
+- 完了: `ensure_dir` を再帰作成（mkdir -p相当）に拡張
 - 未着手: 影響範囲のビルド確認
 - 進行中: レビュー後の最終更新
 
