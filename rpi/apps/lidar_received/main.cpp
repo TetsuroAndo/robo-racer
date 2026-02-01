@@ -205,7 +205,10 @@ void write_to_mem(const LidarScanData &scan_data) {
 	sem_wait(g_sem);
 	for (int i = -90; i <= 90; ++i)
 		g_shm->distance_mm[i + 90] = scan_data.getDistance(i);
-	g_shm->seq = LIDAR_UPDATED;
+	if (g_shm->seq == UINT32_MAX)
+		g_shm->seq = 1;
+	else
+		g_shm->seq++;
 	sem_post(g_sem);
 }
 

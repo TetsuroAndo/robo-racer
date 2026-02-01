@@ -318,22 +318,49 @@ def test_hils_e2e_seriald_sim_esp32d(tmp_path: Path):
         assert stub_run.returncode == 0, stub_run.stdout + stub_run.stderr
 
         status = None
+        last_status = None
         deadline = time.time() + 1.0
         while time.time() < deadline:
             pkt = decode_packet(recv_frame(uds, 0.2))
             if pkt and pkt[0] == TYPE_STATUS:
-                status = pkt
-                break
-        assert status is not None, "no STATUS received"
-        _, _, _, payload = status
-        seq_applied, auto_active, faults, speed, steer, _age = struct.unpack(
-            "<BBHhhH", payload
-        )
-        assert auto_active == 1
-        assert speed == 200
-        assert steer == 100
-        assert seq_applied == 2
-        assert (faults & FAULT_AUTO_INACTIVE) == 0
+                last_status = pkt
+                _, _, _, payload = pkt
+                (
+                    seq_applied,
+                    auto_active,
+                    faults,
+                    speed,
+                    steer,
+                    _age,
+                ) = struct.unpack("<BBHhhH", payload)
+                if (
+                    auto_active == 1
+                    and speed == 200
+                    and steer == 100
+                    and seq_applied == 2
+                    and (faults & FAULT_AUTO_INACTIVE) == 0
+                ):
+                    status = pkt
+                    break
+        if status is None and last_status is not None:
+            _, _, _, payload = last_status
+            seq_applied, auto_active, faults, speed, steer, _age = struct.unpack(
+                "<BBHhhH", payload
+            )
+            last_msg = (
+                "last STATUS: auto_active="
+                + str(auto_active)
+                + " speed="
+                + str(speed)
+                + " steer="
+                + str(steer)
+                + " seq_applied="
+                + str(seq_applied)
+                + " faults=0x%04x" % faults
+            )
+        else:
+            last_msg = "no STATUS matching MODE_SET/DRIVE"
+        assert status is not None, last_msg
 
         # TTL expire
         time.sleep(0.08)
