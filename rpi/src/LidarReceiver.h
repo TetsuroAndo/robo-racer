@@ -1,5 +1,7 @@
 #pragma once
 
+#include "sl_lidar.h"
+#include "sl_lidar_driver.h"
 
 #include <condition_variable>
 #include <mutex>
