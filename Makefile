@@ -87,7 +87,7 @@ fc-pio:
 
 # === Clean / Rebuild ===
 .PHONY: clean fclean re c f r clog
-clean: c-rpi c-pio clog
+clean: c-rpi fc-pio clog
 fclean: clean
 	$(MAKE) -C $(RPLIDAR_SDK_DIR) clean
 	$(RM) $(PIO_DIR)
