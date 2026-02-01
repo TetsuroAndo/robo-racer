@@ -144,7 +144,7 @@ bool init_sem() {
 			}
 			return (cleanup_sem(), false);
 		}
-		g_shm->seq = NOUPDATED;
+		g_shm->seq = LIDAR_NOUPDATED;
 		for (int i = 0; i < 181; ++i)
 			g_shm->distance_mm[i] = 0;
 		sem_post(g_sem);
@@ -203,7 +203,7 @@ void write_to_mem(const LidarScanData &scan_data) {
 	sem_wait(g_sem);
 	for (int i = -90; i <= 90; ++i)
 		g_shm->distance_mm[i + 90] = scan_data.getDistance(i);
-	g_shm->seq = UPDATED;
+	g_shm->seq = LIDAR_UPDATED;
 	sem_post(g_sem);
 }
 

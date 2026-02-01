@@ -11,10 +11,13 @@ target_include_directories(lidar_received PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ../../src
   ../../src/config
+)
+target_include_directories(lidar_received SYSTEM PRIVATE
   ../../lib/rplidar_sdk/sdk/include
 )
 
-target_compile_options(lidar_received PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(lidar_received PRIVATE -Wall -Wextra -Wpedantic
+  -Wno-zero-length-array)
 
 set(RPLIDAR_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../lib/rplidar_sdk/output/${CMAKE_SYSTEM_NAME}/Release")
 find_library(RPLIDAR_LIB sl_lidar_sdk PATHS ${RPLIDAR_LIB_DIR})
