@@ -5,7 +5,6 @@
 #include "sl_lidar.h"
 #include "sl_lidar_driver.h"
 #include <csignal>
-#include <iostream>
 #include <semaphore.h>
 #include <unistd.h>
 #include <cstdint>

@@ -1,5 +1,7 @@
 #include "lidar_recieiver.h"
 
+#include <mc/core/Log.hpp>
+
 #include <string>
 
 static sl::ILidarDriver *g_lidar = 0;
@@ -17,10 +19,6 @@ static const char *SEM_NAME = "/lidar_scan_sem";
 static volatile sig_atomic_t g_stop = 0;
 static void on_sig(int sig) {
 	(void)sig;
-#ifdef DEBUG
-	std::cout << "\nSignal " << sig << " received, shutting down..."
-			  << std::endl;
-#endif
 	g_stop = 1;
 }
 
@@ -45,31 +43,42 @@ bool start_lidar() {
 
 	auto channelRes = sl::createSerialPortChannel(std::string(dev), baud);
 	if (!channelRes)
-		return (cleanup_lidar_partial(), false);
+		return (MC_LOGE("lidar_received",
+						"createSerialPortChannel failed dev=" +
+							std::string(dev) + " baud=" + std::to_string(baud)),
+				cleanup_lidar_partial(), false);
 	g_ch = channelRes.value;
 
 	auto lidarRes = sl::createLidarDriver();
 	if (!lidarRes)
-		return (cleanup_lidar_partial(), false);
+		return (MC_LOGE("lidar_received", "createLidarDriver failed"),
+				cleanup_lidar_partial(), false);
 	g_lidar = lidarRes.value;
 
 	if (SL_IS_FAIL(g_lidar->connect(g_ch)))
-		return (cleanup_lidar_partial(), false);
+		return (MC_LOGE("lidar_received", "lidar connect failed"),
+				cleanup_lidar_partial(), false);
 
 	sl_lidar_response_device_info_t info;
 	if (SL_IS_FAIL(g_lidar->getDeviceInfo(info)))
-		return (cleanup_lidar_partial(), false);
+		return (MC_LOGE("lidar_received", "getDeviceInfo failed"),
+				cleanup_lidar_partial(), false);
 
 	sl_lidar_response_device_health_t health;
 	if (SL_IS_FAIL(g_lidar->getHealth(health)))
-		return (cleanup_lidar_partial(), false);
+		return (MC_LOGE("lidar_received", "getHealth failed"),
+				cleanup_lidar_partial(), false);
 
 	if (SL_IS_FAIL(g_lidar->setMotorSpeed()))
-		return (cleanup_lidar_partial(), false);
+		return (MC_LOGE("lidar_received", "setMotorSpeed failed"),
+				cleanup_lidar_partial(), false);
 
 	sl::LidarScanMode scanMode;
 	if (SL_IS_FAIL(g_lidar->startScan(false, true, 0, &scanMode)))
-		return (cleanup_lidar_partial(), false);
+		return (MC_LOGE("lidar_received", "startScan failed"),
+				cleanup_lidar_partial(), false);
+	MC_LOGI("lidar_received", "lidar started dev=" + std::string(dev) +
+								  " baud=" + std::to_string(baud));
 	return (true);
 }
 
@@ -104,10 +113,12 @@ bool init_sem() {
 	g_shm_fd = shm_open(SHM_NAME, O_CREAT | O_EXCL | O_RDWR, 0666);
 	if (g_shm_fd < 0) {
 		if (errno != EEXIST)
-			return (cleanup_sem(), false);
+			return (MC_LOGE("lidar_received", "shm_open failed"), cleanup_sem(),
+					false);
 		g_shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
 		if (g_shm_fd < 0)
-			return (cleanup_sem(), false);
+			return (MC_LOGE("lidar_received", "shm_open existing failed"),
+					cleanup_sem(), false);
 		g_shm_owner = false;
 	} else {
 		g_shm_owner = true;
@@ -115,23 +126,26 @@ bool init_sem() {
 
 	if (g_shm_owner) {
 		if (ftruncate(g_shm_fd, (off_t)sizeof(ShmLidarScanData)) < 0)
-			return (cleanup_sem(), false);
+			return (MC_LOGE("lidar_received", "ftruncate failed"),
+					cleanup_sem(), false);
 	}
 
 	void *p = mmap(NULL, sizeof(ShmLidarScanData), PROT_READ | PROT_WRITE,
 				   MAP_SHARED, g_shm_fd, 0);
 	if (p == MAP_FAILED)
-		return (cleanup_sem(), false);
+		return (MC_LOGE("lidar_received", "mmap failed"), cleanup_sem(), false);
 
 	g_shm = (ShmLidarScanData *)p;
 
 	g_sem = sem_open(SEM_NAME, O_CREAT | O_EXCL, 0666, 1);
 	if (g_sem == SEM_FAILED) {
 		if (errno != EEXIST)
-			return (cleanup_sem(), false);
+			return (MC_LOGE("lidar_received", "sem_open failed"), cleanup_sem(),
+					false);
 		g_sem = sem_open(SEM_NAME, 0);
 		if (g_sem == SEM_FAILED)
-			return (cleanup_sem(), false);
+			return (MC_LOGE("lidar_received", "sem_open existing failed"),
+					cleanup_sem(), false);
 		g_sem_owner = false;
 	} else {
 		g_sem_owner = true;
@@ -141,10 +155,13 @@ bool init_sem() {
 		while (sem_wait(g_sem) == -1) {
 			if (errno == EINTR) {
 				if (g_stop)
-					return (cleanup_sem(), false);
+					return (MC_LOGE("lidar_received",
+									"sem_wait interrupted during init"),
+							cleanup_sem(), false);
 				continue;
 			}
-			return (cleanup_sem(), false);
+			return (MC_LOGE("lidar_received", "sem_wait failed"), cleanup_sem(),
+					false);
 		}
 		g_shm->seq = LIDAR_NOUPDATED;
 		for (int i = 0; i < 181; ++i)
@@ -152,6 +169,9 @@ bool init_sem() {
 		sem_post(g_sem);
 	}
 
+	MC_LOGI("lidar_received", std::string("shared memory ready owner=") +
+								  (g_shm_owner ? "1" : "0") +
+								  " sem_owner=" + (g_sem_owner ? "1" : "0"));
 	return (true);
 }
 
@@ -216,6 +236,8 @@ int main() {
 	signal(SIGINT, on_sig);
 	signal(SIGTERM, on_sig);
 
+	MC_LOGI("lidar_received", "starting");
+
 	if (!start_lidar())
 		return (1);
 	if (!init_sem())
@@ -230,8 +252,10 @@ int main() {
 	}
 
 	// 終了処理
+	MC_LOGI("lidar_received", "shutdown");
 	cleanup_lidar_partial();
 	// 共有メモリおよびセマフォのクリーンアップは cleanup_sem() に集約
 	cleanup_sem();
+	mc::core::Logger::instance().shutdown();
 	return (0);
 }

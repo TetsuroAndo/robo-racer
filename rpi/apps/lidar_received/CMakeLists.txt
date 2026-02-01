@@ -11,6 +11,7 @@ target_include_directories(lidar_received PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ../../src
   ../../src/config
+  ../../lib/mc_core/include
 )
 target_include_directories(lidar_received SYSTEM PRIVATE
   ../../lib/rplidar_sdk/sdk/include
