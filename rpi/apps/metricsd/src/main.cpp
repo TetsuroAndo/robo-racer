@@ -1,10 +1,10 @@
 #include "../config/Config.h"
 #include <mc/core/Log.hpp>
+#include <mc/core/Path.hpp>
 #include <mc/core/Time.hpp>
 #include <mc/ipc/UdsSeqPacket.hpp>
 #include <mc/proto/Proto.hpp>
 
-#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -13,32 +13,10 @@
 #include <memory>
 #include <string>
 #include <sys/socket.h>
-#include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
 
 namespace {
-
-static void ensure_dir_(const std::string &path) {
-	if (path.empty())
-		return;
-	const int rc = mkdir(path.c_str(), 0755);
-	if (rc == 0 || errno == EEXIST)
-		return;
-
-	// mkdir が EEXIST 以外の理由で失敗した場合は、原因調査しやすいようにエラーメッセージを出力する
-	std::fprintf(stderr,
-		     "ensure_dir_: failed to create directory '%s': %s\n",
-		     path.c_str(),
-		     std::strerror(errno));
-}
-
-static std::string dir_of_(const std::string &path) {
-	const size_t pos = path.find_last_of('/');
-	if (pos == std::string::npos || pos == 0)
-		return std::string();
-	return path.substr(0, pos);
-}
 
 struct MetricsSample {
 	uint16_t cpu_temp_cdeg = 0;
@@ -173,7 +151,7 @@ int main(int argc, char **argv) {
 
 	auto &logger = mc::core::Logger::instance();
 	if (!log_path.empty()) {
-		ensure_dir_(dir_of_(log_path));
+		mc::core::ensure_dir(mc::core::dir_of(log_path));
 		logger.addSink(std::make_shared< mc::core::FileSink >(log_path));
 	}
 

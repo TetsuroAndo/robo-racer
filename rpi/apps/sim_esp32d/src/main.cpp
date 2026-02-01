@@ -1,6 +1,5 @@
 #include "../config/Config.h"
 #include <atomic>
-#include <cerrno>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
@@ -9,10 +8,10 @@
 #include <string>
 
 #include <poll.h>
-#include <sys/stat.h>
 #include <unistd.h>
 
 #include <mc/core/Log.hpp>
+#include <mc/core/Path.hpp>
 #include <mc/core/Time.hpp>
 #include <mc/proto/Proto.hpp>
 #include <mc/serial/Uart.hpp>
@@ -22,25 +21,6 @@ namespace {
 static std::atomic< bool > g_run{true};
 
 void on_sigint(int) { g_run.store(false); }
-
-static void ensure_dir_(const std::string &path) {
-	if (path.empty())
-		return;
-	const int rc = mkdir(path.c_str(), 0755);
-	if (rc == 0 || errno == EEXIST)
-		return;
-
-	std::fprintf(stderr,
-	             "ensure_dir_: failed to create directory '%s' (errno=%d: %s)\n",
-	             path.c_str(), errno, std::strerror(errno));
-}
-
-static std::string dir_of_(const std::string &path) {
-	const size_t pos = path.find_last_of('/');
-	if (pos == std::string::npos || pos == 0)
-		return std::string();
-	return path.substr(0, pos);
-}
 
 static inline uint16_t rd16u(const uint8_t *p) {
 	return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
@@ -220,7 +200,7 @@ int main(int argc, char **argv) {
 	const Config cfg = parse_args(argc, argv);
 	auto &logger = mc::core::Logger::instance();
 	if (!cfg.log_path.empty()) {
-		ensure_dir_(dir_of_(cfg.log_path));
+		mc::core::ensure_dir(mc::core::dir_of(cfg.log_path));
 		logger.addSink(std::make_shared< mc::core::FileSink >(cfg.log_path));
 	}
 	logger.log(mc::core::LogLevel::Info, "sim_esp32d",
