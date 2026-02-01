@@ -15,8 +15,9 @@ static const char *SEM_NAME = "/lidar_scan_sem";
 static volatile sig_atomic_t g_stop = 0;
 static void on_sig(int sig) {
 	(void)sig;
-	// std::cout << "\nSignal " << sig << " received, shutting down..." <<
-	// std::endl;
+#ifdef DEBUG
+	std::cout << "\nSignal " << sig << " received, shutting down..." << std::endl;
+#endif
 	g_stop = 1;
 }
 
