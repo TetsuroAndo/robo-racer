@@ -60,4 +60,18 @@ if [ ${#action[@]} -eq 0 ]; then
   action=(bash)
 fi
 
-exec "${action[@]}"
+CHILD_PID=""
+terminate_child() {
+  local sig="${1:-TERM}"
+  if [ -n "${CHILD_PID}" ] && kill -0 "${CHILD_PID}" 2>/dev/null; then
+    kill "-${sig}" "${CHILD_PID}" 2>/dev/null || kill "${CHILD_PID}" 2>/dev/null || true
+    wait "${CHILD_PID}" 2>/dev/null || true
+  fi
+}
+trap 'terminate_child TERM; exit 0' TERM
+trap 'terminate_child INT; exit 130' INT
+
+"${action[@]}" &
+CHILD_PID=$!
+wait "${CHILD_PID}"
+exit $?

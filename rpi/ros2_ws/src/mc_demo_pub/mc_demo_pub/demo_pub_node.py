@@ -1,4 +1,5 @@
 import math
+import sys
 
 import rclpy
 from rclpy.node import Node
@@ -36,22 +37,17 @@ class DemoPubNode(Node):
         self._range_variation = float(self.get_parameter("range_variation").value)
 
         if self._publish_rate <= 0.0:
-            self.get_logger().error("publish_rate must be > 0")
-            return
+            raise ValueError("publish_rate must be > 0")
         if self._angle_increment <= 0.0:
-            self.get_logger().error("angle_increment must be > 0")
-            return
+            raise ValueError("angle_increment must be > 0")
         if self._angle_max <= self._angle_min:
-            self.get_logger().error("angle_max must be > angle_min")
-            return
+            raise ValueError("angle_max must be > angle_min")
         if self._range_max <= self._range_min:
-            self.get_logger().error("range_max must be > range_min")
-            return
+            raise ValueError("range_max must be > range_min")
 
         self._count = int(round((self._angle_max - self._angle_min) / self._angle_increment)) + 1
         if self._count <= 0:
-            self.get_logger().error("computed scan count is invalid")
-            return
+            raise ValueError("computed scan count is invalid")
 
         self._scan_time = 1.0 / self._publish_rate
         self._time_increment = self._scan_time / float(self._count)
@@ -89,11 +85,17 @@ class DemoPubNode(Node):
 
 def main() -> None:
     rclpy.init()
-    node = DemoPubNode()
+    node: DemoPubNode | None = None
     try:
+        node = DemoPubNode()
         rclpy.spin(node)
+    except Exception as exc:
+        logger = rclpy.logging.get_logger("mc_demo_pub")
+        logger.error(f"fatal error: {exc}")
+        sys.exit(1)
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         rclpy.shutdown()
 
 
