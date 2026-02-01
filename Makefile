@@ -127,7 +127,7 @@ $(LOG_DIR):
 # Runs
 # ================================
 .PHONY: test activate hils-build hils-local ros2-up ros2-shell ros2-build \
-	ros2-rviz ros2-bag-record ros2-bag-play ros2-session-up
+	ros2-rviz ros2-novnc ros2-bag-record ros2-bag-play ros2-session-up
 
 hils-build:
 	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
@@ -151,6 +151,9 @@ ros2-build:
 ros2-rviz:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
 		bash -lc "rviz2 -d /ws/tools/ros2/rviz/default.rviz"
+
+ros2-novnc:
+	docker compose -f tools/ros2/compose.yml up ros2-novnc
 
 ros2-bag-record:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm \
@@ -310,6 +313,8 @@ help:
 	@echo "  ros2-up          Start ROS2 docker compose"
 	@echo "  ros2-shell       Open ROS2 container shell"
 	@echo "  ros2-build       Build ROS2 workspace in container"
+	@echo "  ros2-rviz        Launch RViz via X11/XQuartz"
+	@echo "  ros2-novnc       Launch RViz via noVNC (browser)"
 	@echo "  ros2-bag-record  Record rosbag via container"
 	@echo "  ros2-bag-play    Play rosbag via container (BAG=... required)"
 	@echo "  ros2-session-up  Start ROS2 session + bag record"

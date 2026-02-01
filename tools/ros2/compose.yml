@@ -16,3 +16,17 @@ services:
       - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/runtime-root}
     stdin_open: true
     tty: true
+
+  ros2-novnc:
+    build:
+      context: ../..
+      dockerfile: tools/ros2/Dockerfile
+    image: robo-racer-ros2:humble
+    volumes:
+      - ../..:/ws
+    ports:
+      - "6080:6080"
+    environment:
+      - NOVNC_PORT=6080
+      - NOVNC_RESOLUTION=1280x800x24
+    command: ["bash", "/ws/tools/ros2/scripts/novnc_start.sh", "rviz2", "-d", "/ws/tools/ros2/rviz/default.rviz"]
