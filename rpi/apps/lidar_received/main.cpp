@@ -1,49 +1,51 @@
-#include "lidar_receiver.h"
+#include "lidar_recieiver.h"
 
-static sl::ILidarDriver	*g_lidar = 0;
-static sl::IChannel		*g_ch = 0;
+#include <string>
 
-static int				g_shm_fd = -1;
-static ShmLidarScanData	*g_shm = 0;
-static sem_t			*g_sem = SEM_FAILED;
+static sl::ILidarDriver *g_lidar = 0;
+static sl::IChannel *g_ch = 0;
 
-static const char* SHM_NAME = "/lidar_scan";
-static const char* SEM_NAME = "/lidar_scan_sem";
+static int g_shm_fd = -1;
+static ShmLidarScanData *g_shm = 0;
+static sem_t *g_sem = SEM_FAILED;
+
+static const char *SHM_NAME = "/lidar_scan";
+static const char *SEM_NAME = "/lidar_scan_sem";
 
 static volatile sig_atomic_t g_stop = 0;
-static void on_sig(int sig)
-{
+static void on_sig(int sig) {
+	(void)sig;
 	// std::cout << "\nSignal " << sig << " received, shutting down..." <<
 	// std::endl;
 	g_stop = 1;
 }
 
-static void cleanup_lidar_partial()
-{
+static void cleanup_lidar_partial() {
 	// Driver cleanup
-	if (g_lidar)
-	{
-		sl::disposeDriver(g_lidar);
+	if (g_lidar) {
+		delete g_lidar;
 		g_lidar = 0;
 	}
-	// Channel cleanup: SDKによっては delete ではなく release API がある
-	// createSerialPortChannel は通常 delete しない想定の実装もあるので、
-	// ここはSDKの仕様に合わせて調整する。
-	g_ch = 0;
+	// Channel cleanup
+	if (g_ch) {
+		delete g_ch;
+		g_ch = 0;
+	}
 }
 
-bool start_ridar()
-{
-	const char *dev = DEFAULT_LIDAR_DEVICE;
-	int baud = DEFAULT_LIDAR_BAUD;
+bool start_ridar() {
+	const char *dev = cfg::DEFAULT_LIDAR_DEVICE;
+	int baud = cfg::DEFAULT_LIDAR_BAUD;
 
-	g_ch = sl::createSerialPortChannel(dev, baud);
-	if (!g_ch)
+	auto channelRes = sl::createSerialPortChannel(std::string(dev), baud);
+	if (!channelRes)
 		return (cleanup_lidar_partial(), false);
+	g_ch = channelRes.value;
 
-	g_lidar = sl::createLidarDriver();
-	if (!g_lidar)
+	auto lidarRes = sl::createLidarDriver();
+	if (!lidarRes)
 		return (cleanup_lidar_partial(), false);
+	g_lidar = lidarRes.value;
 
 	if (SL_IS_FAIL(g_lidar->connect(g_ch)))
 		return (cleanup_lidar_partial(), false);
@@ -59,28 +61,25 @@ bool start_ridar()
 	if (SL_IS_FAIL(g_lidar->setMotorSpeed()))
 		return (cleanup_lidar_partial(), false);
 
-	if (SL_IS_FAIL(g_lidar->startScan(false, true)))
+	sl::LidarScanMode scanMode;
+	if (SL_IS_FAIL(g_lidar->startScan(false, true, 0, &scanMode)))
 		return (cleanup_lidar_partial(), false);
 	return (true);
 }
 
-void cleanup_sem()
-{
+void cleanup_sem() {
 	// safe multiple calls
-	if (g_sem != SEM_FAILED && g_sem != 0)
-	{
+	if (g_sem != SEM_FAILED && g_sem != 0) {
 		sem_close(g_sem);
 		g_sem = SEM_FAILED;
 	}
 
-	if (g_shm && g_shm != MAP_FAILED)
-	{
+	if (g_shm && g_shm != MAP_FAILED) {
 		munmap(g_shm, sizeof(ShmLidarScanData));
 		g_shm = 0;
 	}
 
-	if (g_shm_fd >= 0)
-	{
+	if (g_shm_fd >= 0) {
 		close(g_shm_fd);
 		g_shm_fd = -1;
 	}
@@ -89,8 +88,7 @@ void cleanup_sem()
 	shm_unlink(SHM_NAME);
 }
 
-bool	init_sem()
-{
+bool init_sem() {
 	g_shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
 	if (g_shm_fd < 0)
 		return (cleanup_sem(), false);
@@ -98,13 +96,12 @@ bool	init_sem()
 	if (ftruncate(g_shm_fd, (off_t)sizeof(ShmLidarScanData)) < 0)
 		return (cleanup_sem(), false);
 
-	void* p = mmap(NULL, sizeof(ShmLidarScanData),
-					PROT_READ | PROT_WRITE, MAP_SHARED,
-					g_shm_fd, 0);
+	void *p = mmap(NULL, sizeof(ShmLidarScanData), PROT_READ | PROT_WRITE,
+				   MAP_SHARED, g_shm_fd, 0);
 	if (p == MAP_FAILED)
 		return (cleanup_sem(), false);
 
-	g_shm = (ShmLidarScanData*)p;
+	g_shm = (ShmLidarScanData *)p;
 
 	g_sem = sem_open(SEM_NAME, O_CREAT, 0666, 1);
 	if (g_sem == SEM_FAILED)
@@ -119,17 +116,15 @@ bool	init_sem()
 	return (true);
 }
 
-static inline float normalize_deg_180(float deg)
-{
+static inline float normalize_deg_180(float deg) {
 	while (deg >= 180.f)
 		deg -= 360.f;
-	while (deg <  -180.f)
+	while (deg < -180.f)
 		deg += 360.f;
 	return (deg);
 }
 
-static bool receiveScanData(LidarScanData* scan_data)
-{
+static bool receiveScanData(LidarScanData *scan_data) {
 	sl_lidar_response_measurement_node_hq_t nodes[cfg::LIDAR_NODE_MAX];
 	size_t nodeCount = sizeof(nodes) / sizeof(nodes[0]);
 
@@ -142,19 +137,17 @@ static bool receiveScanData(LidarScanData* scan_data)
 	if (!SL_IS_OK(ans))
 		return (false);
 
-		
 	for (int i = -90; i <= 90; ++i)
 		scan_data->setDistance(i, 0);
-		
+
 	// 同じビンに複数値の候補がある場合は距離が近いほうを採用する
-	for (size_t i = 0; i < nodeCount; i++)
-	{
+	for (size_t i = 0; i < nodeCount; i++) {
 		if (nodes[i].dist_mm_q2 == 0)
 			continue;
 
 		float angle = (float)nodes[i].angle_z_q14 * 90.f / 16384.f;
 		angle = normalize_deg_180(angle);
-		int32_t angle_i = static_cast<int32_t>(std::roundf(angle));
+		int32_t angle_i = static_cast< int32_t >(std::roundf(angle));
 		if (angle_i < -90 || angle_i > 90)
 			continue;
 
@@ -162,15 +155,14 @@ static bool receiveScanData(LidarScanData* scan_data)
 		if (dist <= 0)
 			continue;
 
-		int32_t	old_data = scan_data->getDistance(angle_i);
+		int32_t old_data = scan_data->getDistance(angle_i);
 		if (old_data > dist || old_data <= 0)
 			scan_data->setDistance(angle_i, dist);
 	}
 	return (true);
 }
 
-void	write_to_mem(const LidarScanData& scan_data)
-{
+void write_to_mem(const LidarScanData &scan_data) {
 	sem_wait(g_sem);
 	for (int i = -90; i <= 90; ++i)
 		g_shm->distance_mm[i + 90] = scan_data.getDistance(i);
@@ -178,8 +170,7 @@ void	write_to_mem(const LidarScanData& scan_data)
 	sem_post(g_sem);
 }
 
-int main()
-{
+int main() {
 	signal(SIGINT, on_sig);
 	signal(SIGTERM, on_sig);
 
@@ -187,10 +178,9 @@ int main()
 		return (1);
 	if (!init_sem())
 		return (1);
-	
-	LidarScanData	scan_data;
-	while (!g_stop)
-	{
+
+	LidarScanData scan_data;
+	while (!g_stop) {
 		if (receiveScanData(&scan_data))
 			write_to_mem(scan_data);
 		else
@@ -198,11 +188,10 @@ int main()
 	}
 
 	// 終了処理
-	if (g_lidar)
-	{
+	if (g_lidar) {
 		g_lidar->stop();
 		g_lidar->disconnect();
-		sl::disposeDriver(g_lidar);
+		delete g_lidar;
 	}
 	if (g_shm)
 		munmap(g_shm, sizeof(ShmLidarScanData));

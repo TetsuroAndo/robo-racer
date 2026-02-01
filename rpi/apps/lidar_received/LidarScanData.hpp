@@ -11,9 +11,9 @@ public:
 	LidarScanData();
 	~LidarScanData();
 
-	int32_t	getDistance(int32_t angle) const;
-	bool	setDistance(int32_t angle, int32_t value);
-	void	clear();
+	int32_t getDistance(int32_t angle) const;
+	bool setDistance(int32_t angle, int32_t value);
+	void clear();
 };
 
 #endif

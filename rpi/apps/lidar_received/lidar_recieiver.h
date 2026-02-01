@@ -1,5 +1,4 @@
-#ifndef RIDAR_RECIEIVER_H
-# define RIDAR_RECIEIVER_H
+#pragma once
 
 #include "../../src/config/Config.h"
 #include "LidarScanData.hpp"
@@ -22,7 +21,3 @@ struct	ShmLidarScanData {
 	uint32_t seq;
 	int32_t distance_mm[181];
 };
-
-
-
-#endif
