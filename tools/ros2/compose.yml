@@ -4,6 +4,7 @@ services:
       context: ../..
       dockerfile: tools/ros2/Dockerfile
     image: robo-racer-ros2:humble
+    entrypoint: ["/usr/local/bin/ros2_entrypoint.sh"]
     volumes:
       - ../..:/ws
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
@@ -22,6 +23,7 @@ services:
       context: ../..
       dockerfile: tools/ros2/Dockerfile
     image: robo-racer-ros2:humble
+    entrypoint: ["/usr/local/bin/ros2_entrypoint.sh"]
     volumes:
       - ../..:/ws
     ports:

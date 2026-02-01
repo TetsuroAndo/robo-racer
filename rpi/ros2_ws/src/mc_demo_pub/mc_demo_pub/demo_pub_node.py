@@ -83,21 +83,23 @@ class DemoPubNode(Node):
         self._pub.publish(msg)
 
 
-def main() -> None:
-    rclpy.init()
+def main() -> int:
     node: DemoPubNode | None = None
     try:
+        rclpy.init()
         node = DemoPubNode()
         rclpy.spin(node)
+        return 0
     except Exception as exc:
         logger = rclpy.logging.get_logger("mc_demo_pub")
         logger.error(f"fatal error: {exc}")
-        sys.exit(1)
+        return 1
     finally:
         if node is not None:
             node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

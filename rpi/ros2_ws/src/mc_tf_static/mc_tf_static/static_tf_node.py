@@ -73,21 +73,23 @@ class StaticTfNode(Node):
         )
 
 
-def main() -> None:
-    rclpy.init()
+def main() -> int:
     node: StaticTfNode | None = None
     try:
+        rclpy.init()
         node = StaticTfNode()
         rclpy.spin(node)
+        return 0
     except Exception as exc:
         logger = rclpy.logging.get_logger("mc_tf_static")
         logger.error(f"fatal error: {exc}")
-        sys.exit(1)
+        return 1
     finally:
         if node is not None:
             node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
