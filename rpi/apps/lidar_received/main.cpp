@@ -27,6 +27,8 @@ static void on_sig(int sig) {
 static void cleanup_lidar_partial() {
 	// Driver cleanup
 	if (g_lidar) {
+		g_lidar->stop();
+		g_lidar->disconnect();
 		delete g_lidar;
 		g_lidar = 0;
 	}
@@ -225,16 +227,7 @@ int main() {
 	}
 
 	// 終了処理
-	if (g_lidar) {
-		g_lidar->stop();
-		g_lidar->disconnect();
-		delete g_lidar;
-		g_lidar = 0;
-	}
-	if (g_ch) {
-		delete g_ch;
-		g_ch = 0;
-	}
+	cleanup_lidar_partial();
 	// 共有メモリおよびセマフォのクリーンアップは cleanup_sem() に集約
 	cleanup_sem();
 	return (0);
