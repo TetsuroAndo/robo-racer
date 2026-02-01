@@ -1,6 +1,6 @@
-#include "LidarReceiver.h"
 #include "Process.h"
 #include "Sender.h"
+#include "ShmLidarReceiver.h"
 #include "config/Config.h"
 #include "lidar_to_esp.h"
 #include <csignal>
@@ -24,13 +24,18 @@ int main(int argc, char **argv) {
 	const char *seriald_sock =
 		(argc >= 4) ? argv[3] : cfg::DEFAULT_SERIALD_SOCK;
 
-	LidarReceiver lidarReceiver(lidar_dev, lidar_baud);
+	(void)lidar_dev;
+	(void)lidar_baud;
+	ShmLidarReceiver lidarReceiver;
 	Process process;
 	Sender sender(seriald_sock);
 
-	// バックグラウンドスレッドで LiDAR 受信開始
-	lidarReceiver.startReceivingThread();
-	std::cout << "Main thread: LiDAR receiving thread started" << std::endl;
+	while (!g_stop && !lidarReceiver.connect()) {
+		std::cerr << "Waiting for lidar_received shared memory..." << std::endl;
+		usleep(200 * 1000);
+	}
+	if (g_stop)
+		return 0;
 
 	// 前回のステアリング角度を保持
 	float lastSteerAngle = 0.0f;
@@ -39,7 +44,7 @@ int main(int argc, char **argv) {
 	while (!g_stop) {
 		std::vector< LidarData > lidarData;
 
-		// 最新のLiDARデータを取得（スレッドセーフ）
+		// 最新のLiDARデータを取得（共有メモリ経由）
 		if (lidarReceiver.getLatestData(lidarData)) {
 			// データが利用可能
 			const ProcResult procResult =
@@ -55,8 +60,6 @@ int main(int argc, char **argv) {
 	}
 
 	// 正常なシャットダウン
-	std::cout << "Main thread: stopping LiDAR receiving thread..." << std::endl;
-	lidarReceiver.stopReceivingThread();
 	std::cout << "Main thread: shutdown complete" << std::endl;
 
 	return 0;
