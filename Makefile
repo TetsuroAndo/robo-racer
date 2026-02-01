@@ -111,7 +111,7 @@ $(LOG_DIR):
 # Runs
 # ================================
 .PHONY: test activate hils-build hils-local ros2-up ros2-shell ros2-build \
-	ros2-bag-record ros2-bag-play ros2-session-up
+	ros2-rviz ros2-bag-record ros2-bag-play ros2-session-up
 
 hils-build:
 	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
@@ -132,9 +132,13 @@ ros2-build:
 	docker compose -f tools/ros2/compose.yml run --rm ros2 \
 		bash /ws/tools/ros2/scripts/ros2_build.sh
 
+ros2-rviz:
+	docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash -lc "rviz2 -d /ws/tools/ros2/rviz/default.rviz"
+
 ros2-bag-record:
 	docker compose -f tools/ros2/compose.yml run --rm \
-		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID \
+		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID -e NOTES -e RUN_NOTES \
 		-e WAIT_SEC -e REQUIRE_AT_LEAST_ONE \
 		ros2 \
 		bash /ws/tools/ros2/scripts/bag_record.sh
@@ -149,7 +153,7 @@ ros2-bag-play:
 
 ros2-session-up:
 	docker compose -f tools/ros2/compose.yml run --rm \
-		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID \
+		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID -e NOTES -e RUN_NOTES \
 		-e WAIT_SEC -e REQUIRE_AT_LEAST_ONE -e SESSION_CMD -e SESSION_WAIT_SEC \
 		ros2 \
 		bash /ws/tools/ros2/scripts/session_up.sh

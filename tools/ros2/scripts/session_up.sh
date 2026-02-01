@@ -8,6 +8,8 @@ set -u
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   echo "usage: $0 [--] <command...>"
   echo "  RUN_ID           : optional, force run_id"
+  echo "  NOTES            : optional, metadata.json notes"
+  echo "  RUN_NOTES        : optional, NOTES alias"
   echo "  SESSION_WAIT_SEC : optional, wait before recording (default 1.0)"
   echo "  PUBLISH_RUN_ID   : optional, 1 to publish /mc/run_id (default 1)"
   echo "  RUN_ID_PUB_KEEPALIVE : optional, 1 to keep publishing run_id (default 1)"
@@ -20,11 +22,7 @@ if [ "${1:-}" = "--" ]; then
   shift
 fi
 
-RUN_ID=${RUN_ID:-$(python3 - <<'PY'
-import uuid
-print(uuid.uuid4())
-PY
-)}
+RUN_ID=${RUN_ID:-$(/ws/tools/ros2/scripts/run_id.sh)}
 export RUN_ID
 
 SESSION_WAIT_SEC=${SESSION_WAIT_SEC:-1.0}
