@@ -32,6 +32,9 @@ static void ensure_dir_(const std::string &path) {
 	if (pos != std::string::npos && pos > 0) {
 		const std::string parent = path.substr(0, pos);
 		ensure_dir_(parent);
+	} else if (pos == 0) {
+		// 絶対パス (例: /tmp) の場合、ルートディレクトリは既に存在するのでスキップ
+		return;
 	}
 
 	const int rc = mkdir(path.c_str(), 0755);
