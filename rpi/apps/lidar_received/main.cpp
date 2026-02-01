@@ -194,13 +194,7 @@ int main() {
 		g_lidar->disconnect();
 		delete g_lidar;
 	}
-	if (g_shm)
-		munmap(g_shm, sizeof(ShmLidarScanData));
-	if (g_shm_fd >= 0)
-		close(g_shm_fd);
-	if (g_sem != SEM_FAILED)
-		sem_close(g_sem);
-	shm_unlink(SHM_NAME);
-	sem_unlink(SEM_NAME);
+	// 共有メモリおよびセマフォのクリーンアップは cleanup_sem() に集約
+	cleanup_sem();
 	return (0);
 }
