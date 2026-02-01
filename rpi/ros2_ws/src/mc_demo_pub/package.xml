@@ -3,7 +3,7 @@
   <name>mc_demo_pub</name>
   <version>0.1.0</version>
   <description>Demo LaserScan publisher for RViz</description>
-  <maintainer email="dev@example.com">Robo Racer</maintainer>
+  <maintainer email="tetsuro997@gmail.com">Robo Racer</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_python</buildtool_depend>

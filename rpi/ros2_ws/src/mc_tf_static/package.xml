@@ -3,7 +3,7 @@
   <name>mc_tf_static</name>
   <version>0.1.0</version>
   <description>Static TF publisher for base_link to laser</description>
-  <maintainer email="dev@example.com">Robo Racer</maintainer>
+  <maintainer email="tetsuro997@gmail.com">Robo Racer</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_python</buildtool_depend>

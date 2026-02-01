@@ -13,7 +13,7 @@ setup(
     install_requires=["setuptools"],
     zip_safe=True,
     maintainer="Robo Racer",
-    maintainer_email="dev@example.com",
+    maintainer_email="tetsuro997@gmail.com",
     description="Robo Racer mc_bridge skeleton",
     license="MIT",
     entry_points={

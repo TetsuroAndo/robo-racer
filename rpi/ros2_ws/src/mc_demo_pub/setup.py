@@ -13,7 +13,7 @@ setup(
     install_requires=["setuptools"],
     zip_safe=True,
     maintainer="Robo Racer",
-    maintainer_email="dev@example.com",
+    maintainer_email="tetsuro997@gmail.com",
     description="Demo LaserScan publisher for RViz",
     license="MIT",
     entry_points={
