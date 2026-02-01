@@ -25,6 +25,12 @@ static void ensure_dir_(const std::string &path) {
 	const int rc = mkdir(path.c_str(), 0755);
 	if (rc == 0 || errno == EEXIST)
 		return;
+
+	// mkdir が EEXIST 以外の理由で失敗した場合は、原因調査しやすいようにエラーメッセージを出力する
+	std::fprintf(stderr,
+		     "ensure_dir_: failed to create directory '%s': %s\n",
+		     path.c_str(),
+		     std::strerror(errno));
 }
 
 static std::string dir_of_(const std::string &path) {
