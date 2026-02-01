@@ -1,8 +1,12 @@
+#include "config/Config.h"
 #include "lidar_recieiver.h"
 
 #include <mc/core/Log.hpp>
 
+#include <cerrno>
+#include <memory>
 #include <string>
+#include <sys/stat.h>
 
 static sl::ILidarDriver *g_lidar = 0;
 static sl::IChannel *g_ch = 0;
@@ -232,16 +236,43 @@ void write_to_mem(const LidarScanData &scan_data) {
 	sem_post(g_sem);
 }
 
-int main() {
+static void ensure_dir_for(const std::string &path) {
+	if (path.empty())
+		return;
+	const size_t pos = path.find_last_of('/');
+	if (pos == std::string::npos || pos == 0)
+		return;
+	const std::string dir = path.substr(0, pos);
+	const int rc = mkdir(dir.c_str(), 0755);
+	if (rc == 0 || errno == EEXIST)
+		return;
+	MC_LOGW("lidar_received", "mkdir failed for log dir: " + dir);
+}
+
+int main(int argc, char **argv) {
 	signal(SIGINT, on_sig);
 	signal(SIGTERM, on_sig);
 
+	std::string log_path = lidar_received_cfg::DEFAULT_LOG;
+	for (int i = 1; i < argc; ++i) {
+		std::string a = argv[i];
+		if (a == "--log" && i + 1 < argc) {
+			log_path = argv[++i];
+		}
+	}
+
+	auto &logger = mc::core::Logger::instance();
+	if (!log_path.empty()) {
+		ensure_dir_for(log_path);
+		logger.addSink(std::make_shared< mc::core::FileSink >(log_path));
+	}
+
 	MC_LOGI("lidar_received", "starting");
 
-	if (!start_lidar())
+	if (!start_lidar() || !init_sem()) {
+		logger.shutdown();
 		return (1);
-	if (!init_sem())
-		return (1);
+	}
 
 	LidarScanData scan_data;
 	while (!g_stop) {
@@ -256,6 +287,6 @@ int main() {
 	cleanup_lidar_partial();
 	// 共有メモリおよびセマフォのクリーンアップは cleanup_sem() に集約
 	cleanup_sem();
-	mc::core::Logger::instance().shutdown();
+	logger.shutdown();
 	return (0);
 }

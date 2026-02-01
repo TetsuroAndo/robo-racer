@@ -9,6 +9,7 @@ add_executable(lidar_received
 
 target_include_directories(lidar_received PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/config
   ../../src
   ../../src/config
   ../../lib/mc_core/include
