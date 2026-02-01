@@ -175,7 +175,7 @@ int main() {
 	signal(SIGINT, on_sig);
 	signal(SIGTERM, on_sig);
 
-	if (!start_ridar())
+	if (!start_lidar())
 		return (1);
 	if (!init_sem())
 		return (1);
