@@ -14,8 +14,10 @@
 #include <sys/stat.h>
 #include <cmath>
 
-#define UPDATED 1
-#define NOUPDATED 0
+// LIDAR 用の更新フラグ。汎用的なマクロ名による他ヘッダとの衝突を避けるため、
+// UPDATED / NOUPDATED ではなくプレフィックス付き名称を用いる。
+#define LIDAR_UPDATED   1
+#define LIDAR_NOUPDATED 0
 
 struct	ShmLidarScanData {
 	uint32_t seq;
