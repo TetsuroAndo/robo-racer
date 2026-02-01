@@ -20,7 +20,7 @@ RUN_ID=<run_id> TOPICS="/scan /mc/status /mc/drive_cmd" NOTES="optional" \
 - `TOPICS` 未指定なら `PROFILE` に従う（デフォルト: `core`）
 - `PROFILE=all` のときのみ `--all` で記録
 - `metadata.json` に run_id / git_sha / host / notes / created_at を保存
-- `meta.txt` に run_id / git_sha / host / timestamp / notes を保存
+- `meta.txt` に run_id / git_sha / host / created_at / notes を保存
 - `meta.txt` に profile / topics / topics_file も保存
 - `meta.txt` に `present_topics`（記録開始時に見えていた topic）も保存
 

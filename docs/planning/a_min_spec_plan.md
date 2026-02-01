@@ -31,7 +31,7 @@ Aの最小仕様 v0.1 が “Done” である条件：
   - `base_link -> laser`（static transformを publish）
 - `/mc/status` : `mc_msgs/msg/Status`
 - `/mc/drive_cmd` : `mc_msgs/msg/DriveCmd`
-- `/mc/log` : `mc_msgs/msg/McLog`
+- `/mc/log` : `mc_msgs/msg/LogRecord`
 - （任意）`/mc/bridge_diag` : `diagnostic_msgs/msg/DiagnosticArray`
 
 ### 1.2 Frame（凍結対象）
@@ -72,7 +72,7 @@ src/
 mc_msgs/
 msg/DriveCmd.msg
 msg/Status.msg
-msg/McLog.msg
+msg/LogRecord.msg
 mc_tf_static/                # base_link->laser の static TF
 mc_demo_pub/                 # bridge無しで /scan を出す
 
@@ -111,7 +111,7 @@ mc_demo_pub/                 # bridge無しで /scan を出す
 **作業**
 - `docs/contracts/ros_topics_v0.1.md` を追加（ここで凍結宣言）
 - `rpi/ros2_ws/src/mc_msgs/` を追加（msg定義）
-  - `DriveCmd.msg`, `Status.msg`, `McLog.msg`
+  - `DriveCmd.msg`, `Status.msg`, `LogRecord.msg`
 - `rpi/ros2_ws/src/mc_tf_static/` を追加
   - `base_link -> laser` を `/tf_static` に publish
   - transform値は `rpi/config/frames.yaml`（または同等）から読む
