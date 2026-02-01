@@ -26,13 +26,33 @@ void on_sigint(int) { g_run.store(false); }
 static void ensure_dir_(const std::string &path) {
 	if (path.empty())
 		return;
-	const int rc = mkdir(path.c_str(), 0755);
-	if (rc == 0 || errno == EEXIST)
-		return;
 
-	std::fprintf(stderr,
-	             "ensure_dir_: failed to create directory '%s' (errno=%d: %s)\n",
-	             path.c_str(), errno, std::strerror(errno));
+	// 再帰的にディレクトリを作成（mkdir -p 相当）
+	std::string current;
+	for (size_t i = 0; i < path.size(); ++i) {
+		if (path[i] == '/') {
+			if (!current.empty()) {
+				const int rc = mkdir(current.c_str(), 0755);
+				if (rc != 0 && errno != EEXIST) {
+					std::fprintf(stderr,
+						     "ensure_dir_: failed to create directory '%s' (errno=%d: %s)\n",
+						     current.c_str(), errno, std::strerror(errno));
+					return;
+				}
+			}
+		}
+		current += path[i];
+	}
+
+	// 最後のディレクトリ要素を作成
+	if (!current.empty()) {
+		const int rc = mkdir(current.c_str(), 0755);
+		if (rc != 0 && errno != EEXIST) {
+			std::fprintf(stderr,
+				     "ensure_dir_: failed to create directory '%s' (errno=%d: %s)\n",
+				     current.c_str(), errno, std::strerror(errno));
+		}
+	}
 }
 
 static std::string dir_of_(const std::string &path) {

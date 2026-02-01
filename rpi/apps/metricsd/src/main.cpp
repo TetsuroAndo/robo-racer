@@ -22,15 +22,35 @@ namespace {
 static void ensure_dir_(const std::string &path) {
 	if (path.empty())
 		return;
-	const int rc = mkdir(path.c_str(), 0755);
-	if (rc == 0 || errno == EEXIST)
-		return;
 
-	// mkdir が EEXIST 以外の理由で失敗した場合は、原因調査しやすいようにエラーメッセージを出力する
-	std::fprintf(stderr,
-		     "ensure_dir_: failed to create directory '%s': %s\n",
-		     path.c_str(),
-		     std::strerror(errno));
+	// 再帰的にディレクトリを作成（mkdir -p 相当）
+	std::string current;
+	for (size_t i = 0; i < path.size(); ++i) {
+		if (path[i] == '/') {
+			if (!current.empty()) {
+				const int rc = mkdir(current.c_str(), 0755);
+				if (rc != 0 && errno != EEXIST) {
+					std::fprintf(stderr,
+						     "ensure_dir_: failed to create directory '%s': %s\n",
+						     current.c_str(),
+						     std::strerror(errno));
+					return;
+				}
+			}
+		}
+		current += path[i];
+	}
+
+	// 最後のディレクトリ要素を作成
+	if (!current.empty()) {
+		const int rc = mkdir(current.c_str(), 0755);
+		if (rc != 0 && errno != EEXIST) {
+			std::fprintf(stderr,
+				     "ensure_dir_: failed to create directory '%s': %s\n",
+				     current.c_str(),
+				     std::strerror(errno));
+		}
+	}
 }
 
 static std::string dir_of_(const std::string &path) {

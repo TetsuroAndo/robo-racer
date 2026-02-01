@@ -14,15 +14,35 @@
 static void ensure_dir_(const std::string &path) {
 	if (path.empty())
 		return;
-	const int rc = mkdir(path.c_str(), 0755);
-	if (rc == 0 || errno == EEXIST)
-		return;
 
-	// mkdir が EEXIST 以外で失敗した場合は、原因を標準エラー出力に出力する
-	const int err = errno;
-	std::cerr << "Failed to create directory '" << path
-		  << "': " << std::strerror(err)
-		  << " (errno=" << err << ")\n";
+	// 再帰的にディレクトリを作成（mkdir -p 相当）
+	std::string current;
+	for (size_t i = 0; i < path.size(); ++i) {
+		if (path[i] == '/') {
+			if (!current.empty()) {
+				const int rc = mkdir(current.c_str(), 0755);
+				if (rc != 0 && errno != EEXIST) {
+					const int err = errno;
+					std::cerr << "Failed to create directory '" << current
+						  << "': " << std::strerror(err)
+						  << " (errno=" << err << ")\n";
+					return;
+				}
+			}
+		}
+		current += path[i];
+	}
+
+	// 最後のディレクトリ要素を作成
+	if (!current.empty()) {
+		const int rc = mkdir(current.c_str(), 0755);
+		if (rc != 0 && errno != EEXIST) {
+			const int err = errno;
+			std::cerr << "Failed to create directory '" << current
+				  << "': " << std::strerror(err)
+				  << " (errno=" << err << ")\n";
+		}
+	}
 }
 
 static std::string dir_of_(const std::string &path) {
