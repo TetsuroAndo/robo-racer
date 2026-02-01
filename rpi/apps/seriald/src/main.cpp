@@ -71,9 +71,25 @@ static bool tx_dequeue(TxMsg &out) {
 static void ensure_dir_(const std::string &path) {
 	if (path.empty())
 		return;
-	const int rc = mkdir(path.c_str(), 0755);
-	if (rc == 0 || errno == EEXIST)
-		return;
+
+	// 再帰的にディレクトリを作成 (mkdir -p 相当)
+	std::string current;
+	for (size_t i = 0; i < path.size(); ++i) {
+		if (path[i] == '/') {
+			if (!current.empty()) {
+				const int rc = mkdir(current.c_str(), 0755);
+				if (rc != 0 && errno != EEXIST) {
+					return;
+				}
+			}
+		}
+		current += path[i];
+	}
+
+	// 最後のディレクトリを作成
+	if (!current.empty()) {
+		(void)mkdir(current.c_str(), 0755);
+	}
 }
 
 static std::string dir_of_(const std::string &path) {
