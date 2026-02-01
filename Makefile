@@ -71,7 +71,7 @@ c-rpi:
 	$(RM) $(RPI_BUILD_DIR)
 
 # === firmware build ===
-.PHONY: pio upload monitor c-pio
+.PHONY: pio upload monitor c-pio fc-pio
 pio:
 	$(PIO_RUN) $(PIO_ARG_ENV)
 upload:
@@ -94,7 +94,7 @@ fclean: clean
 	$(RM) $(NAME)
 re: fclean all
 
-# Aliases
+# Combined cleanup helpers
 c: clog c-pio c-rpi
 f: c
 	$(RM) $(FIRMWARE)
@@ -277,9 +277,9 @@ help:
 	@echo "  fclean           Fully clean (clean + remove .pio)"
 	@echo "  re               Rebuild (fclean + all)"
 	@echo "  clog             Clean log files"
-	@echo "  c                Alias for 'clog' and 'clean'"
-	@echo "  f                Alias for 'clog' and 'fclean'"
-	@echo "  r                Alias for 're' (fclean + all) and 'clog'"
+	@echo "  c                Workflow: runs 'clog', 'c-pio', then 'c-rpi'"
+	@echo "  f                Workflow: includes 'c', removes firmware + $(NAME)"
+	@echo "  r                Workflow: runs 'f', rebuilds everything via 'all'"
 	@echo ""
 	@echo "Run Targets:"
 	@echo "  test             Run Python tests using pytest"
