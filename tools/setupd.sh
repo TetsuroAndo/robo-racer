@@ -22,6 +22,7 @@ Usage:
   sudo ./tools/setupd.sh list
   sudo ./tools/setupd.sh install [--name <daemon>]
   sudo ./tools/setupd.sh uninstall [--name <daemon>]
+  sudo ./tools/setupd.sh reinstall [--name <daemon>]
   sudo ./tools/setupd.sh start|stop|restart|status|logs [--name <daemon>]
 
 Notes:
@@ -289,6 +290,7 @@ case "${ACTION}" in
   list) list_all ;;
   install) install_all ;;
   uninstall) uninstall_all ;;
+  reinstall) uninstall_all; install_all ;;
   start|stop|restart) ctl_all "${ACTION}" ;;
   status) status_all ;;
   logs) logs_all ;;
