@@ -23,7 +23,7 @@ static void ensure_dir_(const std::string &path) {
 	if (path.empty())
 		return;
 
-	// 再帰的にディレクトリを作成 (mkdir -p 相当)
+	// Create directories recursively (equivalent to mkdir -p)
 	std::string current;
 	for (size_t i = 0; i < path.size(); ++i) {
 		if (path[i] == '/') {
@@ -42,7 +42,7 @@ static void ensure_dir_(const std::string &path) {
 		current += path[i];
 	}
 
-	// 最後のディレクトリを作成
+	// Create the final directory
 	if (!current.empty()) {
 		const int rc = mkdir(current.c_str(), 0755);
 		if (rc != 0 && errno != EEXIST) {
