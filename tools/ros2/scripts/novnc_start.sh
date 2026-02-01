@@ -8,6 +8,7 @@ set -u
 NOVNC_DISPLAY=${NOVNC_DISPLAY:-:1}
 NOVNC_RESOLUTION=${NOVNC_RESOLUTION:-1280x800x24}
 NOVNC_PORT=${NOVNC_PORT:-6080}
+NOVNC_BIND=${NOVNC_BIND:-127.0.0.1}
 NOVNC_VNC_PORT=${NOVNC_VNC_PORT:-5900}
 NOVNC_WEB_DIR=${NOVNC_WEB_DIR:-/usr/share/novnc}
 
@@ -50,10 +51,11 @@ FLUXBOX_PID=$!
 x11vnc -display "${NOVNC_DISPLAY}" -rfbport "${NOVNC_VNC_PORT}" -forever -shared -nopw -quiet &
 X11VNC_PID=$!
 
-websockify --web="${NOVNC_WEB_DIR}" "${NOVNC_PORT}" "localhost:${NOVNC_VNC_PORT}" >/tmp/novnc.log 2>&1 &
+websockify --web="${NOVNC_WEB_DIR}" "${NOVNC_BIND}:${NOVNC_PORT}" "localhost:${NOVNC_VNC_PORT}" \
+  >/tmp/novnc.log 2>&1 &
 WEBSOCKIFY_PID=$!
 
-echo "[INFO] noVNC ready: http://localhost:${NOVNC_PORT}/vnc.html"
+echo "[INFO] noVNC ready: http://${NOVNC_BIND}:${NOVNC_PORT}/vnc.html"
 
 action=("${@}")
 if [ ${#action[@]} -eq 0 ]; then

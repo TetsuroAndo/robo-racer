@@ -25,7 +25,7 @@ services:
     volumes:
       - ../..:/ws
     ports:
-      - "6080:6080"
+      - "127.0.0.1:6080:6080"
     environment:
       - NOVNC_PORT=6080
       - NOVNC_RESOLUTION=1280x800x24

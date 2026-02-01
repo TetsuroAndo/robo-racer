@@ -53,6 +53,14 @@ make ros2-novnc
 ```
 http://localhost:6080/vnc.html
 ```
+#### LAN 公開が必要な場合
+デフォルトは `127.0.0.1` バインドのため、LAN からはアクセス不可。
+LAN 公開する場合は **明示的に** `NOVNC_BIND=0.0.0.0` を指定すること。
+
+例:
+```
+NOVNC_BIND=0.0.0.0 make ros2-novnc
+```
 
 ### Mac 自動設定（Make 経由）
 `make ros2-rviz` / `make ros2-up` は Mac の場合に以下の環境変数を自動設定する：
@@ -85,3 +93,16 @@ ros2 run mc_demo_pub mc_demo_pub
 - record: `./tools/ros2/scripts/bag_record.sh`
 - session: `./tools/ros2/scripts/session_up.sh`（run_id 伝播を固定したい場合）
 - play: `./tools/ros2/scripts/bag_play.sh <bag_path> [rate]`
+
+## 7) RPi から bag をコピーして再生（推奨運用）
+RPi 側で bag を保存し、PC 側へコピーして再生する。
+
+例（RPi → PC）:
+```
+scp -r pi@<rpi-host>:/ws/training/data/bags/<run_id> ./training/data/bags/
+```
+
+コピー後の再生例:
+```
+./tools/ros2/scripts/bag_play.sh ./training/data/bags/<run_id>
+```
