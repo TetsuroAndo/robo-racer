@@ -8,6 +8,8 @@ static sl::IChannel *g_ch = 0;
 static int g_shm_fd = -1;
 static ShmLidarScanData *g_shm = 0;
 static sem_t *g_sem = SEM_FAILED;
+static bool g_shm_owner = false;
+static bool g_sem_owner = false;
 
 static const char *SHM_NAME = "/lidar_scan";
 static const char *SEM_NAME = "/lidar_scan_sem";
@@ -85,17 +87,33 @@ void cleanup_sem() {
 		g_shm_fd = -1;
 	}
 
-	sem_unlink(SEM_NAME);
-	shm_unlink(SHM_NAME);
+	if (g_sem_owner) {
+		sem_unlink(SEM_NAME);
+		g_sem_owner = false;
+	}
+	if (g_shm_owner) {
+		shm_unlink(SHM_NAME);
+		g_shm_owner = false;
+	}
 }
 
 bool init_sem() {
-	g_shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
-	if (g_shm_fd < 0)
-		return (cleanup_sem(), false);
+	g_shm_fd = shm_open(SHM_NAME, O_CREAT | O_EXCL | O_RDWR, 0666);
+	if (g_shm_fd < 0) {
+		if (errno != EEXIST)
+			return (cleanup_sem(), false);
+		g_shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
+		if (g_shm_fd < 0)
+			return (cleanup_sem(), false);
+		g_shm_owner = false;
+	} else {
+		g_shm_owner = true;
+	}
 
-	if (ftruncate(g_shm_fd, (off_t)sizeof(ShmLidarScanData)) < 0)
-		return (cleanup_sem(), false);
+	if (g_shm_owner) {
+		if (ftruncate(g_shm_fd, (off_t)sizeof(ShmLidarScanData)) < 0)
+			return (cleanup_sem(), false);
+	}
 
 	void *p = mmap(NULL, sizeof(ShmLidarScanData), PROT_READ | PROT_WRITE,
 				   MAP_SHARED, g_shm_fd, 0);
@@ -104,15 +122,32 @@ bool init_sem() {
 
 	g_shm = (ShmLidarScanData *)p;
 
-	g_sem = sem_open(SEM_NAME, O_CREAT, 0666, 1);
-	if (g_sem == SEM_FAILED)
-		return (cleanup_sem(), false);
+	g_sem = sem_open(SEM_NAME, O_CREAT | O_EXCL, 0666, 1);
+	if (g_sem == SEM_FAILED) {
+		if (errno != EEXIST)
+			return (cleanup_sem(), false);
+		g_sem = sem_open(SEM_NAME, 0);
+		if (g_sem == SEM_FAILED)
+			return (cleanup_sem(), false);
+		g_sem_owner = false;
+	} else {
+		g_sem_owner = true;
+	}
 
-	sem_wait(g_sem);
-	g_shm->seq = NOUPDATED;
-	for (int i = 0; i < 181; ++i)
-		g_shm->distance_mm[i] = 0;
-	sem_post(g_sem);
+	if (g_shm_owner || g_sem_owner) {
+		while (sem_wait(g_sem) == -1) {
+			if (errno == EINTR) {
+				if (g_stop)
+					return (cleanup_sem(), false);
+				continue;
+			}
+			return (cleanup_sem(), false);
+		}
+		g_shm->seq = NOUPDATED;
+		for (int i = 0; i < 181; ++i)
+			g_shm->distance_mm[i] = 0;
+		sem_post(g_sem);
+	}
 
 	return (true);
 }
@@ -193,6 +228,11 @@ int main() {
 		g_lidar->stop();
 		g_lidar->disconnect();
 		delete g_lidar;
+		g_lidar = 0;
+	}
+	if (g_ch) {
+		delete g_ch;
+		g_ch = 0;
 	}
 	// 共有メモリおよびセマフォのクリーンアップは cleanup_sem() に集約
 	cleanup_sem();
