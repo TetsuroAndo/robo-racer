@@ -1,4 +1,4 @@
-#include "ridar_recieiver.h"
+#include "lidar_receiver.h"
 
 static sl::ILidarDriver	*g_lidar = 0;
 static sl::IChannel		*g_ch = 0;
