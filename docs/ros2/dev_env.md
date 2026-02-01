@@ -43,13 +43,26 @@ xhost + 127.0.0.1
 ```
 3. コンテナ内で `rviz2`
 
-## 4) ros2_ws のビルド
+### RViz デフォルト設定
+```
+make ros2-rviz
+```
+`tools/ros2/rviz/default.rviz` を使用して起動する。
+
+## 4) rpi/ros2_ws のビルド
 ```
 ./tools/ros2/scripts/ros2_build.sh
 ```
-`ros2_ws/src/mc_msgs` がメッセージ定義の雛形です。
+`rpi/ros2_ws/src/mc_msgs` がメッセージ定義の雛形です。
 
-## 5) bag の record/play
+## 5) demo publisher（/scan）と static TF
+```
+ros2 run mc_tf_static mc_tf_static --ros-args --params-file /ws/rpi/config/frames.yaml
+ros2 run mc_demo_pub mc_demo_pub
+```
+`/scan` は `frame_id=laser` で publish される。
+
+## 6) bag の record/play
 - record: `./tools/ros2/scripts/bag_record.sh`
 - session: `./tools/ros2/scripts/session_up.sh`（run_id 伝播を固定したい場合）
 - play: `./tools/ros2/scripts/bag_play.sh <bag_path> [rate]`

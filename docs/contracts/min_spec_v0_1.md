@@ -159,7 +159,7 @@
 **目的**：bridge 未実装でも msg/トピック仕様を固定
 
 **タスク**
-- `ros2_ws/src/mc_msgs/` に msg 定義を追加
+- `rpi/ros2_ws/src/mc_msgs/` に msg 定義を追加
 
 **受け入れ基準**
 - `/mc/status` `/mc/drive_cmd` 等が型付きで扱える
