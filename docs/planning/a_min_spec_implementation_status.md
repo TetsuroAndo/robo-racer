@@ -16,6 +16,7 @@
 | mc_demo_pub 追加（/scan 疑似発行） | 完了 | 2026-02-08 | RViz 表示の最短経路 | 
 | tools/ros2/rviz/default.rviz 追加 | 完了 | 2026-02-08 | Fixed Frame=base_link | 
 | Makefile に ros2-rviz 追加 | 完了 | 2026-02-08 | RViz 起動導線 | 
+| noVNC（ブラウザ表示）導入 | 完了 | 2026-02-08 | Mac の RViz 安定化 | 
 | bag_record/play を規約化（run_id/metadata.json/--clock） | 完了 | 2026-02-08 | metadata.json を必須化 | 
 | tools/ros2/scripts/run_id.sh 追加 | 完了 | 2026-02-08 | run_id 生成規則の統一 | 
 | docs/contracts/bag_ops_v0.1.md 追加 | 完了 | 2026-02-08 | bag 運用凍結 | 
@@ -32,9 +33,10 @@
 | 5 | mc_tf_static / mc_demo_pub 追加 | 完了 | - | rpi/ros2_ws ビルド対象 | 
 | 6 | rviz/default.rviz 追加 + ros2-rviz 導線 | 完了 | 5 | RViz で /scan を確認 | 
 | 7 | ipc_uds_v0.1.md 作成 | 完了 | - | 推奨（P0） |
+| 8 | noVNC（ブラウザ表示）導入 | 完了 | - | Mac の RViz 起動安定化 |
 
 ## 差異・留意
-- RViz GUI は既存の X11/XQuartz 手順を維持（noVNC は今回未対応）。
+- RViz GUI は X11/XQuartz に加えて noVNC を併設（Mac 安定化のため）。
 
 ## 進行メモ
 - 2026-02-01: a_min_spec_plan.md と min_spec_v0_1.md を確認。
@@ -42,3 +44,4 @@
 - 2026-02-01: ros_topics/bag_ops 契約文書と run_id/metadata.json を実装。
 - 2026-02-01: mc_tf_static / mc_demo_pub / rviz config / ros2-rviz 導線を追加。
 - 2026-02-01: config/ と ros2_ws を rpi/ 配下へ移動し、参照パスを更新。
+- 2026-02-01: noVNC 導入（Dockerfile/compose/Make/docs 更新）。

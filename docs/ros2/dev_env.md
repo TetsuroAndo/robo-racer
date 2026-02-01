@@ -44,6 +44,16 @@ xhost + 127.0.0.1
 ```
 3. コンテナ内で `rviz2`
 
+### Mac（noVNC 推奨）
+XQuartz 不要でブラウザ表示に切り替える。
+```
+make ros2-novnc
+```
+ブラウザで以下を開く。
+```
+http://localhost:6080/vnc.html
+```
+
 ### Mac 自動設定（Make 経由）
 `make ros2-rviz` / `make ros2-up` は Mac の場合に以下の環境変数を自動設定する：
 - `DISPLAY=host.docker.internal:0`
