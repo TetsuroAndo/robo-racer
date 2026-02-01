@@ -11,10 +11,11 @@ LOG_DIR				:= $(ROOT)/logs
 PIO_DIR				:= $(ROOT)/.pio
 PIO_ENV				?= esp32dev
 PIO_BUILD_DIR		:= $(PIO_DIR)/build/$(PIO_ENV)
+PIO_BUILD_SRC_DIR	:= $(PIO_BUILD_DIR)/src
 
 FIRMWARE_DIR		:= $(ROOT)/firmware
-FIRMWARE			:= $(PIO_BUILD_DIR)/firmware.elf
 FIRMWARE_SRC_DIR	:= $(FIRMWARE_DIR)/src
+FIRMWARE			:= $(PIO_BUILD_DIR)/firmware.elf
 
 RPI_SRC_DIR			:= $(ROOT)/rpi/src
 RPI_LIB_DIR			:= $(ROOT)/rpi/lib
@@ -70,7 +71,7 @@ c-rpi:
 	$(RM) $(RPI_BUILD_DIR)
 
 # === firmware build ===
-.PHONY: pio upload monitor c-pio
+.PHONY: pio upload monitor c-pio fc-pio
 pio:
 	$(PIO_RUN) $(PIO_ARG_ENV)
 upload:
@@ -79,20 +80,25 @@ monitor:
 	$(PIO) device monitor
 
 c-pio:
+	$(RM) $(PIO_BUILD_SRC_DIR)
+
+fc-pio:
 	$(PIO_RUN) $(PIO_ARG_CLEAN)
 
 # === Clean / Rebuild ===
 .PHONY: clean fclean re c f r clog
-clean: c-rpi c-pio
+clean: c-rpi fc-pio clog
 fclean: clean
 	$(MAKE) -C $(RPLIDAR_SDK_DIR) clean
 	$(RM) $(PIO_DIR)
 	$(RM) $(NAME)
 re: fclean all
 
-# Aliases
-c: clog clean
-f: clog fclean
+# Combined cleanup helpers
+c: clog c-pio c-rpi
+f: c
+	$(RM) $(FIRMWARE)
+	$(RM) $(NAME)
 r: f all
 
 # Clean log files
@@ -261,20 +267,32 @@ help:
 	@echo ""
 	@echo "Build Targets:"
 	@echo "  all              Build firmware (pio run) and RPi executable"
+	@echo "  pio              Build firmware (PlatformIO)"
 	@echo "  upload           Upload firmware to the device (pio run -t upload)"
 	@echo "  rpi              Build RPi executable (auto-builds RPLIDAR SDK)"
-	@echo "  clean            Clean PlatformIO build artifacts (pio run -t clean)"
+	@echo "  c-rpi            Clean RPi build directory"
+	@echo "  clean            Clean RPi builds, PlatformIO build sources, and logs"
+	@echo "  c-pio            Clean PlatformIO build source outputs"
+	@echo "  fc-pio           PlatformIO full clean (pio run -t clean)"
 	@echo "  fclean           Fully clean (clean + remove .pio)"
 	@echo "  re               Rebuild (fclean + all)"
 	@echo "  clog             Clean log files"
-	@echo "  c                Alias for 'clog' and 'clean'"
-	@echo "  f                Alias for 'clog' and 'fclean'"
-	@echo "  r                Alias for 're' (fclean + all) and 'clog'"
+	@echo "  c                Workflow: runs 'clog', 'c-pio', then 'c-rpi'"
+	@echo "  f                Workflow: includes 'c', removes firmware + $(NAME)"
+	@echo "  r                Workflow: runs 'f', rebuilds everything via 'all'"
 	@echo ""
 	@echo "Run Targets:"
 	@echo "  test             Run Python tests using pytest"
 	@echo "  activate         Activate the Python virtual environment"
+	@echo "  hils-build       Build seriald + sim_esp32d for HILS"
+	@echo "  hils-local       Run local HILS (seriald + sim_esp32d)"
 	@echo "  monitor          Open serial monitor (pio device monitor)"
+	@echo "  ros2-up          Start ROS2 docker compose"
+	@echo "  ros2-shell       Open ROS2 container shell"
+	@echo "  ros2-build       Build ROS2 workspace in container"
+	@echo "  ros2-bag-record  Record rosbag via container"
+	@echo "  ros2-bag-play    Play rosbag via container (BAG=... required)"
+	@echo "  ros2-session-up  Start ROS2 session + bag record"
 	@echo ""
 	@echo "Debug Targets:"
 	@echo "  debug            Build debug"
