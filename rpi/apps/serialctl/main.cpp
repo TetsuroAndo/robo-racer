@@ -17,12 +17,14 @@ static void ensure_dir_(const std::string &path) {
 
 	// 親ディレクトリを再帰的に作成
 	const size_t pos = path.find_last_of('/');
-	if (pos != std::string::npos && pos > 0) {
-		const std::string parent = path.substr(0, pos);
-		ensure_dir_(parent);
-	} else if (pos == 0) {
-		// 絶対パス (例: /tmp) の場合、ルートディレクトリは既に存在するのでスキップ
-		return;
+	if (pos != std::string::npos) {
+		if (pos == 0) {
+			// 絶対パス (例: /tmp) の場合、ルートディレクトリは既に存在するのでスキップ
+			// 何もせず次のmkdirステップに進む
+		} else {
+			const std::string parent = path.substr(0, pos);
+			ensure_dir_(parent);
+		}
 	}
 
 	const int rc = mkdir(path.c_str(), 0755);
