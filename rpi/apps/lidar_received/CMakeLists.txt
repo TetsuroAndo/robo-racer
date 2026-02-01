@@ -3,6 +3,7 @@ add_executable(lidar_received
   LidarScanData.cpp
   ../../src/Process.cpp
   ../../src/Sender.cpp
+  ../../src/LidarReceiver.cpp
   ../../src/lidar_to_esp.cpp
 )
 
