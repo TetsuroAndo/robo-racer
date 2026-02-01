@@ -1,4 +1,6 @@
+#include "../config/Config.h"
 #include <mc/core/Log.hpp>
+#include <mc/core/Path.hpp>
 #include <mc/core/Time.hpp>
 #include <mc/ipc/UdsSeqPacket.hpp>
 #include <mc/proto/Proto.hpp>
@@ -122,7 +124,7 @@ bool send_metrics(mc::ipc::UdsClient &ipc, const MetricsSample &m,
 
 int main(int argc, char **argv) {
 	uint32_t interval_ms = 1000;
-	std::string log_path;
+	std::string log_path = metricsd_cfg::DEFAULT_LOG;
 	std::string sock_path;
 	Thresholds th;
 
@@ -149,6 +151,7 @@ int main(int argc, char **argv) {
 
 	auto &logger = mc::core::Logger::instance();
 	if (!log_path.empty()) {
+		mc::core::ensure_dir(mc::core::dir_of(log_path));
 		logger.addSink(std::make_shared< mc::core::FileSink >(log_path));
 	}
 

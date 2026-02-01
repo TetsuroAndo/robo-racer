@@ -226,7 +226,12 @@ static bool receiveScanData(LidarScanData *scan_data) {
 }
 
 void write_to_mem(const LidarScanData &scan_data) {
-	sem_wait(g_sem);
+	while (sem_wait(g_sem) == -1) {
+		if (errno == EINTR)
+			continue;
+		MC_LOGE("lidar_received", "sem_wait failed in write_to_mem");
+		return;
+	}
 	for (int i = -90; i <= 90; ++i)
 		g_shm->distance_mm[i + 90] = scan_data.getDistance(i);
 	if (g_shm->seq == UINT32_MAX)
