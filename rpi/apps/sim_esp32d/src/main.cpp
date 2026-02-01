@@ -29,6 +29,10 @@ static void ensure_dir_(const std::string &path) {
 	const int rc = mkdir(path.c_str(), 0755);
 	if (rc == 0 || errno == EEXIST)
 		return;
+
+	std::fprintf(stderr,
+	             "ensure_dir_: failed to create directory '%s' (errno=%d: %s)\n",
+	             path.c_str(), errno, std::strerror(errno));
 }
 
 static std::string dir_of_(const std::string &path) {
