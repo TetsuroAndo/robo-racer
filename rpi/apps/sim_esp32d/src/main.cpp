@@ -1,4 +1,6 @@
+#include "../config/Config.h"
 #include <atomic>
+#include <cerrno>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
@@ -7,6 +9,7 @@
 #include <string>
 
 #include <poll.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <mc/core/Log.hpp>
@@ -19,6 +22,21 @@ namespace {
 static std::atomic< bool > g_run{true};
 
 void on_sigint(int) { g_run.store(false); }
+
+static void ensure_dir_(const std::string &path) {
+	if (path.empty())
+		return;
+	const int rc = mkdir(path.c_str(), 0755);
+	if (rc == 0 || errno == EEXIST)
+		return;
+}
+
+static std::string dir_of_(const std::string &path) {
+	const size_t pos = path.find_last_of('/');
+	if (pos == std::string::npos || pos == 0)
+		return std::string();
+	return path.substr(0, pos);
+}
 
 static inline uint16_t rd16u(const uint8_t *p) {
 	return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
@@ -44,6 +62,7 @@ struct SimState {
 
 struct Config {
 	std::string dev;
+	std::string log_path;
 	int baud = 921600;
 	uint32_t status_interval_ms = 50;
 	uint32_t status_delay_ms = 0;
@@ -162,10 +181,13 @@ void handle_frame(const mc::proto::FrameView &f, SimState &st, uint32_t now_ms,
 Config parse_args(int argc, char **argv) {
 	Config cfg;
 	cfg.dev = "/dev/ttyUSB0";
+	cfg.log_path = sim_esp32d_cfg::DEFAULT_LOG;
 	for (int i = 1; i < argc; ++i) {
 		std::string a = argv[i];
 		if (a == "--dev" && i + 1 < argc) {
 			cfg.dev = argv[++i];
+		} else if (a == "--log" && i + 1 < argc) {
+			cfg.log_path = argv[++i];
 		} else if (a == "--baud" && i + 1 < argc) {
 			cfg.baud = std::atoi(argv[++i]);
 		} else if (a == "--status-ms" && i + 1 < argc) {
@@ -193,6 +215,10 @@ int main(int argc, char **argv) {
 
 	const Config cfg = parse_args(argc, argv);
 	auto &logger = mc::core::Logger::instance();
+	if (!cfg.log_path.empty()) {
+		ensure_dir_(dir_of_(cfg.log_path));
+		logger.addSink(std::make_shared< mc::core::FileSink >(cfg.log_path));
+	}
 	logger.log(mc::core::LogLevel::Info, "sim_esp32d",
 			   "start dev=" + cfg.dev + " baud=" + std::to_string(cfg.baud));
 

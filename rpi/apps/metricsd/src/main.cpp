@@ -1,8 +1,10 @@
+#include "../config/Config.h"
 #include <mc/core/Log.hpp>
 #include <mc/core/Time.hpp>
 #include <mc/ipc/UdsSeqPacket.hpp>
 #include <mc/proto/Proto.hpp>
 
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -11,10 +13,26 @@
 #include <memory>
 #include <string>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
 
 namespace {
+
+static void ensure_dir_(const std::string &path) {
+	if (path.empty())
+		return;
+	const int rc = mkdir(path.c_str(), 0755);
+	if (rc == 0 || errno == EEXIST)
+		return;
+}
+
+static std::string dir_of_(const std::string &path) {
+	const size_t pos = path.find_last_of('/');
+	if (pos == std::string::npos || pos == 0)
+		return std::string();
+	return path.substr(0, pos);
+}
 
 struct MetricsSample {
 	uint16_t cpu_temp_cdeg = 0;
@@ -122,7 +140,7 @@ bool send_metrics(mc::ipc::UdsClient &ipc, const MetricsSample &m,
 
 int main(int argc, char **argv) {
 	uint32_t interval_ms = 1000;
-	std::string log_path;
+	std::string log_path = metricsd_cfg::DEFAULT_LOG;
 	std::string sock_path;
 	Thresholds th;
 
@@ -149,6 +167,7 @@ int main(int argc, char **argv) {
 
 	auto &logger = mc::core::Logger::instance();
 	if (!log_path.empty()) {
+		ensure_dir_(dir_of_(log_path));
 		logger.addSink(std::make_shared< mc::core::FileSink >(log_path));
 	}
 
