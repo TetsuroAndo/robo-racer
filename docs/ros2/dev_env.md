@@ -21,8 +21,9 @@ docker compose -f tools/ros2/compose.yml run --rm ros2 bash
 
 ## 3) RViz 起動（GUI）
 ### 事前注意（DISPLAY）
-`docker compose up` / `make ros2-up` は **DISPLAY を自動設定しない**。ホストの環境変数に従うため、
+`docker compose up` は **DISPLAY を自動設定しない**。ホストの環境変数に従うため、
 Ubuntu は `DISPLAY=:0`、Mac は `DISPLAY=host.docker.internal:0` を **事前に設定**してから起動すること。
+一方で `make ros2-up` / `make ros2-rviz` は Mac の場合に DISPLAY などを自動設定する。
 
 ### Ubuntu（X11）
 ```
@@ -42,6 +43,14 @@ export DISPLAY=host.docker.internal:0
 xhost + 127.0.0.1
 ```
 3. コンテナ内で `rviz2`
+
+### Mac 自動設定（Make 経由）
+`make ros2-rviz` / `make ros2-up` は Mac の場合に以下の環境変数を自動設定する：
+- `DISPLAY=host.docker.internal:0`
+- `LIBGL_ALWAYS_SOFTWARE=1`
+- `QT_XCB_GL_INTEGRATION=none`
+- `XDG_RUNTIME_DIR=/tmp/runtime-root`
+XQuartz の設定と `xhost` は必要。
 
 ### RViz デフォルト設定
 ```

@@ -2,6 +2,22 @@ OS			:= $(shell uname -s)
 USER		:= $(shell whoami)
 RM 			:= rm -rf
 
+# ================================
+# ROS2 GUI env (Mac only)
+# ================================
+ifeq ($(OS), Darwin)
+ROS2_DISPLAY ?= host.docker.internal:0
+ROS2_LIBGL_ALWAYS_SOFTWARE ?= 1
+ROS2_QT_XCB_GL_INTEGRATION ?= none
+ROS2_XDG_RUNTIME_DIR ?= /tmp/runtime-root
+ROS2_GUI_ENV := DISPLAY=$(ROS2_DISPLAY) \
+	LIBGL_ALWAYS_SOFTWARE=$(ROS2_LIBGL_ALWAYS_SOFTWARE) \
+	QT_XCB_GL_INTEGRATION=$(ROS2_QT_XCB_GL_INTEGRATION) \
+	XDG_RUNTIME_DIR=$(ROS2_XDG_RUNTIME_DIR)
+else
+ROS2_GUI_ENV :=
+endif
+
 # --- PATHS ---
 ROOT				:= .
 VENV				:= $(ROOT)/.venv
@@ -123,21 +139,21 @@ hils-local: hils-build $(PYTHON_LOCAL)
 		--sim $(RPI_BUILD_DIR)/apps/sim_esp32d/sim_esp32d
 
 ros2-up:
-	docker compose -f tools/ros2/compose.yml up -d
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml up -d
 
 ros2-shell:
-	docker compose -f tools/ros2/compose.yml run --rm ros2 bash
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 bash
 
 ros2-build:
-	docker compose -f tools/ros2/compose.yml run --rm ros2 \
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
 		bash /ws/tools/ros2/scripts/ros2_build.sh
 
 ros2-rviz:
-	docker compose -f tools/ros2/compose.yml run --rm ros2 \
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
 		bash -lc "rviz2 -d /ws/tools/ros2/rviz/default.rviz"
 
 ros2-bag-record:
-	docker compose -f tools/ros2/compose.yml run --rm \
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm \
 		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID -e NOTES -e RUN_NOTES \
 		-e WAIT_SEC -e REQUIRE_AT_LEAST_ONE \
 		ros2 \
@@ -152,7 +168,7 @@ ros2-bag-play:
 		bash /ws/tools/ros2/scripts/bag_play.sh $(BAG)
 
 ros2-session-up:
-	docker compose -f tools/ros2/compose.yml run --rm \
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm \
 		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID -e NOTES -e RUN_NOTES \
 		-e WAIT_SEC -e REQUIRE_AT_LEAST_ONE -e SESSION_CMD -e SESSION_WAIT_SEC \
 		ros2 \

@@ -11,5 +11,8 @@ services:
       - DISPLAY=${DISPLAY:-host.docker.internal:0}
       - QT_X11_NO_MITSHM=1
       - LIBGL_ALWAYS_INDIRECT=1
+      - LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-0}
+      - QT_XCB_GL_INTEGRATION=${QT_XCB_GL_INTEGRATION:-}
+      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/runtime-root}
     stdin_open: true
     tty: true
