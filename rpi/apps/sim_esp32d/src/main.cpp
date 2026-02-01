@@ -27,24 +27,24 @@ static void ensure_dir_(const std::string &path) {
 	if (path.empty())
 		return;
 
-	// 再帰的にディレクトリを作成（mkdir -p 相当）
+	// Create directories recursively (equivalent to mkdir -p)
 	std::string current;
 	for (size_t i = 0; i < path.size(); ++i) {
-		if (path[i] == '/') {
-			if (!current.empty()) {
-				const int rc = mkdir(current.c_str(), 0755);
-				if (rc != 0 && errno != EEXIST) {
-					std::fprintf(stderr,
-						     "ensure_dir_: failed to create directory '%s' (errno=%d: %s)\n",
-						     current.c_str(), errno, std::strerror(errno));
-					return;
-				}
+		const char c = path[i];
+		if (c == '/' && !current.empty()) {
+			// Try to create the current directory path
+			const int rc = mkdir(current.c_str(), 0755);
+			if (rc != 0 && errno != EEXIST) {
+				std::fprintf(stderr,
+					     "ensure_dir_: failed to create directory '%s' (errno=%d: %s)\n",
+					     current.c_str(), errno, std::strerror(errno));
+				return;
 			}
 		}
-		current += path[i];
+		current += c;
 	}
 
-	// 最後のディレクトリ要素を作成
+	// Create the final directory component
 	if (!current.empty()) {
 		const int rc = mkdir(current.c_str(), 0755);
 		if (rc != 0 && errno != EEXIST) {
