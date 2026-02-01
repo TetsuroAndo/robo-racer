@@ -18,7 +18,8 @@ static volatile sig_atomic_t g_stop = 0;
 static void on_sig(int sig) {
 	(void)sig;
 #ifdef DEBUG
-	std::cout << "\nSignal " << sig << " received, shutting down..." << std::endl;
+	std::cout << "\nSignal " << sig << " received, shutting down..."
+			  << std::endl;
 #endif
 	g_stop = 1;
 }
@@ -36,7 +37,7 @@ static void cleanup_lidar_partial() {
 	}
 }
 
-bool start_ridar() {
+bool start_lidar() {
 	const char *dev = cfg::DEFAULT_LIDAR_DEVICE;
 	int baud = cfg::DEFAULT_LIDAR_BAUD;
 
