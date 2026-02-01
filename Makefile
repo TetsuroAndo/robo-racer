@@ -271,7 +271,7 @@ help:
 	@echo "  upload           Upload firmware to the device (pio run -t upload)"
 	@echo "  rpi              Build RPi executable (auto-builds RPLIDAR SDK)"
 	@echo "  c-rpi            Clean RPi build directory"
-	@echo "  clean            Clean PlatformIO build artifacts (pio run -t clean)"
+	@echo "  clean            Clean RPi builds, PlatformIO build sources, and logs"
 	@echo "  c-pio            Clean PlatformIO build source outputs"
 	@echo "  fc-pio           PlatformIO full clean (pio run -t clean)"
 	@echo "  fclean           Fully clean (clean + remove .pio)"
