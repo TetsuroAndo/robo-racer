@@ -1,3 +1,4 @@
+#include "../config/Config.h"
 #include <atomic>
 #include <csignal>
 #include <cstdint>
@@ -10,6 +11,7 @@
 #include <unistd.h>
 
 #include <mc/core/Log.hpp>
+#include <mc/core/Path.hpp>
 #include <mc/core/Time.hpp>
 #include <mc/proto/Proto.hpp>
 #include <mc/serial/Uart.hpp>
@@ -44,6 +46,7 @@ struct SimState {
 
 struct Config {
 	std::string dev;
+	std::string log_path;
 	int baud = 921600;
 	uint32_t status_interval_ms = 50;
 	uint32_t status_delay_ms = 0;
@@ -162,10 +165,13 @@ void handle_frame(const mc::proto::FrameView &f, SimState &st, uint32_t now_ms,
 Config parse_args(int argc, char **argv) {
 	Config cfg;
 	cfg.dev = "/dev/ttyUSB0";
+	cfg.log_path = sim_esp32d_cfg::DEFAULT_LOG;
 	for (int i = 1; i < argc; ++i) {
 		std::string a = argv[i];
 		if (a == "--dev" && i + 1 < argc) {
 			cfg.dev = argv[++i];
+		} else if (a == "--log" && i + 1 < argc) {
+			cfg.log_path = argv[++i];
 		} else if (a == "--baud" && i + 1 < argc) {
 			cfg.baud = std::atoi(argv[++i]);
 		} else if (a == "--status-ms" && i + 1 < argc) {
@@ -193,6 +199,10 @@ int main(int argc, char **argv) {
 
 	const Config cfg = parse_args(argc, argv);
 	auto &logger = mc::core::Logger::instance();
+	if (!cfg.log_path.empty()) {
+		mc::core::ensure_dir(mc::core::dir_of(cfg.log_path));
+		logger.addSink(std::make_shared< mc::core::FileSink >(cfg.log_path));
+	}
 	logger.log(mc::core::LogLevel::Info, "sim_esp32d",
 			   "start dev=" + cfg.dev + " baud=" + std::to_string(cfg.baud));
 
