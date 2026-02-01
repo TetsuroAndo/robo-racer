@@ -1,4 +1,5 @@
 import math
+import sys
 
 import rclpy
 from geometry_msgs.msg import TransformStamped
@@ -47,6 +48,11 @@ class StaticTfNode(Node):
         pitch = float(self.get_parameter("rotation_pitch").value)
         yaw = float(self.get_parameter("rotation_yaw").value)
 
+        if not parent_frame:
+            raise ValueError("parent_frame must be non-empty")
+        if not child_frame:
+            raise ValueError("child_frame must be non-empty")
+
         qx, qy, qz, qw = euler_to_quaternion(roll, pitch, yaw)
 
         transform = TransformStamped()
@@ -69,11 +75,17 @@ class StaticTfNode(Node):
 
 def main() -> None:
     rclpy.init()
-    node = StaticTfNode()
+    node: StaticTfNode | None = None
     try:
+        node = StaticTfNode()
         rclpy.spin(node)
+    except Exception as exc:
+        logger = rclpy.logging.get_logger("mc_tf_static")
+        logger.error(f"fatal error: {exc}")
+        sys.exit(1)
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         rclpy.shutdown()
 
 

@@ -57,6 +57,10 @@ http://localhost:6080/vnc.html
 デフォルトは `127.0.0.1` バインドのため、LAN からはアクセス不可。
 LAN 公開する場合は **明示的に** `NOVNC_BIND=0.0.0.0` を指定すること。
 
+#### Compose での注意
+`tools/ros2/compose.yml` の `ros2-novnc` はコンテナ内で 0.0.0.0 にバインドさせる。
+ホスト側の公開範囲は `ports: 127.0.0.1:6080:6080` でローカル限定のまま。
+
 例:
 ```
 NOVNC_BIND=0.0.0.0 make ros2-novnc

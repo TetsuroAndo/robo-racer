@@ -19,5 +19,8 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /ws
 
-ENTRYPOINT ["/ros_entrypoint.sh"]
+COPY tools/ros2/scripts/ros2_entrypoint.sh /usr/local/bin/ros2_entrypoint.sh
+RUN chmod +x /usr/local/bin/ros2_entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/ros2_entrypoint.sh"]
 CMD ["bash"]
