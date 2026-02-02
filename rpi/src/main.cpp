@@ -9,6 +9,7 @@
 #include <iostream>
 #include <unistd.h>
 #include <cmath>
+#include <limits>
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"//TODO:作る
@@ -41,7 +42,7 @@ int main(int argc, char **argv) {
     lidarReceiver.startReceivingThread();
     std::cout << "Main thread: LiDAR receiving thread started" << std::endl;
 
-    // 前回のステアリング角度を保持 (★修正: ここに追加)
+    // 前回のステアリング角度を保持
     float lastSteerAngle = 0.0f;
 
     // メインスレッドでは評価・送信を実行
@@ -51,11 +52,10 @@ int main(int argc, char **argv) {
         // 最新のLiDARデータを取得（スレッドセーフ）
         if (lidarReceiver.getLatestData(lidarData)) {
             // データが利用可能
-            // ★修正: lastSteerAngle を渡して、前回の動きを考慮させる
             const ProcResult procResult = process.proc(lidarData, lastSteerAngle);
             sender.send(procResult.speed, procResult.angle);
 
-            // ★修正: 次のループのために今回のステアリング角度を保存
+            // 次のループのために今回のステアリング角度を保存
             lastSteerAngle = static_cast<float>(procResult.angle);
 
             // --- ROS 2へのデータ配信処理 ---
@@ -63,17 +63,35 @@ int main(int argc, char **argv) {
             scan_msg.header.stamp = node->now();
             scan_msg.header.frame_id = "laser";
 
-            scan_msg.angle_min = 0.0;
-            scan_msg.angle_max = 2.0 * M_PI;
+            // ★修正: ROS標準に合わせて -π ～ +π に設定
+            scan_msg.angle_min = -M_PI;
+            scan_msg.angle_max = M_PI;
             scan_msg.angle_increment = (2.0 * M_PI) / 360.0;
             scan_msg.range_min = 0.15;
             scan_msg.range_max = 12.0;
 
-            scan_msg.ranges.resize(360, std::numeric_limits<float>::infinity());
+            // 初期値を無限大(未測定)で埋める
+            scan_msg.ranges.assign(360, std::numeric_limits<float>::infinity());
+
             for (const auto &data : lidarData) {
-                int idx = static_cast<int>(data.angle);
+                // 角度を正規化 (-180 ～ +180度)
+                float angle_deg = data.angle;
+                while (angle_deg > 180.0f) angle_deg -= 360.0f;
+                while (angle_deg <= -180.0f) angle_deg += 360.0f;
+
+                // インデックス計算
+                // -180度 -> index 0
+                //    0度 -> index 180 (正面)
+                // +180度 -> index 360 (範囲外)
+                int idx = static_cast<int>(angle_deg + 180.0f);
+
+                // 範囲チェック (0～359)
                 if (idx >= 0 && idx < 360) {
-                    scan_msg.ranges[idx] = data.distance / 1000.0f; // mm -> m
+                    float dist_m = data.distance / 1000.0f; // mm -> m
+                    // 距離の範囲チェックも実施
+                    if (dist_m >= scan_msg.range_min && dist_m <= scan_msg.range_max) {
+                        scan_msg.ranges[idx] = dist_m;
+                    }
                 }
             }
             scan_pub->publish(scan_msg);
