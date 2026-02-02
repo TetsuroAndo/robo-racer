@@ -2,6 +2,10 @@ file(GLOB RPI_SRCS CONFIGURE_DEPENDS
   "*.cpp"
 )
 
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
+
 set(ROBO_RACER_NAME "robo-racer" CACHE STRING "Output binary name")
 add_executable(${ROBO_RACER_NAME} ${RPI_SRCS})
 
@@ -17,6 +21,11 @@ target_include_directories(${ROBO_RACER_NAME} PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../lib/mc_ipc/include
 )
 
+target_include_directories(${ROBO_RACER_NAME} PUBLIC
+  ${rclcpp_INCLUDE_DIRS}
+  ${sensor_msgs_INCLUDE_DIRS}
+)
+
 target_compile_options(${ROBO_RACER_NAME} PRIVATE -Wall -Wextra -Wpedantic
   -Wno-zero-length-array)
 
@@ -27,6 +36,11 @@ if (RPLIDAR_LIB)
 endif()
 
 target_link_libraries(${ROBO_RACER_NAME} PRIVATE mc_proto mc_ipc dl m)
+
+ament_target_dependencies(${ROBO_RACER_NAME}
+  rclcpp
+  sensor_msgs
+)
 
 set_target_properties(${ROBO_RACER_NAME} PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../.."
