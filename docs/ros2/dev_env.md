@@ -21,8 +21,9 @@ docker compose -f tools/ros2/compose.yml run --rm ros2 bash
 
 ## 3) RViz 起動（GUI）
 ### 事前注意（DISPLAY）
-`docker compose up` / `make ros2-up` は **DISPLAY を自動設定しない**。ホストの環境変数に従うため、
+`docker compose up` は **DISPLAY を自動設定しない**。ホストの環境変数に従うため、
 Ubuntu は `DISPLAY=:0`、Mac は `DISPLAY=host.docker.internal:0` を **事前に設定**してから起動すること。
+一方で `make ros2-up` / `make ros2-rviz` は Mac の場合に DISPLAY などを自動設定する。
 
 ### Ubuntu（X11）
 ```
@@ -43,13 +44,69 @@ xhost + 127.0.0.1
 ```
 3. コンテナ内で `rviz2`
 
-## 4) ros2_ws のビルド
+### Mac（noVNC 推奨）
+XQuartz 不要でブラウザ表示に切り替える。
+```
+make ros2-novnc
+```
+ブラウザで以下を開く。
+```
+http://localhost:6080/vnc.html
+```
+#### LAN 公開が必要な場合
+デフォルトは `127.0.0.1` バインドのため、LAN からはアクセス不可。
+LAN 公開する場合は **明示的に** `NOVNC_BIND=0.0.0.0` を指定すること。
+
+#### Compose での注意
+`tools/ros2/compose.yml` の `ros2-novnc` はコンテナ内で 0.0.0.0 にバインドさせる。
+ホスト側の公開範囲は `ports: 127.0.0.1:6080:6080` でローカル限定のまま。
+
+例:
+```
+NOVNC_BIND=0.0.0.0 make ros2-novnc
+```
+
+### Mac 自動設定（Make 経由）
+`make ros2-rviz` / `make ros2-up` は Mac の場合に以下の環境変数を自動設定する：
+- `DISPLAY=host.docker.internal:0`
+- `LIBGL_ALWAYS_SOFTWARE=1`
+- `QT_XCB_GL_INTEGRATION=none`
+- `XDG_RUNTIME_DIR=/tmp/runtime-root`
+XQuartz の設定と `xhost` は必要。
+
+### RViz デフォルト設定
+```
+make ros2-rviz
+```
+`tools/ros2/rviz/default.rviz` を使用して起動する。
+
+## 4) rpi/ros2_ws のビルド
 ```
 ./tools/ros2/scripts/ros2_build.sh
 ```
-`ros2_ws/src/mc_msgs` がメッセージ定義の雛形です。
+`rpi/ros2_ws/src/mc_msgs` がメッセージ定義の雛形です。
 
-## 5) bag の record/play
+## 5) demo publisher（/scan）と static TF
+```
+ros2 run mc_tf_static mc_tf_static --ros-args --params-file /ws/rpi/config/frames.yaml
+ros2 run mc_demo_pub mc_demo_pub
+```
+`/scan` は `frame_id=laser` で publish される。
+
+## 6) bag の record/play
 - record: `./tools/ros2/scripts/bag_record.sh`
 - session: `./tools/ros2/scripts/session_up.sh`（run_id 伝播を固定したい場合）
 - play: `./tools/ros2/scripts/bag_play.sh <bag_path> [rate]`
+
+## 7) RPi から bag をコピーして再生（推奨運用）
+RPi 側で bag を保存し、PC 側へコピーして再生する。
+
+例（RPi → PC）:
+```
+scp -r pi@<rpi-host>:/ws/training/data/bags/<run_id> ./training/data/bags/
+```
+
+コピー後の再生例:
+```
+./tools/ros2/scripts/bag_play.sh ./training/data/bags/<run_id>
+```

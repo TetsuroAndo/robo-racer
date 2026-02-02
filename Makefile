@@ -2,6 +2,22 @@ OS			:= $(shell uname -s)
 USER		:= $(shell whoami)
 RM 			:= rm -rf
 
+# ================================
+# ROS2 GUI env (Mac only)
+# ================================
+ifeq ($(OS), Darwin)
+ROS2_DISPLAY ?= host.docker.internal:0
+ROS2_LIBGL_ALWAYS_SOFTWARE ?= 1
+ROS2_QT_XCB_GL_INTEGRATION ?= none
+ROS2_XDG_RUNTIME_DIR ?= /tmp/runtime-root
+ROS2_GUI_ENV := DISPLAY=$(ROS2_DISPLAY) \
+	LIBGL_ALWAYS_SOFTWARE=$(ROS2_LIBGL_ALWAYS_SOFTWARE) \
+	QT_XCB_GL_INTEGRATION=$(ROS2_QT_XCB_GL_INTEGRATION) \
+	XDG_RUNTIME_DIR=$(ROS2_XDG_RUNTIME_DIR)
+else
+ROS2_GUI_ENV :=
+endif
+
 # --- PATHS ---
 ROOT				:= .
 VENV				:= $(ROOT)/.venv
@@ -111,7 +127,7 @@ $(LOG_DIR):
 # Runs
 # ================================
 .PHONY: test activate hils-build hils-local ros2-up ros2-shell ros2-build \
-	ros2-bag-record ros2-bag-play ros2-session-up
+	ros2-rviz ros2-novnc ros2-bag-record ros2-bag-play ros2-session-up
 
 hils-build:
 	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
@@ -123,18 +139,25 @@ hils-local: hils-build $(PYTHON_LOCAL)
 		--sim $(RPI_BUILD_DIR)/apps/sim_esp32d/sim_esp32d
 
 ros2-up:
-	docker compose -f tools/ros2/compose.yml up -d
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml up -d
 
 ros2-shell:
-	docker compose -f tools/ros2/compose.yml run --rm ros2 bash
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 bash
 
 ros2-build:
-	docker compose -f tools/ros2/compose.yml run --rm ros2 \
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
 		bash /ws/tools/ros2/scripts/ros2_build.sh
 
+ros2-rviz:
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash -lc "rviz2 -d /ws/tools/ros2/rviz/default.rviz"
+
+ros2-novnc:
+	docker compose -f tools/ros2/compose.yml up ros2-novnc
+
 ros2-bag-record:
-	docker compose -f tools/ros2/compose.yml run --rm \
-		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID \
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm \
+		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID -e NOTES -e RUN_NOTES \
 		-e WAIT_SEC -e REQUIRE_AT_LEAST_ONE \
 		ros2 \
 		bash /ws/tools/ros2/scripts/bag_record.sh
@@ -148,8 +171,8 @@ ros2-bag-play:
 		bash /ws/tools/ros2/scripts/bag_play.sh $(BAG)
 
 ros2-session-up:
-	docker compose -f tools/ros2/compose.yml run --rm \
-		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID \
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm \
+		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID -e NOTES -e RUN_NOTES \
 		-e WAIT_SEC -e REQUIRE_AT_LEAST_ONE -e SESSION_CMD -e SESSION_WAIT_SEC \
 		ros2 \
 		bash /ws/tools/ros2/scripts/session_up.sh
@@ -290,6 +313,8 @@ help:
 	@echo "  ros2-up          Start ROS2 docker compose"
 	@echo "  ros2-shell       Open ROS2 container shell"
 	@echo "  ros2-build       Build ROS2 workspace in container"
+	@echo "  ros2-rviz        Launch RViz via X11/XQuartz"
+	@echo "  ros2-novnc       Launch RViz via noVNC (browser)"
 	@echo "  ros2-bag-record  Record rosbag via container"
 	@echo "  ros2-bag-play    Play rosbag via container (BAG=... required)"
 	@echo "  ros2-session-up  Start ROS2 session + bag record"

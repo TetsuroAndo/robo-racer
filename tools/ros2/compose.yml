@@ -4,6 +4,7 @@ services:
       context: ../..
       dockerfile: tools/ros2/Dockerfile
     image: robo-racer-ros2:humble
+    entrypoint: ["/usr/local/bin/ros2_entrypoint.sh"]
     volumes:
       - ../..:/ws
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
@@ -11,5 +12,24 @@ services:
       - DISPLAY=${DISPLAY:-host.docker.internal:0}
       - QT_X11_NO_MITSHM=1
       - LIBGL_ALWAYS_INDIRECT=1
+      - LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-0}
+      - QT_XCB_GL_INTEGRATION=${QT_XCB_GL_INTEGRATION:-}
+      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/runtime-root}
     stdin_open: true
     tty: true
+
+  ros2-novnc:
+    build:
+      context: ../..
+      dockerfile: tools/ros2/Dockerfile
+    image: robo-racer-ros2:humble
+    entrypoint: ["/usr/local/bin/ros2_entrypoint.sh"]
+    volumes:
+      - ../..:/ws
+    ports:
+      - "127.0.0.1:6080:6080"
+    environment:
+      - NOVNC_PORT=6080
+      - NOVNC_RESOLUTION=1280x800x24
+      - NOVNC_BIND=0.0.0.0
+    command: ["bash", "/ws/tools/ros2/scripts/novnc_start.sh", "rviz2", "-d", "/ws/tools/ros2/rviz/default.rviz"]

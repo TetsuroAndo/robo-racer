@@ -13,4 +13,4 @@ fi
 BAG_PATH=$1
 RATE=${2:-1.0}
 
-ros2 bag play "$BAG_PATH" --rate "$RATE"
+ros2 bag play "$BAG_PATH" --rate "$RATE" --clock

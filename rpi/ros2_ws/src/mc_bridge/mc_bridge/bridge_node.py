@@ -1,4 +1,5 @@
 import threading
+import sys
 
 import rclpy
 from rclpy.node import Node
@@ -81,10 +82,7 @@ class BridgeNode(Node):
         if self.get_parameter("demo_log").value:
             period = float(self.get_parameter("demo_period_sec").value)
             if period <= 0.0:
-                self.get_logger().warning(
-                    "demo_period_sec must be > 0; demo_log disabled"
-                )
-                return
+                raise ValueError("demo_period_sec must be > 0 when demo_log is true")
             self.create_timer(period, self._demo_log)
 
     def _demo_log(self) -> None:
@@ -92,15 +90,23 @@ class BridgeNode(Node):
         self._log_pub.publish(1, "demo log", ts_ms)
 
 
-def main() -> None:
-    rclpy.init()
-    node = BridgeNode()
+def main() -> int:
+    node: BridgeNode | None = None
     try:
+        rclpy.init()
+        node = BridgeNode()
         rclpy.spin(node)
+        return 0
+    except Exception as exc:
+        logger = rclpy.logging.get_logger("mc_bridge")
+        logger.error(f"fatal error: {exc}")
+        return 1
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        if node is not None:
+            node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

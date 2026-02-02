@@ -5,13 +5,9 @@ set +u
 source /opt/ros/humble/setup.bash
 set -u
 
-RUN_ID=${RUN_ID:-$(python3 - <<'PY'
-import uuid
-print(uuid.uuid4())
-PY
-)}
+RUN_ID=${RUN_ID:-$(/ws/tools/ros2/scripts/run_id.sh)}
 STAMP=$(date +%Y%m%d_%H%M%S)
-OUT_DIR=${OUT_DIR:-/ws/training/data/bags/${STAMP}_${RUN_ID}}
+OUT_DIR=${OUT_DIR:-/ws/training/data/bags/${RUN_ID}}
 
 PROFILE=${PROFILE:-core}
 WAIT_SEC=${WAIT_SEC:-2.0}
@@ -20,6 +16,7 @@ RUN_ID_PUB_KEEPALIVE=${RUN_ID_PUB_KEEPALIVE:-1}
 RUN_ID_PUB_RATE=${RUN_ID_PUB_RATE:-1}
 REQUIRE_AT_LEAST_ONE=${REQUIRE_AT_LEAST_ONE:-1}
 RUN_ID_PUB_PID=""
+NOTES=${NOTES:-${RUN_NOTES:-}}
 
 cleanup() {
   if [ -n "${RUN_ID_PUB_PID}" ]; then
@@ -31,6 +28,27 @@ trap cleanup EXIT INT TERM
 mkdir -p "$OUT_DIR"
 
 GIT_SHA=$(git -C /ws rev-parse --short HEAD 2>/dev/null || echo unknown)
+HOST_NAME=$(hostname)
+CREATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+export RUN_ID OUT_DIR GIT_SHA HOST_NAME CREATED_AT NOTES
+
+python3 - <<PY
+import json
+import os
+
+out_dir = os.environ["OUT_DIR"]
+data = {
+    "run_id": os.environ["RUN_ID"],
+    "git_sha": os.environ["GIT_SHA"],
+    "host": os.environ["HOST_NAME"],
+    "notes": os.environ.get("NOTES", ""),
+    "created_at": os.environ["CREATED_AT"],
+}
+
+with open(os.path.join(out_dir, "metadata.json"), "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, sort_keys=True)
+    f.write("\\n")
+PY
 
 DESIRED_TOPICS=()
 RECORD_ALL=0
@@ -76,8 +94,9 @@ fi
 cat > "$OUT_DIR/meta.txt" <<META
 run_id=${RUN_ID}
 git_sha=${GIT_SHA}
-host=$(hostname)
+host=${HOST_NAME}
 created_at=${STAMP}
+notes=${NOTES}
 profile=${PROFILE}
 record_all=${RECORD_ALL}
 topics_env=${TOPICS:-}

@@ -5,7 +5,7 @@ set +u
 source /opt/ros/humble/setup.bash
 set -u
 
-WS=/ws/ros2_ws
+WS=/ws/rpi/ros2_ws
 mkdir -p "$WS/src"
 
 cd "$WS"

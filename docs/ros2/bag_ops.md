@@ -1,10 +1,10 @@
 # rosbag 運用 v0.1
 
 ## 保存場所
-- `training/data/bags/<date>_<run_id>/`
+- `training/data/bags/<run_id>/`
 
 ## run_id 付与
-- `bag_record.sh` が UUID を自動付与
+- `bag_record.sh` が `run_id.sh` で `YYYYMMDD_HHMMSS_<short>` を自動生成
 - `PUBLISH_RUN_ID=1` の場合、`/mc/run_id` を transient_local で publish
 - `RUN_ID_PUB_KEEPALIVE=1`（デフォルト）の場合、セッション中は keepalive で継続配信
 - `RUN_ID_PUB_RATE` で keepalive の Hz を指定（デフォルト: 1）
@@ -13,13 +13,14 @@
 
 ## record
 ```
-RUN_ID=<uuid> TOPICS="/scan /mc/status /mc/drive_cmd" \
+RUN_ID=<run_id> TOPICS="/scan /mc/status /mc/drive_cmd" NOTES="optional" \
   ./tools/ros2/scripts/bag_record.sh
 ```
 - `TOPICS` が最優先（完全手動）
 - `TOPICS` 未指定なら `PROFILE` に従う（デフォルト: `core`）
 - `PROFILE=all` のときのみ `--all` で記録
-- `meta.txt` に run_id / git_sha / host / timestamp を保存
+- `metadata.json` に run_id / git_sha / host / notes / created_at を保存
+- `meta.txt` に run_id / git_sha / host / created_at / notes を保存
 - `meta.txt` に profile / topics / topics_file も保存
 - `meta.txt` に `present_topics`（記録開始時に見えていた topic）も保存
 
@@ -27,6 +28,7 @@ RUN_ID=<uuid> TOPICS="/scan /mc/status /mc/drive_cmd" \
 ```
 ./tools/ros2/scripts/bag_play.sh <bag_path> [rate]
 ```
+- `--clock` を有効にして再生する
 
 ## topics プロファイル
 - `tools/ros2/topics/<profile>.txt` で管理

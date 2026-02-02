@@ -15,7 +15,7 @@ mc_bridge の **契約（定義）を先に凍結**し、B/C が並行開発で�
 | docs/contracts/mc_bridge_v0.1.md | 完了 | 2026-01-31 | 定義のみ（実装は次フェーズ） |
 | docs/contracts/min_spec_v0_1.md 更新 | 完了 | 2026-01-31 | telemetry ミラー前提を反映 |
 | docs/ros2/topic_spec.md 更新 | 完了 | 2026-01-31 | /mc/drive_cmd 出所を明記 |
-| ros2_ws/src/mc_bridge 実装 | 進行中 | 2026-02-05 | run_id ガード骨組みを追加 |
+| rpi/ros2_ws/src/mc_bridge 実装 | 進行中 | 2026-02-05 | run_id ガード骨組みを追加 |
 | RunIdCache スレッドセーフ化 | 完了 | 2026-01-31 | MultiThreadedExecutor 対応 |
 | demo_period_sec ガード追加 | 完了 | 2026-01-31 | 0 以下の無効値を防止 |
 
