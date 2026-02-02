@@ -1,10 +1,12 @@
-#include "LidarReceiver.h"
 #include "Process.h"
 #include "Sender.h"
+#include "LidarReceiver.h"
+#include "ShmLidarReceiver.h"
 #include "config/Config.h"
 #include "lidar_to_esp.h"
 #include <csignal>
 #include <cstdlib>
+#include <iostream>
 #include <unistd.h>
 #include <cmath>
 
