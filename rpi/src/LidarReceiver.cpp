@@ -221,9 +221,10 @@ void LidarReceiver::_init(const char *lidar_dev_c, int lidar_baud) {
 	// スキャン開始
 	sl::LidarScanMode scanMode;
 	res = _lidar->startScan(false, true, 0, &scanMode);
-	MC_LOGI("lidar",
-			"startScan result=" + std::to_string((unsigned int)res) +
-				" mode=" + std::to_string((unsigned int)scanMode.scan_mode));
+	const char *mode_name =
+		(scanMode.scan_mode != nullptr) ? scanMode.scan_mode : "unknown";
+	MC_LOGI("lidar", "startScan result=" + std::to_string((unsigned int)res) +
+						 " mode=" + std::string(mode_name));
 	if (!SL_IS_OK(res)) {
 		MC_LOGF("lidar",
 				"startScan failed: " + std::to_string((unsigned int)res));
