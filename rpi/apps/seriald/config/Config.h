@@ -8,6 +8,7 @@ static constexpr const char *DEFAULT_CONTROL_SOCK =
 	"/run/roboracer/seriald.sock";
 static constexpr const char *DEFAULT_TELEMETRY_SOCK =
 	"/run/roboracer/seriald.telemetry.sock";
+static constexpr int DEFAULT_TELEMETRY_TCP_PORT = 0;
 static constexpr const char *DEFAULT_COMPAT_CONTROL_SOCK =
 	"/tmp/roboracer/seriald.sock";
 static constexpr const char *DEFAULT_COMPAT_TELEMETRY_SOCK =

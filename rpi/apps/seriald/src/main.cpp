@@ -1,6 +1,8 @@
 #include <atomic>
+#include <fcntl.h>
 #include <memory>
 #include <mutex>
+#include <netinet/in.h>
 #include <poll.h>
 #include <queue>
 #include <stdio.h>
@@ -51,6 +53,13 @@ struct ServerEntry {
 	bool telemetry;
 	std::string role;
 };
+
+struct TcpClientEntry {
+	int fd;
+};
+
+static int g_tcp_listen_fd = -1;
+static std::vector< TcpClientEntry > g_tcp_clients;
 
 static std::mutex g_tx_mu;
 static std::queue< TxMsg > g_tx_q;
@@ -107,11 +116,95 @@ static void broadcast_to(const std::vector< ServerEntry > &servers,
 	}
 }
 
+static bool setup_tcp_listener(int port, mc::core::Logger &logger) {
+	if (port <= 0)
+		return false;
+	int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+	if (fd < 0) {
+		logger.log(mc::core::LogLevel::Error, "seriald",
+				   "failed to create telemetry tcp socket");
+		return false;
+	}
+	int fl = fcntl(fd, F_GETFL, 0);
+	if (fl >= 0) {
+		(void)fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+	}
+	int one = 1;
+	::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+
+	sockaddr_in addr{};
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	addr.sin_port = htons(static_cast< uint16_t >(port));
+
+	if (::bind(fd, reinterpret_cast< sockaddr * >(&addr), sizeof(addr)) != 0) {
+		logger.log(mc::core::LogLevel::Error, "seriald",
+				   "failed to bind telemetry tcp port=" + std::to_string(port));
+		::close(fd);
+		return false;
+	}
+	if (::listen(fd, 16) != 0) {
+		logger.log(mc::core::LogLevel::Error, "seriald",
+				   "failed to listen telemetry tcp port=" +
+					   std::to_string(port));
+		::close(fd);
+		return false;
+	}
+	g_tcp_listen_fd = fd;
+	logger.log(mc::core::LogLevel::Info, "seriald",
+			   "telemetry tcp listen port=" + std::to_string(port));
+	return true;
+}
+
+static void tcp_accept_clients(mc::core::Logger &logger) {
+	if (g_tcp_listen_fd < 0)
+		return;
+	while (true) {
+		int cfd = ::accept(g_tcp_listen_fd, nullptr, nullptr);
+		if (cfd < 0)
+			break;
+		g_tcp_clients.push_back(TcpClientEntry{cfd});
+		logger.log(mc::core::LogLevel::Info, "seriald",
+				   "tcp telemetry client connected fd=" + std::to_string(cfd));
+	}
+}
+
+static void tcp_remove_client(size_t idx) {
+	if (idx >= g_tcp_clients.size())
+		return;
+	::close(g_tcp_clients[idx].fd);
+	g_tcp_clients.erase(g_tcp_clients.begin() + (long)idx);
+}
+
+static void tcp_broadcast(const uint8_t *data, size_t len) {
+	for (size_t i = 0; i < g_tcp_clients.size();) {
+		int fd = g_tcp_clients[i].fd;
+		ssize_t w = ::send(fd, data, len, MSG_NOSIGNAL);
+		if (w <= 0) {
+			tcp_remove_client(i);
+			continue;
+		}
+		++i;
+	}
+}
+
+static void tcp_close_all() {
+	for (const auto &c : g_tcp_clients) {
+		::close(c.fd);
+	}
+	g_tcp_clients.clear();
+	if (g_tcp_listen_fd >= 0) {
+		::close(g_tcp_listen_fd);
+		g_tcp_listen_fd = -1;
+	}
+}
+
 int main(int argc, char **argv) {
 	std::string dev = seriald_cfg::DEFAULT_DEV;
 	int baud = seriald_cfg::DEFAULT_BAUD;
 	std::string control_sock = seriald_cfg::DEFAULT_CONTROL_SOCK;
 	std::string telemetry_sock = seriald_cfg::DEFAULT_TELEMETRY_SOCK;
+	int telemetry_tcp_port = seriald_cfg::DEFAULT_TELEMETRY_TCP_PORT;
 	std::string logpath = seriald_cfg::DEFAULT_LOG;
 	std::string compat_control_sock = seriald_cfg::DEFAULT_COMPAT_CONTROL_SOCK;
 	std::string compat_telemetry_sock =
@@ -127,6 +220,8 @@ int main(int argc, char **argv) {
 			control_sock = argv[++i];
 		else if (a == "--telemetry-sock" && i + 1 < argc)
 			telemetry_sock = argv[++i];
+		else if (a == "--telemetry-tcp-port" && i + 1 < argc)
+			telemetry_tcp_port = atoi(argv[++i]);
 		else if (a == "--log" && i + 1 < argc)
 			logpath = argv[++i];
 	}
@@ -139,7 +234,8 @@ int main(int argc, char **argv) {
 	logger.log(mc::core::LogLevel::Info, "seriald",
 			   "starting dev=" + dev + " baud=" + std::to_string(baud) +
 				   " control_sock=" + control_sock +
-				   " telemetry_sock=" + telemetry_sock);
+				   " telemetry_sock=" + telemetry_sock +
+				   " telemetry_tcp_port=" + std::to_string(telemetry_tcp_port));
 
 	mc::serial::Uart uart;
 	if (!uart.open(dev, baud)) {
@@ -176,6 +272,9 @@ int main(int argc, char **argv) {
 				   "failed to open required ipc sockets");
 		return 1;
 	}
+	if (telemetry_tcp_port > 0) {
+		setup_tcp_listener(telemetry_tcp_port, logger);
+	}
 
 	mc::proto::PacketReader pr;
 
@@ -204,7 +303,7 @@ int main(int argc, char **argv) {
 
 	while (run) {
 		std::vector< pollfd > fds;
-		fds.reserve(1 + servers.size() + seriald_cfg::MAX_CLIENT_FDS);
+		fds.reserve(2 + servers.size() + seriald_cfg::MAX_CLIENT_FDS);
 
 		pollfd uart_fd{};
 		uart_fd.fd = uart.fd();
@@ -216,6 +315,13 @@ int main(int argc, char **argv) {
 			srv_fd.fd = entry.server->fd();
 			srv_fd.events = POLLIN;
 			fds.push_back(srv_fd);
+		}
+
+		if (g_tcp_listen_fd >= 0) {
+			pollfd tcp_fd{};
+			tcp_fd.fd = g_tcp_listen_fd;
+			tcp_fd.events = POLLIN;
+			fds.push_back(tcp_fd);
 		}
 
 		struct ClientEntry {
@@ -255,6 +361,14 @@ int main(int argc, char **argv) {
 						   "client connected role=" + servers[i].role +
 							   " fd=" + std::to_string(cfd));
 			}
+		}
+
+		size_t tcp_poll_idx = server_start + servers.size();
+		if (g_tcp_listen_fd >= 0) {
+			if (fds[tcp_poll_idx].revents & POLLIN) {
+				tcp_accept_clients(logger);
+			}
+			++tcp_poll_idx;
 		}
 
 		if (fds[0].revents & POLLIN) {
@@ -323,6 +437,7 @@ int main(int argc, char **argv) {
 								f.flags(), seq, f.payload, f.payload_len)) {
 							broadcast_to(servers, false, enc, enc_len);
 							broadcast_to(servers, true, enc, enc_len);
+							tcp_broadcast(enc, enc_len);
 						}
 
 						pr.consumeFrame();
@@ -331,7 +446,7 @@ int main(int argc, char **argv) {
 			}
 		}
 
-		const size_t client_start = 1 + servers.size();
+		const size_t client_start = tcp_poll_idx;
 		for (size_t i = client_start; i < fds.size(); ++i) {
 			if (!(fds[i].revents & POLLIN))
 				continue;
@@ -351,14 +466,34 @@ int main(int argc, char **argv) {
 			}
 			tx_enqueue(buf, (uint16_t)n);
 			broadcast_to(servers, true, buf, (size_t)n);
+			tcp_broadcast(buf, (size_t)n);
 			logger.log(mc::core::LogLevel::Debug, "seriald",
 					   "IPC->UART forward bytes=" + std::to_string(n));
+		}
+
+		for (size_t i = 0; i < g_tcp_clients.size();) {
+			pollfd tcp_client{};
+			tcp_client.fd = g_tcp_clients[i].fd;
+			tcp_client.events = POLLIN;
+			int rcv = ::poll(&tcp_client, 1, 0);
+			if (rcv > 0 && (tcp_client.revents & POLLIN)) {
+				uint8_t dummy[64];
+				(void)::recv(g_tcp_clients[i].fd, dummy, sizeof(dummy), 0);
+				logger.log(
+					mc::core::LogLevel::Warn, "seriald",
+					"tcp telemetry client attempted send; disconnect fd=" +
+						std::to_string(g_tcp_clients[i].fd));
+				tcp_remove_client(i);
+				continue;
+			}
+			++i;
 		}
 	}
 
 	run = false;
 	if (txThread.joinable())
 		txThread.join();
+	tcp_close_all();
 	uart.close();
 	logger.shutdown();
 	return 0;
