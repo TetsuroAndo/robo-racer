@@ -5,6 +5,7 @@
 #include "LidarReceiver.h"
 #include "Process.h"
 #include "Sender.h"
+#include "config/Config.h"
 #include "mc/core/Log.hpp"
 #include "mc/core/Time.hpp"
 
@@ -32,8 +33,9 @@ int run_lidar_to_esp(const char *lidar_dev, int lidar_baud,
 
 	LidarReceiver lidarReceiver(lidar_dev, lidar_baud);
 	TelemetryEmitter telemetry;
+	telemetry.setMetricsLogPath(cfg::DEFAULT_METRICSD_LOG);
 	Process process(&telemetry);
-	Sender sender(esp_dev);
+	Sender sender(esp_dev, &telemetry);
 	const std::string run_id = make_run_id();
 	uint64_t tick = 0;
 	float lastSteerAngle = 0.0f;

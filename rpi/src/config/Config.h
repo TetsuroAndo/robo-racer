@@ -15,6 +15,7 @@ static constexpr const char* DEFAULT_LIDAR_DEVICE = "/dev/ttyAMA2";
 static constexpr const char* DEFAULT_ESP_DEVICE   = "/dev/ttyAMA0";
 static constexpr const char* DEFAULT_SERIALD_SOCK = "/tmp/roboracer/seriald.sock";
 static constexpr const char* DEFAULT_PROCESS_LOG  = "./logs/process_telemetry.jsonl";
+static constexpr const char* DEFAULT_METRICSD_LOG = "./logs/metricsd.log";
 
 // ボーレート
 static constexpr int DEFAULT_LIDAR_BAUD = 460800;

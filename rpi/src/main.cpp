@@ -49,12 +49,15 @@ int main(int argc, char **argv) {
 	std::atexit(show_cursor);
 
 	std::string log_path = cfg::DEFAULT_PROCESS_LOG;
+	std::string metrics_log_path = cfg::DEFAULT_METRICSD_LOG;
 	std::string run_id;
 	std::vector< std::string > positional;
 	for (int i = 1; i < argc; ++i) {
 		std::string a = argv[i];
 		if (a == "--log" && i + 1 < argc) {
 			log_path = argv[++i];
+		} else if (a == "--metrics-log" && i + 1 < argc) {
+			metrics_log_path = argv[++i];
 		} else if (a == "--run-id" && i + 1 < argc) {
 			run_id = argv[++i];
 		} else {
@@ -85,8 +88,9 @@ int main(int argc, char **argv) {
 
 	ShmLidarReceiver lidarReceiver;
 	TelemetryEmitter telemetry;
+	telemetry.setMetricsLogPath(metrics_log_path);
 	Process process(&telemetry);
-	Sender sender(seriald_sock);
+	Sender sender(seriald_sock, &telemetry);
 
 	uint64_t last_wait_log_us = 0;
 	while (!g_stop && !lidarReceiver.connect()) {

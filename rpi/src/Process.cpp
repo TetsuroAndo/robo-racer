@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <vector>
 
 namespace {
@@ -23,6 +24,7 @@ Process::~Process() {}
 ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 						 float lastSteerAngle, uint64_t tick, uint64_t scan_id,
 						 const std::string &run_id) const {
+	const uint64_t t0_us = mc::core::Time::us();
 	float max = 0;
 	int maxDistance = -1;
 	float minHandleAngle = 0;
@@ -108,6 +110,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	float calculatedAngle = steerSourceAngle * cfg::PROCESS_MIN_ANGLE_SIGN *
 							cfg::PROCESS_STEER_GAIN;
 	float absAngle = std::fabs(calculatedAngle);
+	float curve_ratio = 1.0f;
 
 	// 進行経路上の障害物距離に基づいて速度を制限
 	int limitedSpeed = baseSpeed;
@@ -125,8 +128,8 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	// 急カーブによる速度制限
 	// 計算角度が物理上限を超える場合、その比率に応じて速度を減速
 	if (absAngle > cfg::STEER_ANGLE_MAX_DEG) {
-		float curveRatio = (float)cfg::STEER_ANGLE_MAX_DEG / absAngle;
-		float curveFactor = cfg::STEER_CURVE_SPEED_FACTOR * curveRatio;
+		curve_ratio = (float)cfg::STEER_ANGLE_MAX_DEG / absAngle;
+		float curveFactor = cfg::STEER_CURVE_SPEED_FACTOR * curve_ratio;
 		int curveReducedSpeed = (int)(limitedSpeed * curveFactor);
 		limitedSpeed = curveReducedSpeed;
 		if (override_reason == "NONE") {
@@ -137,6 +140,8 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	}
 
 	int roundedAngle = static_cast< int >(std::round(calculatedAngle));
+	const float speed_factor =
+		(baseSpeed > 0) ? (float)limitedSpeed / (float)baseSpeed : 0.0f;
 
 	std::partial_sort(
 		candidates.begin(),
@@ -146,24 +151,63 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		});
 
 	if (telemetry_) {
+		static bool has_last_best = false;
+		static float last_best_angle = 0.0f;
+		std::optional< float > best_delta;
+		if (has_last_best) {
+			best_delta = max - last_best_angle;
+		}
+		last_best_angle = max;
+		has_last_best = true;
+
+		std::string override_detail = override_reason;
+		if (override_reason == "STOP") {
+			override_detail =
+				"STOP<=" + std::to_string(cfg::PROCESS_MIN_DIST_STOP_MM) + "mm";
+		} else if (override_reason == "SLOW") {
+			override_detail =
+				"SLOW<" + std::to_string(cfg::PROCESS_MIN_DIST_SAFE_MM) + "mm";
+		}
+		if (override_reason.find("CURVE") != std::string::npos) {
+			override_detail += " curve_ratio=" + std::to_string(curve_ratio);
+		}
+
 		TelemetrySample sample;
 		sample.ts_us = mc::core::Time::us();
 		sample.run_id = run_id;
 		sample.tick = tick;
 		sample.scan_id = scan_id;
+		sample.best_delta_deg = best_delta;
 		sample.best_angle_deg = max;
 		sample.best_dist_mm = maxDistance;
 		sample.best_score = 1.0f;
+		sample.score_obstacle = std::nullopt;
+		sample.score_width = std::nullopt;
+		sample.score_goal = std::nullopt;
+		sample.score_curvature = std::nullopt;
+		sample.score_stability = std::nullopt;
+		sample.score_map_conf = std::nullopt;
 		sample.min_handle_angle_deg = minHandleAngle;
 		sample.min_handle_dist_mm = minHandleDistance;
 		sample.path_obst_mm = minObstacleOnPath;
+		sample.front_dist_mm = std::nullopt;
+		sample.side_dist_mm = std::nullopt;
 		sample.base_speed = baseSpeed;
 		sample.limited_speed = limitedSpeed;
 		sample.steer_deg = roundedAngle;
+		sample.raw_steer_deg = calculatedAngle;
+		sample.curve_ratio = curve_ratio;
+		sample.speed_factor = speed_factor;
 		sample.steer_clamp_deg = cfg::STEER_ANGLE_MAX_DEG;
 		sample.override_kind = override_reason;
+		sample.override_detail = override_detail;
 		sample.th_stop_mm = cfg::PROCESS_MIN_DIST_STOP_MM;
 		sample.th_safe_mm = cfg::PROCESS_MIN_DIST_SAFE_MM;
+		sample.scan_age_ms = std::nullopt;
+		const uint64_t t1_us = mc::core::Time::us();
+		sample.planner_latency_ms = (uint32_t)((t1_us - t0_us) / 1000);
+		sample.control_latency_ms = std::nullopt;
+		sample.ttl_ms = cfg::AUTO_TTL_MS;
 
 		const size_t top_n = std::min< size_t >(3, candidates.size());
 		sample.top_count = top_n;
@@ -171,6 +215,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			sample.top[i] = {candidates[i].angle_deg, candidates[i].distance_mm,
 							 candidates[i].score};
 		}
+		sample.candidates = candidates;
 		telemetry_->emit(sample);
 	}
 

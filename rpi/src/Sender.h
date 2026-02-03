@@ -7,15 +7,18 @@
 #include <stdint.h>
 #include <unordered_map>
 
+class TelemetryEmitter;
+
 class Sender {
 public:
-	Sender(const char* sock_path);
+	explicit Sender(const char* sock_path, TelemetryEmitter* telemetry = nullptr);
 	~Sender();
 
 	void send(int speed, int angle);
 	void sendAutoMode(bool enable);
 	void sendKill();
 	void poll();
+
 private:
 	void _init(const char* sock_path);
 	void sendHeartbeatIfDue();
@@ -36,6 +39,7 @@ private:
 	bool has_status_ = false;
 	bool status_stale_ = false;
 	bool auto_enabled_ = false;
+	TelemetryEmitter* telemetry_ = nullptr;
 
 	struct PendingTx {
 		uint32_t deadline_ms;

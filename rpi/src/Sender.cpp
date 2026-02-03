@@ -1,4 +1,5 @@
 #include "Sender.h"
+#include "Telemetry.h"
 #include "mc/core/Log.hpp"
 
 #include <array>
@@ -38,7 +39,10 @@ int16_t clamp_cdeg(int32_t cdeg) {
 
 } // namespace
 
-Sender::Sender(const char *sock_path) { _init(sock_path); }
+Sender::Sender(const char *sock_path, TelemetryEmitter *telemetry)
+	: telemetry_(telemetry) {
+	_init(sock_path);
+}
 
 Sender::~Sender() {
 	if (auto_enabled_) {
@@ -189,6 +193,10 @@ void Sender::handleStatus(const mc::proto::StatusPayload &payload) {
 	   << " age_ms=" << age_ms << " faults=0x" << std::hex << faults
 	   << std::dec;
 	MC_LOGI("status", ss.str());
+
+	if (telemetry_) {
+		telemetry_->updateStatus(auto_active, faults, speed, steer, age_ms);
+	}
 }
 
 void Sender::handleAck(uint16_t seq) {

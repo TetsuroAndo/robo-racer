@@ -14,6 +14,8 @@
 - [完了] UIとログの混線回避（console sink 無効化）
 - [完了] テレメトリ出力のモジュール分離（TelemetryEmitter）
 - [完了] rpi/src の標準出力/標準エラーを Logger へ移行（Sender/LidarReceiver/main）
+- [完了] UI/JSONL の追加項目（mode/latency/score/metrics/ESP status など）
+- [完了] metricsd.log の最新値を UI/JSONL に反映
 
 ## メモ
 - 参照資料: `docs/observability/logging_v1.md`
