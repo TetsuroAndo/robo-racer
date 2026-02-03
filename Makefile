@@ -126,7 +126,7 @@ $(LOG_DIR):
 # ================================
 # Runs
 # ================================
-.PHONY: test activate hils-build hils-local ros2-up ros2-shell ros2-build \
+.PHONY: test activate hils-build hils-local ros2-up ros2-shell ros2-build ros2-build-clean \
 	ros2-rviz ros2-novnc ros2-bag-record ros2-bag-play ros2-session-up
 
 hils-build:
@@ -147,6 +147,10 @@ ros2-shell:
 ros2-build:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
 		bash /ws/tools/ros2/scripts/ros2_build.sh
+
+ros2-build-clean:
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash -lc "rm -rf /ws/rpi/ros2_ws/build /ws/rpi/ros2_ws/install /ws/rpi/ros2_ws/log && /ws/tools/ros2/scripts/ros2_build.sh"
 
 ros2-rviz:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
