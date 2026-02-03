@@ -681,7 +681,11 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		}
 	};
 	auto place_marker = [&](float angle_deg, char c) {
+		if (!std::isfinite(angle_deg))
+			return;
 		const int pos = posFromAngle(angle_deg);
+		if (pos < 0 || pos >= (int)scale_w)
+			return;
 		char &slot = marker[(size_t)pos];
 		if (marker_prio(c) >= marker_prio(slot))
 			slot = c;
