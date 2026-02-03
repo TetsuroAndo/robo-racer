@@ -5,7 +5,7 @@
 - 観測の誤送信リスクを遮断し、ROSへ実データを通す入口を作る。
 
 ## 前提
-- `/run/roboracer` を正、`/tmp/roboracer` を互換パスとして維持（symlink もしくは環境変数で切替）。
+- `/tmp/roboracer` を正とする。
 - `docs/contracts/ipc_uds_v0.1.md` / `mc_bridge_v0.1.md` / `ros_topics_v0.1.md` の凍結内容に準拠する。
 
 ## ブランチ方針（分割）

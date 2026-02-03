@@ -21,12 +21,12 @@
 2. 机上E2E 起動
    - `make hils-local`
 3. control ソケットで送信が通ることを確認
-   - `rpi/apps/seriald/seriald_client.py --sock /run/roboracer/seriald.sock --mode auto`
+   - `rpi/apps/seriald/seriald_client.py --sock /tmp/roboracer/seriald.sock --mode auto`
 4. telemetry ソケットで送信が遮断されることを確認
-   - `rpi/apps/seriald/seriald_client.py --sock /run/roboracer/seriald.telemetry.sock --mode auto`
+   - `rpi/apps/seriald/seriald_client.py --sock /tmp/roboracer/seriald.telemetry.sock --mode auto`
    - 期待: WARN ログが出て切断される / UART へは流れない
 5. telemetry 多重接続
-   - 複数ターミナルで `seriald_client.py --sock /run/roboracer/seriald.telemetry.sock --recv`
+   - 複数ターミナルで `seriald_client.py --sock /tmp/roboracer/seriald.telemetry.sock --recv`
    - 期待: STATUS が複数クライアントに届く
 
 ### 判定
@@ -49,7 +49,7 @@
    - `tools/ros2/scripts/publish_run_id.sh`（run_id が無いと /mc/log は出ない）
 4. mc_bridge 起動
    - UDS（RPi上）: `ros2 run mc_bridge mc_bridge`
-   - TCP（PC側）: `ros2 run mc_bridge mc_bridge --ros-args -p telemetry_tcp_host:=<RPi_IP> -p telemetry_tcp_port:=<PORT>`
+   - TCP（PC側）: `ros2 run mc_bridge mc_bridge --ros-args -p telemetry_tcp_host:=<RPi_IP> -p telemetry_tcp_port:=5001`
 5. topic 確認
    - `ros2 topic echo /mc/status`
    - `ros2 topic echo /mc/drive_cmd`
@@ -88,5 +88,5 @@
 ---
 
 ## 補足
-- `/run/roboracer` が無い環境では `/tmp/roboracer` の互換パスを利用。
+- `/tmp/roboracer` を正とする。
 - 机上E2E で不安定なら、まず `seriald` のログを確認。

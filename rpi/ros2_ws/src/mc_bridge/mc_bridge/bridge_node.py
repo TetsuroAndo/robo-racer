@@ -97,7 +97,7 @@ class BridgeNode(Node):
         self.declare_parameter("demo_log", False)
         self.declare_parameter("demo_period_sec", 1.0)
         self.declare_parameter(
-            "telemetry_sock", "/run/roboracer/seriald.telemetry.sock"
+            "telemetry_sock", "/tmp/roboracer/seriald.telemetry.sock"
         )
         self.declare_parameter(
             "telemetry_compat_sock", "/tmp/roboracer/seriald.telemetry.sock"

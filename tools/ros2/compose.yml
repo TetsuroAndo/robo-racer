@@ -7,7 +7,7 @@ services:
     entrypoint: ["/usr/local/bin/ros2_entrypoint.sh"]
     volumes:
       - ../..:/ws
-      - /tmp/roboracer:/run/roboracer
+      - /tmp/roboracer:/tmp/roboracer
       - /dev/shm:/dev/shm
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     environment:
@@ -30,7 +30,7 @@ services:
     entrypoint: ["/usr/local/bin/ros2_entrypoint.sh"]
     volumes:
       - ../..:/ws
-      - /tmp/roboracer:/run/roboracer
+      - /tmp/roboracer:/tmp/roboracer
       - /dev/shm:/dev/shm
     ports:
       - "127.0.0.1:6080:6080"

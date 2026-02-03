@@ -146,7 +146,7 @@ def print_frame(dec):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sock", default="/run/roboracer/seriald.sock")
+    ap.add_argument("--sock", default="/tmp/roboracer/seriald.sock")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     s1 = sub.add_parser("drive")

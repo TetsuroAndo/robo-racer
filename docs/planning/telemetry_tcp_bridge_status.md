@@ -12,8 +12,7 @@
 
 ## 仕様（暫定）
 - RPi 側: `seriald` に `--telemetry-tcp-port` を追加
-  - 0/未指定: 無効
-  - デフォルト: 0（無効）
+  - デフォルト: 5001
 - TCP: `SOCK_STREAM` で接続を受け、
   - 受信（POLLIN）は即切断（telemetry送信禁止）
   - 送信は telemetry と同じフレームを配信
