@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>lidar_bridge</name>
+  <version>0.0.1</version>
+  <description>Bridge SHM lidar_scan to ROS2 LaserScan.</description>
+  <maintainer email="dev@example.com">dev</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+</package>
