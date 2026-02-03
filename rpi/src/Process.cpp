@@ -1,14 +1,9 @@
 #include "Process.h"
 #include "config/Config.h"
-#include "mc/core/Log.hpp"
 #include "mc/core/Time.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <iomanip>
-#include <iostream>
-#include <sstream>
-#include <string>
 #include <vector>
 
 namespace {
@@ -19,42 +14,9 @@ struct CandidateScore {
 	float score{};
 };
 
-std::string compassBar(float angle_deg) {
-	const int min_deg = -90;
-	const int max_deg = 90;
-	const int slots = 21; // odd so center aligns with 0 deg
-	std::string bar(slots, '.');
-	const int center = slots / 2;
-	bar[center] = '0';
-
-	float clamped = angle_deg;
-	if (clamped < min_deg)
-		clamped = min_deg;
-	if (clamped > max_deg)
-		clamped = max_deg;
-
-	const float ratio = (clamped - min_deg) / (float)(max_deg - min_deg);
-	int pos = (int)std::round(ratio * (slots - 1));
-	if (pos < 0)
-		pos = 0;
-	if (pos >= slots)
-		pos = slots - 1;
-	bar[pos] = '|';
-
-	return "[-90" + bar + "+90]";
-}
-
-std::string colorOverride(const std::string &ovr) {
-	if (ovr == "NONE")
-		return "\x1b[32mNONE\x1b[0m";
-	if (ovr == "STOP")
-		return "\x1b[31mSTOP\x1b[0m";
-	return "\x1b[33m" + ovr + "\x1b[0m";
-}
-
 } // namespace
 
-Process::Process() {}
+Process::Process(TelemetryEmitter *telemetry) : telemetry_(telemetry) {}
 
 Process::~Process() {}
 
@@ -109,12 +71,8 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	// データが無い場合は安全側で停止
 	if (maxDistance < 0) {
 		const uint64_t ts_us = mc::core::Time::us();
-		std::ostringstream json;
-		json << "{\"t_us\":" << ts_us << ",\"type\":\"NO_LIDAR\""
-			 << ",\"run_id\":\"" << run_id << "\",\"tick\":" << tick
-			 << ",\"scan_id\":" << scan_id
-			 << ",\"mode\":\"UNKNOWN\",\"cmd\":{\"v\":0,\"steer_deg\":0}}";
-		MC_LOGW("event", json.str());
+		if (telemetry_)
+			telemetry_->emitNoLidar(ts_us, run_id, tick, scan_id);
 		return ProcResult(0, 0);
 	}
 
@@ -187,126 +145,34 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			return a.score > b.score;
 		});
 
-	const uint64_t ts_us = mc::core::Time::us();
-	std::ostringstream telemetry;
-	telemetry << std::fixed << std::setprecision(2);
-	telemetry << "{\"t_us\":" << ts_us << ",\"type\":\"telemetry\""
-			  << ",\"run_id\":\"" << run_id << "\",\"tick\":" << tick
-			  << ",\"scan_id\":" << scan_id << ",\"mode\":\"UNKNOWN\""
-			  << ",\"best\":{\"ang_deg\":" << max
-			  << ",\"dist_mm\":" << maxDistance
-			  << ",\"score\":1.00,\"terms\":{\"distance\":1.00}}"
-			  << ",\"min_handle\":{\"ang_deg\":" << minHandleAngle
-			  << ",\"dist_mm\":" << minHandleDistance << "}"
-			  << ",\"path_obst_mm\":" << minObstacleOnPath
-			  << ",\"cmd\":{\"v\":" << baseSpeed
-			  << ",\"v_limited\":" << limitedSpeed
-			  << ",\"steer_deg\":" << roundedAngle << "}"
-			  << ",\"limits\":{\"steer_clamp_deg\":" << cfg::STEER_ANGLE_MAX_DEG
-			  << "}"
-			  << ",\"override\":{\"kind\":\"" << override_reason << "\"}";
+	if (telemetry_) {
+		TelemetrySample sample;
+		sample.ts_us = mc::core::Time::us();
+		sample.run_id = run_id;
+		sample.tick = tick;
+		sample.scan_id = scan_id;
+		sample.best_angle_deg = max;
+		sample.best_dist_mm = maxDistance;
+		sample.best_score = 1.0f;
+		sample.min_handle_angle_deg = minHandleAngle;
+		sample.min_handle_dist_mm = minHandleDistance;
+		sample.path_obst_mm = minObstacleOnPath;
+		sample.base_speed = baseSpeed;
+		sample.limited_speed = limitedSpeed;
+		sample.steer_deg = roundedAngle;
+		sample.steer_clamp_deg = cfg::STEER_ANGLE_MAX_DEG;
+		sample.override_kind = override_reason;
+		sample.th_stop_mm = cfg::PROCESS_MIN_DIST_STOP_MM;
+		sample.th_safe_mm = cfg::PROCESS_MIN_DIST_SAFE_MM;
 
-	telemetry << ",\"top\":[";
-	const size_t top_n = std::min< size_t >(3, candidates.size());
-	for (size_t i = 0; i < top_n; ++i) {
-		if (i > 0)
-			telemetry << ",";
-		telemetry << "{\"ang_deg\":" << candidates[i].angle_deg
-				  << ",\"dist_mm\":" << candidates[i].distance_mm
-				  << ",\"score\":" << candidates[i].score
-				  << ",\"terms\":{\"distance\":" << candidates[i].score << "}}";
-	}
-	telemetry << "]}";
-	MC_LOGI("telemetry", telemetry.str());
-
-	static std::string last_override;
-	if (override_reason != last_override) {
-		std::ostringstream event;
-		event << "{\"t_us\":" << ts_us << ",\"type\":\"OVERRIDE\""
-			  << ",\"run_id\":\"" << run_id << "\",\"tick\":" << tick
-			  << ",\"scan_id\":" << scan_id << ",\"kind\":\"" << override_reason
-			  << "\",\"path_obst_mm\":" << minObstacleOnPath
-			  << ",\"th_stop_mm\":" << cfg::PROCESS_MIN_DIST_STOP_MM
-			  << ",\"th_safe_mm\":" << cfg::PROCESS_MIN_DIST_SAFE_MM << "}";
-		MC_LOGI("event", event.str());
-		last_override = override_reason;
-	}
-	std::ostringstream l1;
-	l1 << std::fixed << std::setprecision(2);
-	l1 << compassBar(max) << "  best:" << std::showpos << max
-	   << "deg  score:1.00  dist:" << (maxDistance / 1000.0f) << "m";
-
-	std::ostringstream l2;
-	l2 << "top:";
-	for (size_t i = 0; i < candidates.size() && i < 3; ++i) {
-		l2 << " " << std::showpos << candidates[i].angle_deg << "("
-		   << candidates[i].score << ")";
-	}
-	l2 << "  override: " << colorOverride(override_reason);
-
-	std::ostringstream l3;
-	l3 << "path_obst=" << minObstacleOnPath
-	   << "mm  min_handle=" << minHandleAngle << "deg@" << minHandleDistance
-	   << "mm";
-
-	std::ostringstream l4;
-	l4 << "cmd: v=" << baseSpeed << "->" << limitedSpeed
-	   << "  steer=" << roundedAngle << "deg";
-
-	static bool ui_initialized = false;
-	const size_t frame_width = 88;
-	auto visible_len = [](const std::string &s) {
-		size_t len = 0;
-		for (size_t i = 0; i < s.size(); ++i) {
-			if (s[i] == '\x1b' && i + 1 < s.size() && s[i + 1] == '[') {
-				i += 2;
-				while (i < s.size() && s[i] != 'm')
-					++i;
-				continue;
-			}
-			++len;
+		const size_t top_n = std::min< size_t >(3, candidates.size());
+		sample.top_count = top_n;
+		for (size_t i = 0; i < top_n; ++i) {
+			sample.top[i] = {candidates[i].angle_deg, candidates[i].distance_mm,
+							 candidates[i].score};
 		}
-		return len;
-	};
-	auto pad = [&](const std::string &s) {
-		const size_t vis = visible_len(s);
-		if (vis >= frame_width - 2)
-			return s;
-		return s + std::string(frame_width - 2 - vis, ' ');
-	};
-
-	const std::string title = " ROBO RACER TELEMETRY ";
-	const std::string top =
-		"+" + std::string((frame_width - title.size()) / 2, '-') + title +
-		std::string(frame_width - title.size() -
-						((frame_width - title.size()) / 2) - 2,
-					'-') +
-		"+";
-	const std::string bot = "+" + std::string(frame_width - 2, '-') + "+";
-
-	auto line = [&](const std::string &s) { return "|" + pad(s) + "|"; };
-
-	if (!ui_initialized) {
-		std::cout << "\x1b[?25l"; // hide cursor
-		std::cout << top << "\n"
-				  << line(l1.str()) << "\n"
-				  << line(l2.str()) << "\n"
-				  << line(l3.str()) << "\n"
-				  << line(l4.str()) << "\n"
-				  << bot;
-		std::cout << "\x1b[6A";
-		ui_initialized = true;
-	} else {
-		std::cout << "\x1b[6A";
-		std::cout << "\x1b[2K\r" << top << "\n";
-		std::cout << "\x1b[2K\r" << line(l1.str()) << "\n";
-		std::cout << "\x1b[2K\r" << line(l2.str()) << "\n";
-		std::cout << "\x1b[2K\r" << line(l3.str()) << "\n";
-		std::cout << "\x1b[2K\r" << line(l4.str()) << "\n";
-		std::cout << "\x1b[2K\r" << bot;
-		std::cout << "\x1b[6A";
+		telemetry_->emit(sample);
 	}
-	std::cout << std::flush;
 
 	return ProcResult(limitedSpeed, roundedAngle);
 }

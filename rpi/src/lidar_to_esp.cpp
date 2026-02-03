@@ -31,7 +31,8 @@ int run_lidar_to_esp(const char *lidar_dev, int lidar_baud,
 	mc::core::Logger::instance().setConsoleEnabled(false);
 
 	LidarReceiver lidarReceiver(lidar_dev, lidar_baud);
-	Process process;
+	TelemetryEmitter telemetry;
+	Process process(&telemetry);
 	Sender sender(esp_dev);
 	const std::string run_id = make_run_id();
 	uint64_t tick = 0;
@@ -45,5 +46,6 @@ int run_lidar_to_esp(const char *lidar_dev, int lidar_baud,
 		lastSteerAngle = procResult.angle;
 		++tick;
 	}
+	telemetry.shutdownUi();
 	return 0;
 }

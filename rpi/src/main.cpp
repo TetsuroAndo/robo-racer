@@ -84,7 +84,8 @@ int main(int argc, char **argv) {
 	}
 
 	ShmLidarReceiver lidarReceiver;
-	Process process;
+	TelemetryEmitter telemetry;
+	Process process(&telemetry);
 	Sender sender(seriald_sock);
 
 	while (!g_stop && !lidarReceiver.connect()) {
@@ -120,6 +121,7 @@ int main(int argc, char **argv) {
 
 	// 正常なシャットダウン
 	std::cout << "Main thread: shutdown complete" << std::endl;
+	telemetry.shutdownUi();
 	logger.shutdown();
 
 	return 0;

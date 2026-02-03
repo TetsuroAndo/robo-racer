@@ -12,6 +12,7 @@
 - [見送り] ログ頻度の間引き/レート制御（推奨だが今回未実装）
 - [完了] TTY 固定UI（フレーム化/追加情報/終了時カーソル復帰）
 - [完了] UIとログの混線回避（console sink 無効化）
+- [完了] テレメトリ出力のモジュール分離（TelemetryEmitter）
 
 ## メモ
 - 参照資料: `docs/observability/logging_v1.md`
