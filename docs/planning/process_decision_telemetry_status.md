@@ -19,6 +19,7 @@
 - [完了] テレメトリのレート制限（既定10Hz）と出力レベル（basic/full）
 - [完了] full candidates はイベント時のみ出力
 - [完了] metricsd.log 読み込みを別スレッド化
+- [完了] TSAN ビルドオプション追加（開発時の競合検出用）
 
 ## メモ
 - 参照資料: `docs/observability/logging_v1.md`

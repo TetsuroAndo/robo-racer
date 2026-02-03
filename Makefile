@@ -36,6 +36,14 @@ FIRMWARE			:= $(PIO_BUILD_DIR)/firmware.elf
 RPI_SRC_DIR			:= $(ROOT)/rpi/src
 RPI_LIB_DIR			:= $(ROOT)/rpi/lib
 RPI_BUILD_DIR		:= $(ROOT)/rpi/build
+RPI_BUILD_TYPE		?= Release
+TSAN				?= 0
+ifeq ($(TSAN),1)
+  RPI_BUILD_TYPE	:= RelWithDebInfo
+  RPI_TSAN			:= -DROBO_RACER_TSAN=ON
+else
+  RPI_TSAN			:=
+endif
 
 RPLIDAR_SDK_DIR		:= $(RPI_LIB_DIR)/rplidar_sdk
 RPLIDAR_INC			:= $(RPLIDAR_SDK_DIR)/sdk/include
@@ -80,7 +88,7 @@ all: pio rpi
 .PHONY: rpi c-rpi
 $(NAME): rpi
 rpi: | rplidar_sdk $(LOG_DIR)
-	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release -DROBO_RACER_NAME=$(NAME)
+	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=$(RPI_BUILD_TYPE) -DROBO_RACER_NAME=$(NAME) $(RPI_TSAN)
 	$(CMAKE) --build $(RPI_BUILD_DIR) -j $(shell nproc)
 
 c-rpi:
