@@ -1,5 +1,6 @@
 services:
   ros2:
+    platform: linux/arm64
     build:
       context: ../..
       dockerfile: tools/ros2/Dockerfile
@@ -21,6 +22,7 @@ services:
     tty: true
 
   ros2-novnc:
+    platform: linux/arm64
     build:
       context: ../..
       dockerfile: tools/ros2/Dockerfile
