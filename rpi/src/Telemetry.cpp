@@ -72,16 +72,6 @@ std::string fitVisible(const std::string &s, size_t width) {
 	return out;
 }
 
-int glyphPriority(char c) {
-	if (c == '*' || c == 'B' || c == 'S')
-		return 3;
-	if (c == '!')
-		return 2;
-	if (c == ' ')
-		return 0;
-	return 1;
-}
-
 int intensityRank(char c) {
 	const char *levels = " .:-=+*#@!";
 	for (int i = 0; levels[i] != '\0'; ++i) {
@@ -559,7 +549,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	if (hz > 0.0)
 		l1 << " hz=" << std::fixed << std::setprecision(1) << hz;
 
-	const size_t frame_width = 110;
+	const size_t frame_width = 102;
 	const size_t scale_w = TELEMETRY_COMPASS_BINS;
 	const size_t compass_pad = 0;
 	const std::string compass_left(compass_pad, ' ');
