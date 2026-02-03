@@ -444,15 +444,28 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		dist_sev = Severity::Warn;
 	}
 
-	std::ostringstream l1;
-	l1 << "mode=" << s.mode << " map=" << s.map_state;
+	Severity map_sev =
+		(s.map_state == "UNKNOWN") ? Severity::Warn : Severity::Safe;
+
+	std::ostringstream l0;
+	l0 << "MAP " << colorWrap(s.map_state, map_sev) << " | MODE " << s.mode;
 	if (s.scan_age_ms)
-		l1 << " scan_age=" << *s.scan_age_ms << "ms";
-	if (s.best_delta_deg)
-		l1 << " d_best=" << *s.best_delta_deg << "deg";
-	l1 << " tick=" << s.tick;
-	if (s.run_id.size() >= 6)
-		l1 << " run=" << s.run_id.substr(s.run_id.size() - 6);
+		l0 << " | scan_age " << *s.scan_age_ms << "ms";
+	l0 << " | run "
+	   << (s.run_id.size() >= 6 ? s.run_id.substr(s.run_id.size() - 6)
+								: s.run_id)
+	   << " | tick " << s.tick;
+
+	std::ostringstream l1;
+	l1 << "d_best="
+	   << (s.best_delta_deg ? std::to_string(*s.best_delta_deg) : "NA")
+	   << "deg";
+	const double hz = (telemetry_interval_us_ > 0)
+						  ? (1000000.0 / (double)telemetry_interval_us_)
+						  : 0.0;
+	l1 << " | lvl=" << (level_ == TelemetryLevel::Full ? "full" : "basic");
+	if (hz > 0.0)
+		l1 << " hz=" << std::fixed << std::setprecision(1) << hz;
 
 	std::ostringstream l2;
 	l2 << std::fixed << std::setprecision(2);
@@ -555,10 +568,11 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		return "|" + pad(sline) + "|";
 	};
 
-	const int frame_lines = 10; // top + 8 lines + bottom
+	const int frame_lines = 11; // top + 9 lines + bottom
 	if (!ui_initialized_) {
 		std::cout << "\x1b[?25l"; // hide cursor
 		std::cout << top << "\n"
+				  << line(l0.str()) << "\n"
 				  << line(l1.str()) << "\n"
 				  << line(l2.str()) << "\n"
 				  << line(l3.str()) << "\n"
@@ -573,6 +587,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	} else {
 		std::cout << "\x1b[" << frame_lines << "A";
 		std::cout << "\x1b[2K\r" << top << "\n";
+		std::cout << "\x1b[2K\r" << line(l0.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l1.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l2.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l3.str()) << "\n";
