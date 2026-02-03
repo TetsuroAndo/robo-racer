@@ -215,7 +215,11 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			sample.top[i] = {candidates[i].angle_deg, candidates[i].distance_mm,
 							 candidates[i].score};
 		}
-		sample.candidates = candidates;
+		sample.candidates.clear();
+		sample.candidates.reserve(candidates.size());
+		for (const auto &c : candidates) {
+			sample.candidates.push_back({c.angle_deg, c.distance_mm, c.score});
+		}
 		telemetry_->emit(sample);
 	}
 

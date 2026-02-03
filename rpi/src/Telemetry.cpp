@@ -110,13 +110,13 @@ void TelemetryEmitter::refreshMetrics_() {
 	if (!ifs.is_open())
 		return;
 	ifs.seekg(0, std::ios::end);
-	const std::streamoff end = ifs.tellg();
+	const std::streamoff end_off = ifs.tellg();
 	const std::streamoff back = 1024;
-	std::streamoff start = end - back;
+	std::streamoff start = end_off - back;
 	if (start < 0)
 		start = 0;
 	ifs.seekg(start);
-	std::string buf((size_t)(end - start), '\0');
+	std::string buf((size_t)(end_off - start), '\0');
 	ifs.read(&buf[0], buf.size());
 
 	size_t last_nl = buf.find_last_of('\n');
@@ -150,12 +150,12 @@ void TelemetryEmitter::refreshMetrics_() {
 	const size_t slash = line.find('/', line.find("mem_kb="));
 	if (slash == std::string::npos)
 		return;
-	size_t end = slash + 1;
-	while (end < line.size() && std::isdigit(line[end]))
-		++end;
-	if (end == slash + 1)
+	size_t end_pos = slash + 1;
+	while (end_pos < line.size() && std::isdigit(line[end_pos]))
+		++end_pos;
+	if (end_pos == slash + 1)
 		return;
-	mem_total = std::stoull(line.substr(slash + 1, end - slash - 1));
+	mem_total = std::stoull(line.substr(slash + 1, end_pos - slash - 1));
 
 	metrics_.valid = true;
 	metrics_.cpu_temp_cdeg = (uint16_t)temp;
