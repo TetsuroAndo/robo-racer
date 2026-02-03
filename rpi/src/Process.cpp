@@ -234,14 +234,13 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	std::ostringstream ui;
 	ui << std::fixed << std::setprecision(2);
 	ui << compassBar(max) << "  best:" << std::showpos << max
-	   << "deg  score:1.00  dist:" << (maxDistance / 1000.0f) << "m\n";
-	ui << "top:";
+	   << "deg  score:1.00  dist:" << (maxDistance / 1000.0f) << "m  top:";
 	for (size_t i = 0; i < candidates.size() && i < 3; ++i) {
 		ui << " " << std::showpos << candidates[i].angle_deg << "("
 		   << candidates[i].score << ")";
 	}
-	ui << "   override: " << colorOverride(override_reason) << "\n";
-	ui << "cmd: v=" << baseSpeed << "->" << limitedSpeed
+	ui << "  override: " << colorOverride(override_reason)
+	   << "  cmd: v=" << baseSpeed << "->" << limitedSpeed
 	   << "  steer=" << roundedAngle << "deg";
 	std::cout << ui.str() << std::endl;
 
