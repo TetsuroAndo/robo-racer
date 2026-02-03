@@ -106,6 +106,8 @@ static constexpr uint16_t TELEMETRY_TEMP_CRIT_CDEG = 8000;
 static constexpr int TELEMETRY_DIST_BAR_MAX_MM = 3000;
 static constexpr size_t TELEMETRY_BAR_WIDTH = 12;
 static constexpr size_t TELEMETRY_SPARK_LEN = 20;
+static constexpr uint32_t TELEMETRY_SCAN_AGE_WARN_MS = 100;
+static constexpr uint32_t TELEMETRY_SCAN_AGE_CRIT_MS = 200;
 
 // clang-format on
 } // namespace cfg

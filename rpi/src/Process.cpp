@@ -3,6 +3,7 @@
 #include "mc/core/Time.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <optional>
 #include <vector>
@@ -31,6 +32,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	int minHandleDistance = INT32_MAX;
 	int minObstacleOnPath = INT32_MAX;
 	std::vector< CandidateScore > candidates;
+	std::array< float, TELEMETRY_HEAT_BINS > heat_bins{};
+	for (auto &v : heat_bins)
+		v = 0.0f;
 
 	// 前回のステアリング角度を±cfg::STEER_ANGLE_MAX_DEGにクリップ
 	float clampedSteerAngle = lastSteerAngle;
@@ -81,6 +85,14 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	for (auto &c : candidates) {
 		c.score = (maxDistance > 0) ? (float)c.distance_mm / (float)maxDistance
 									: 0.0f;
+		const float step = 180.0f / (float)(TELEMETRY_HEAT_BINS - 1);
+		int idx = (int)std::round((c.angle_deg + 90.0f) / step);
+		if (idx < 0)
+			idx = 0;
+		if (idx >= (int)TELEMETRY_HEAT_BINS)
+			idx = (int)TELEMETRY_HEAT_BINS - 1;
+		if (c.score > heat_bins[(size_t)idx])
+			heat_bins[(size_t)idx] = c.score;
 	}
 
 	// 基本速度を計算
@@ -213,6 +225,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		sample.planner_latency_ms = (uint32_t)((t1_us - t0_us) / 1000);
 		sample.control_latency_ms = std::nullopt;
 		sample.ttl_ms = cfg::AUTO_TTL_MS;
+		sample.lidar_points = lidarData.size();
+		sample.lidar_expected = 181;
+		sample.heat_bins = heat_bins;
 
 		const size_t top_n = std::min< size_t >(3, candidates.size());
 		sample.top_count = top_n;

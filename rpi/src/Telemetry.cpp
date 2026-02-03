@@ -189,6 +189,7 @@ void TelemetryEmitter::emitNoLidar(uint64_t ts_us, const std::string &run_id,
 		 << ",\"scan_id\":" << scan_id
 		 << ",\"mode\":\"UNKNOWN\",\"cmd\":{\"v\":0,\"steer_deg\":0}}";
 	MC_LOGW("event", json.str());
+	pushEvent_("NO_LIDAR");
 }
 
 void TelemetryEmitter::shutdownUi() {
@@ -289,6 +290,16 @@ void TelemetryEmitter::metricsLoop_() {
 		refreshMetrics_();
 		std::this_thread::sleep_for(1s);
 	}
+}
+
+void TelemetryEmitter::pushEvent_(std::string e) {
+	if (e.empty())
+		return;
+	events_.push_back(std::move(e));
+	const size_t max_events = 3;
+	if (events_.size() > max_events)
+		events_.erase(events_.begin(),
+					  events_.begin() + (events_.size() - max_events));
 }
 
 void TelemetryEmitter::emitJson_(const TelemetrySample &s) {
@@ -397,6 +408,7 @@ void TelemetryEmitter::emitOverrideEvent_(const TelemetrySample &s) {
 		  << ",\"th_stop_mm\":" << s.th_stop_mm
 		  << ",\"th_safe_mm\":" << s.th_safe_mm << "}";
 	MC_LOGI("event", event.str());
+	pushEvent_("OVERRIDE " + s.override_kind);
 	last_override_ = s.override_kind;
 }
 
@@ -424,6 +436,30 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	push_hist(spark_speed_, (float)s.limited_speed);
 	push_hist(spark_dist_, (float)path_mm);
 
+	float best_std = 0.0f;
+	if (spark_best_.size() >= 2) {
+		float sum = 0.0f;
+		for (float v : spark_best_)
+			sum += v;
+		const float mean = sum / (float)spark_best_.size();
+		float var = 0.0f;
+		for (float v : spark_best_) {
+			const float d = v - mean;
+			var += d * d;
+		}
+		var /= (float)spark_best_.size();
+		best_std = std::sqrt(var);
+	}
+
+	float jerk = 0.0f;
+	if (s.best_delta_deg) {
+		if (has_last_delta_) {
+			jerk = std::fabs(*s.best_delta_deg - last_delta_);
+		}
+		last_delta_ = *s.best_delta_deg;
+		has_last_delta_ = true;
+	}
+
 	Severity cpu_sev = Severity::Safe;
 	Severity temp_sev = Severity::Safe;
 	if (metrics.valid) {
@@ -446,6 +482,32 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 
 	Severity map_sev =
 		(s.map_state == "UNKNOWN") ? Severity::Warn : Severity::Safe;
+	Severity loc_sev = Severity::Warn;
+	if (s.scan_age_ms) {
+		if (*s.scan_age_ms >= cfg::TELEMETRY_SCAN_AGE_CRIT_MS)
+			loc_sev = Severity::Crit;
+		else if (*s.scan_age_ms >= cfg::TELEMETRY_SCAN_AGE_WARN_MS)
+			loc_sev = Severity::Warn;
+		else
+			loc_sev = Severity::Safe;
+	}
+
+	Severity sens_sev = Severity::Safe;
+	if (s.lidar_points && s.lidar_expected && *s.lidar_expected > 0) {
+		const float ratio = (float)*s.lidar_points / (float)*s.lidar_expected;
+		if (ratio < 0.5f)
+			sens_sev = Severity::Crit;
+		else if (ratio < 0.8f)
+			sens_sev = Severity::Warn;
+	}
+
+	Severity ctrl_sev = Severity::Safe;
+	if (s.override_kind == "STOP")
+		ctrl_sev = Severity::Crit;
+	else if (s.override_kind != "NONE")
+		ctrl_sev = Severity::Warn;
+	else if (status_.valid && status_.faults != 0)
+		ctrl_sev = Severity::Warn;
 
 	std::ostringstream l0;
 	l0 << "MAP " << colorWrap(s.map_state, map_sev) << " | MODE " << s.mode;
@@ -457,9 +519,13 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	   << " | tick " << s.tick;
 
 	std::ostringstream l1;
-	l1 << "d_best="
+	l1 << "BADGES " << colorWrap("MAP", map_sev) << "/"
+	   << colorWrap("LOC", loc_sev) << "/" << colorWrap("SENS", sens_sev) << "/"
+	   << colorWrap("CTRL", ctrl_sev);
+	l1 << " | d_best="
 	   << (s.best_delta_deg ? std::to_string(*s.best_delta_deg) : "NA")
-	   << "deg";
+	   << "deg std=" << std::fixed << std::setprecision(1) << best_std
+	   << " jerk=" << std::fixed << std::setprecision(1) << jerk;
 	const double hz = (telemetry_interval_us_ > 0)
 						  ? (1000000.0 / (double)telemetry_interval_us_)
 						  : 0.0;
@@ -546,7 +612,44 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		   << (metrics.mem_total_kb / 1024.0f) << "MB";
 	}
 
-	const size_t frame_width = 100;
+	std::ostringstream l9;
+	if (s.lidar_points && s.lidar_expected) {
+		const float miss = 100.0f *
+						   (float)(*s.lidar_expected - *s.lidar_points) /
+						   (float)*s.lidar_expected;
+		l9 << "lidar: " << *s.lidar_points << "/" << *s.lidar_expected
+		   << " miss=" << std::fixed << std::setprecision(1) << miss << "%";
+	} else {
+		l9 << "lidar: NA";
+	}
+	l9 << " | heat:";
+	std::string heat;
+	heat.reserve(TELEMETRY_HEAT_BINS);
+	for (size_t i = 0; i < s.heat_bins.size(); ++i) {
+		float n = s.heat_bins[i];
+		if (n < 0.0f)
+			n = 0.0f;
+		if (n > 1.0f)
+			n = 1.0f;
+		const size_t idx = (size_t)std::round(n * 8.0f);
+		static const char *k = " .:-=+*#@";
+		heat.push_back(k[idx]);
+	}
+	l9 << heat;
+
+	std::ostringstream l10;
+	if (!events_.empty()) {
+		l10 << "events:";
+		for (size_t i = 0; i < events_.size(); ++i) {
+			if (i > 0)
+				l10 << " | ";
+			l10 << events_[i];
+		}
+	} else {
+		l10 << "events: NA";
+	}
+
+	const size_t frame_width = 110;
 	auto pad = [&](const std::string &sline) {
 		const std::string trimmed = trimVisible(sline, frame_width - 2);
 		const size_t vis = visibleLen(trimmed);
@@ -568,7 +671,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		return "|" + pad(sline) + "|";
 	};
 
-	const int frame_lines = 11; // top + 9 lines + bottom
+	const int frame_lines = 13; // top + 11 lines + bottom
 	if (!ui_initialized_) {
 		std::cout << "\x1b[?25l"; // hide cursor
 		std::cout << top << "\n"
@@ -581,6 +684,8 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 				  << line(l6.str()) << "\n"
 				  << line(l7.str()) << "\n"
 				  << line(l8.str()) << "\n"
+				  << line(l9.str()) << "\n"
+				  << line(l10.str()) << "\n"
 				  << bot;
 		std::cout << "\x1b[" << frame_lines << "A";
 		ui_initialized_ = true;
@@ -596,6 +701,8 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		std::cout << "\x1b[2K\r" << line(l6.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l7.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l8.str()) << "\n";
+		std::cout << "\x1b[2K\r" << line(l9.str()) << "\n";
+		std::cout << "\x1b[2K\r" << line(l10.str()) << "\n";
 		std::cout << "\x1b[2K\r" << bot;
 		std::cout << "\x1b[" << frame_lines << "A";
 	}

@@ -16,6 +16,8 @@ struct TelemetryCandidate {
 	float score{};
 };
 
+static constexpr size_t TELEMETRY_HEAT_BINS = 37;
+
 struct TelemetrySample {
 	uint64_t ts_us{};
 	std::string run_id;
@@ -53,6 +55,7 @@ struct TelemetrySample {
 	size_t top_count{};
 	std::vector< TelemetryCandidate > candidates;
 	bool include_candidates = false;
+	std::array< float, TELEMETRY_HEAT_BINS > heat_bins{};
 
 	std::optional< float > score_obstacle;
 	std::optional< float > score_width;
@@ -64,6 +67,9 @@ struct TelemetrySample {
 	std::optional< uint32_t > planner_latency_ms;
 	std::optional< uint32_t > control_latency_ms;
 	std::optional< uint16_t > ttl_ms;
+
+	std::optional< size_t > lidar_points;
+	std::optional< size_t > lidar_expected;
 };
 
 enum class TelemetryLevel : uint8_t { Basic = 0, Full = 1 };
@@ -95,6 +101,7 @@ private:
 	void emitUi_(const TelemetrySample &s);
 	void refreshMetrics_();
 	void metricsLoop_();
+	void pushEvent_(std::string e);
 
 	struct MetricsCache {
 		bool valid = false;
@@ -132,4 +139,7 @@ private:
 	std::vector< float > spark_best_;
 	std::vector< float > spark_speed_;
 	std::vector< float > spark_dist_;
+	std::vector< std::string > events_;
+	bool has_last_delta_ = false;
+	float last_delta_ = 0.0f;
 };
