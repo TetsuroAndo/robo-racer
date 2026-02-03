@@ -128,4 +128,8 @@ private:
 
 	std::atomic< bool > running_{false};
 	std::thread metrics_thread_;
+
+	std::vector< float > spark_best_;
+	std::vector< float > spark_speed_;
+	std::vector< float > spark_dist_;
 };

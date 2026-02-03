@@ -1,5 +1,6 @@
 #include "Telemetry.h"
 
+#include "config/Config.h"
 #include "mc/core/Log.hpp"
 #include "mc/core/Time.hpp"
 
@@ -9,6 +10,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -59,6 +61,81 @@ size_t visibleLen(const std::string &s) {
 		++len;
 	}
 	return len;
+}
+
+std::string trimVisible(const std::string &s, size_t max_vis) {
+	size_t vis = 0;
+	std::string out;
+	out.reserve(s.size());
+	for (size_t i = 0; i < s.size(); ++i) {
+		if (s[i] == '\x1b' && i + 1 < s.size() && s[i + 1] == '[') {
+			// copy ANSI sequence without counting toward visible length
+			out.push_back(s[i++]);
+			out.push_back(s[i++]);
+			while (i < s.size()) {
+				out.push_back(s[i]);
+				if (s[i] == 'm')
+					break;
+				++i;
+			}
+			continue;
+		}
+		if (vis >= max_vis)
+			break;
+		out.push_back(s[i]);
+		++vis;
+	}
+	return out;
+}
+
+enum class Severity { Safe, Warn, Crit };
+
+std::string colorWrap(const std::string &s, Severity sev) {
+	switch (sev) {
+	case Severity::Safe:
+		return "\x1b[32m" + s + "\x1b[0m";
+	case Severity::Warn:
+		return "\x1b[33m" + s + "\x1b[0m";
+	case Severity::Crit:
+		return "\x1b[31m" + s + "\x1b[0m";
+	}
+	return s;
+}
+
+std::string bar(float ratio, size_t width) {
+	if (ratio < 0.0f)
+		ratio = 0.0f;
+	if (ratio > 1.0f)
+		ratio = 1.0f;
+	const size_t fill = (size_t)std::round(ratio * (float)width);
+	return "[" + std::string(fill, '#') + std::string(width - fill, '-') + "]";
+}
+
+std::string sparkline(const std::vector< float > &vals, float min_v,
+					  float max_v, size_t width) {
+	static const char *k = " .:-=+*#@";
+	const size_t levels = 8;
+	std::string out;
+	out.reserve(width);
+	if (vals.empty()) {
+		out.assign(width, ' ');
+		return out;
+	}
+	const float denom = (max_v - min_v);
+	const size_t start = (vals.size() > width) ? (vals.size() - width) : 0;
+	const size_t pad = (vals.size() < width) ? (width - vals.size()) : 0;
+	out.assign(pad, ' ');
+	for (size_t i = start; i < vals.size(); ++i) {
+		float v = vals[i];
+		float n = (denom <= 0.0f) ? 0.5f : (v - min_v) / denom;
+		if (n < 0.0f)
+			n = 0.0f;
+		if (n > 1.0f)
+			n = 1.0f;
+		const size_t idx = (size_t)std::round(n * (float)levels);
+		out.push_back(k[idx]);
+	}
+	return out;
 }
 
 } // namespace
@@ -324,36 +401,11 @@ void TelemetryEmitter::emitOverrideEvent_(const TelemetrySample &s) {
 }
 
 void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
-	std::ostringstream l1;
-	l1 << std::fixed << std::setprecision(2);
-	l1 << compassBar(s.best_angle_deg) << "  best:" << std::showpos
-	   << s.best_angle_deg << "deg  score:" << s.best_score
-	   << "  dist:" << (s.best_dist_mm / 1000.0f) << "m";
-
-	std::ostringstream l2;
-	l2 << "top:";
-	for (size_t i = 0; i < s.top_count; ++i) {
-		l2 << " " << std::showpos << s.top[i].angle_deg << "(" << s.top[i].score
-		   << ")";
-	}
-	l2 << "  override: " << colorOverride(s.override_kind);
-	if (s.override_detail != "NONE")
-		l2 << " (" << s.override_detail << ")";
-
-	std::ostringstream l3;
-	l3 << "path_obst=" << s.path_obst_mm
-	   << "mm  min_handle=" << s.min_handle_angle_deg << "deg@"
-	   << s.min_handle_dist_mm << "mm";
-	if (s.front_dist_mm)
-		l3 << "  front=" << *s.front_dist_mm << "mm";
-	if (s.side_dist_mm)
-		l3 << "  side=" << *s.side_dist_mm << "mm";
-
-	std::ostringstream l4;
-	l4 << std::fixed << std::setprecision(2);
-	l4 << "cmd: v=" << s.base_speed << "->" << s.limited_speed
-	   << "  steer=" << s.raw_steer_deg << "->" << s.steer_deg << "deg"
-	   << "  curve=" << s.curve_ratio << "  sf=" << s.speed_factor;
+	auto push_hist = [](std::vector< float > &h, float v) {
+		h.push_back(v);
+		if (h.size() > cfg::TELEMETRY_SPARK_LEN)
+			h.erase(h.begin());
+	};
 
 	MetricsCache metrics;
 	{
@@ -361,44 +413,133 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		metrics = metrics_;
 	}
 
-	std::ostringstream l5;
-	l5 << "mode=" << s.mode << " map=" << s.map_state;
-	if (s.scan_age_ms)
-		l5 << " scan_age=" << *s.scan_age_ms << "ms";
-	if (s.best_delta_deg)
-		l5 << " d_best=" << *s.best_delta_deg << "deg";
-	l5 << " tick=" << s.tick;
-	if (s.run_id.size() >= 6)
-		l5 << " run=" << s.run_id.substr(s.run_id.size() - 6);
+	int path_mm = s.path_obst_mm;
+	if (path_mm < 0 || path_mm >= (std::numeric_limits< int >::max() / 2)) {
+		path_mm = cfg::TELEMETRY_DIST_BAR_MAX_MM;
+	}
+	if (path_mm > cfg::TELEMETRY_DIST_BAR_MAX_MM)
+		path_mm = cfg::TELEMETRY_DIST_BAR_MAX_MM;
 
-	std::ostringstream l6;
-	l6 << "latency p="
+	push_hist(spark_best_, s.best_angle_deg);
+	push_hist(spark_speed_, (float)s.limited_speed);
+	push_hist(spark_dist_, (float)path_mm);
+
+	Severity cpu_sev = Severity::Safe;
+	Severity temp_sev = Severity::Safe;
+	if (metrics.valid) {
+		if (metrics.cpu_usage_permille >= cfg::TELEMETRY_CPU_CRIT_PERMILLE)
+			cpu_sev = Severity::Crit;
+		else if (metrics.cpu_usage_permille >= cfg::TELEMETRY_CPU_WARN_PERMILLE)
+			cpu_sev = Severity::Warn;
+		if (metrics.cpu_temp_cdeg >= cfg::TELEMETRY_TEMP_CRIT_CDEG)
+			temp_sev = Severity::Crit;
+		else if (metrics.cpu_temp_cdeg >= cfg::TELEMETRY_TEMP_WARN_CDEG)
+			temp_sev = Severity::Warn;
+	}
+
+	Severity dist_sev = Severity::Safe;
+	if (s.path_obst_mm <= cfg::PROCESS_MIN_DIST_STOP_MM) {
+		dist_sev = Severity::Crit;
+	} else if (s.path_obst_mm < cfg::PROCESS_MIN_DIST_SAFE_MM) {
+		dist_sev = Severity::Warn;
+	}
+
+	std::ostringstream l1;
+	l1 << "mode=" << s.mode << " map=" << s.map_state;
+	if (s.scan_age_ms)
+		l1 << " scan_age=" << *s.scan_age_ms << "ms";
+	if (s.best_delta_deg)
+		l1 << " d_best=" << *s.best_delta_deg << "deg";
+	l1 << " tick=" << s.tick;
+	if (s.run_id.size() >= 6)
+		l1 << " run=" << s.run_id.substr(s.run_id.size() - 6);
+
+	std::ostringstream l2;
+	l2 << std::fixed << std::setprecision(2);
+	l2 << compassBar(s.best_angle_deg) << "  best:" << std::showpos
+	   << s.best_angle_deg << "deg  score:" << s.best_score
+	   << "  dist:" << (s.best_dist_mm / 1000.0f) << "m";
+
+	std::ostringstream l3;
+	l3 << "top:";
+	for (size_t i = 0; i < s.top_count; ++i) {
+		l3 << " " << std::showpos << s.top[i].angle_deg << "(" << s.top[i].score
+		   << ")";
+	}
+	l3 << "  override: " << colorOverride(s.override_kind);
+	if (s.override_detail != "NONE")
+		l3 << " (" << s.override_detail << ")";
+
+	std::ostringstream l4;
+	l4 << std::fixed << std::setprecision(2);
+	l4 << "cmd: v=" << s.base_speed << "->" << s.limited_speed
+	   << "  steer=" << s.raw_steer_deg << "->" << s.steer_deg << "deg"
+	   << "  curve=" << s.curve_ratio << "  sf=" << s.speed_factor;
+
+	std::ostringstream l5;
+	l5 << "latency p="
 	   << (s.planner_latency_ms ? std::to_string(*s.planner_latency_ms) : "NA")
 	   << "ms c="
 	   << (s.control_latency_ms ? std::to_string(*s.control_latency_ms) : "NA")
 	   << "ms ttl=" << (s.ttl_ms ? std::to_string(*s.ttl_ms) : "NA");
 	if (status_.valid) {
-		l6 << " auto=" << (unsigned)status_.auto_active << " faults=0x"
+		l5 << " auto=" << (unsigned)status_.auto_active << " faults=0x"
 		   << std::hex << status_.faults << std::dec
 		   << " age=" << status_.age_ms << "ms";
 	}
 
+	std::ostringstream l6;
+	l6 << "path_obst=" << s.path_obst_mm
+	   << "mm  min_handle=" << s.min_handle_angle_deg << "deg@"
+	   << s.min_handle_dist_mm << "mm";
+	if (s.front_dist_mm)
+		l6 << "  front=" << *s.front_dist_mm << "mm";
+	if (s.side_dist_mm)
+		l6 << "  side=" << *s.side_dist_mm << "mm";
+
+	const std::string sp_angle =
+		sparkline(spark_best_, -90.0f, 90.0f, cfg::TELEMETRY_SPARK_LEN);
+	const std::string sp_speed =
+		sparkline(spark_speed_, 0.0f, (float)cfg::PROCESS_MAX_SPEED,
+				  cfg::TELEMETRY_SPARK_LEN);
+	const std::string sp_dist =
+		sparkline(spark_dist_, 0.0f, (float)cfg::TELEMETRY_DIST_BAR_MAX_MM,
+				  cfg::TELEMETRY_SPARK_LEN);
+
 	std::ostringstream l7;
+	l7 << "spark ang:" << sp_angle << " spd:" << sp_speed
+	   << " dst:" << colorWrap(sp_dist, dist_sev);
+
+	std::ostringstream l8;
+	l8 << std::fixed << std::setprecision(1);
+	const size_t bar_w = cfg::TELEMETRY_BAR_WIDTH;
 	if (metrics.valid) {
-		l7 << "metrics: temp=" << (metrics.cpu_temp_cdeg / 100.0f)
-		   << "C cpu=" << (metrics.cpu_usage_permille / 10.0f)
-		   << "% mem=" << (metrics.mem_used_kb / 1024.0f) << "/"
-		   << (metrics.mem_total_kb / 1024.0f) << "MB";
+		const float cpu_ratio = (float)metrics.cpu_usage_permille / 1000.0f;
+		const float temp_ratio =
+			(float)metrics.cpu_temp_cdeg / (float)cfg::TELEMETRY_TEMP_CRIT_CDEG;
+		l8 << "CPU " << colorWrap(bar(cpu_ratio, bar_w), cpu_sev) << " "
+		   << (metrics.cpu_usage_permille / 10.0f) << "%  "
+		   << "TEMP " << colorWrap(bar(temp_ratio, bar_w), temp_sev) << " "
+		   << (metrics.cpu_temp_cdeg / 100.0f) << "C  ";
 	} else {
-		l7 << "metrics: NA";
+		l8 << "CPU NA  TEMP NA  ";
+	}
+	const float dist_ratio =
+		(float)path_mm / (float)cfg::TELEMETRY_DIST_BAR_MAX_MM;
+	l8 << "DIST " << colorWrap(bar(dist_ratio, bar_w), dist_sev) << " "
+	   << path_mm << "mm";
+	if (metrics.valid) {
+		l8 << "  MEM " << (metrics.mem_used_kb / 1024.0f) << "/"
+		   << (metrics.mem_total_kb / 1024.0f) << "MB";
 	}
 
-	const size_t frame_width = 88;
+	const size_t frame_width = 100;
 	auto pad = [&](const std::string &sline) {
-		const size_t vis = visibleLen(sline);
+		const std::string trimmed = trimVisible(sline, frame_width - 2);
+		const size_t vis = visibleLen(trimmed);
 		if (vis >= frame_width - 2)
-			return sline;
-		return sline + std::string(frame_width - 2 - vis, ' ');
+			return trimmed;
+		return trimmed + std::string(frame_width - 2 - vis, ' ');
 	};
 
 	const std::string title = " ROBO RACER TELEMETRY ";
@@ -414,6 +555,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		return "|" + pad(sline) + "|";
 	};
 
+	const int frame_lines = 10; // top + 8 lines + bottom
 	if (!ui_initialized_) {
 		std::cout << "\x1b[?25l"; // hide cursor
 		std::cout << top << "\n"
@@ -424,11 +566,12 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 				  << line(l5.str()) << "\n"
 				  << line(l6.str()) << "\n"
 				  << line(l7.str()) << "\n"
+				  << line(l8.str()) << "\n"
 				  << bot;
-		std::cout << "\x1b[9A";
+		std::cout << "\x1b[" << frame_lines << "A";
 		ui_initialized_ = true;
 	} else {
-		std::cout << "\x1b[9A";
+		std::cout << "\x1b[" << frame_lines << "A";
 		std::cout << "\x1b[2K\r" << top << "\n";
 		std::cout << "\x1b[2K\r" << line(l1.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l2.str()) << "\n";
@@ -437,8 +580,9 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		std::cout << "\x1b[2K\r" << line(l5.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l6.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l7.str()) << "\n";
+		std::cout << "\x1b[2K\r" << line(l8.str()) << "\n";
 		std::cout << "\x1b[2K\r" << bot;
-		std::cout << "\x1b[9A";
+		std::cout << "\x1b[" << frame_lines << "A";
 	}
 	std::cout << std::flush;
 }

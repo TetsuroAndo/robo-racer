@@ -99,6 +99,13 @@ static constexpr float PROCESS_DIRECTION_WEIGHT = 0.5f;  // 現在方向との�
 
 static constexpr double TELEMETRY_DEFAULT_HZ = 10.0;
 static constexpr float TELEMETRY_CANDIDATE_EVENT_DEG = 10.0f;
+static constexpr uint16_t TELEMETRY_CPU_WARN_PERMILLE = 800;
+static constexpr uint16_t TELEMETRY_CPU_CRIT_PERMILLE = 950;
+static constexpr uint16_t TELEMETRY_TEMP_WARN_CDEG = 7000;
+static constexpr uint16_t TELEMETRY_TEMP_CRIT_CDEG = 8000;
+static constexpr int TELEMETRY_DIST_BAR_MAX_MM = 3000;
+static constexpr size_t TELEMETRY_BAR_WIDTH = 12;
+static constexpr size_t TELEMETRY_SPARK_LEN = 20;
 
 // clang-format on
 } // namespace cfg
