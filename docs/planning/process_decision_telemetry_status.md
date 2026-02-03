@@ -15,7 +15,10 @@
 - [完了] テレメトリ出力のモジュール分離（TelemetryEmitter）
 - [完了] rpi/src の標準出力/標準エラーを Logger へ移行（Sender/LidarReceiver/main）
 - [完了] UI/JSONL の追加項目（mode/latency/score/metrics/ESP status など）
-- [完了] metricsd.log の最新値を UI/JSONL に反映
+- [完了] metricsd.log の最新値を UI に反映（JSONLは除外）
+- [完了] テレメトリのレート制限（既定10Hz）と出力レベル（basic/full）
+- [完了] full candidates はイベント時のみ出力
+- [完了] metricsd.log 読み込みを別スレッド化
 
 ## メモ
 - 参照資料: `docs/observability/logging_v1.md`

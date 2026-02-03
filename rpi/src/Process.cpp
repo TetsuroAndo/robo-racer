@@ -159,6 +159,10 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		}
 		last_best_angle = max;
 		has_last_best = true;
+		const bool include_candidates =
+			(override_reason != "NONE") ||
+			(best_delta &&
+			 std::fabs(*best_delta) >= cfg::TELEMETRY_CANDIDATE_EVENT_DEG);
 
 		std::string override_detail = override_reason;
 		if (override_reason == "STOP") {
@@ -178,6 +182,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		sample.tick = tick;
 		sample.scan_id = scan_id;
 		sample.best_delta_deg = best_delta;
+		sample.include_candidates = include_candidates;
 		sample.best_angle_deg = max;
 		sample.best_dist_mm = maxDistance;
 		sample.best_score = 1.0f;
@@ -215,10 +220,13 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			sample.top[i] = {candidates[i].angle_deg, candidates[i].distance_mm,
 							 candidates[i].score};
 		}
-		sample.candidates.clear();
-		sample.candidates.reserve(candidates.size());
-		for (const auto &c : candidates) {
-			sample.candidates.push_back({c.angle_deg, c.distance_mm, c.score});
+		if (include_candidates) {
+			sample.candidates.clear();
+			sample.candidates.reserve(candidates.size());
+			for (const auto &c : candidates) {
+				sample.candidates.push_back(
+					{c.angle_deg, c.distance_mm, c.score});
+			}
 		}
 		telemetry_->emit(sample);
 	}

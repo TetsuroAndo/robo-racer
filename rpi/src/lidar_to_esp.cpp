@@ -34,6 +34,8 @@ int run_lidar_to_esp(const char *lidar_dev, int lidar_baud,
 	LidarReceiver lidarReceiver(lidar_dev, lidar_baud);
 	TelemetryEmitter telemetry;
 	telemetry.setMetricsLogPath(cfg::DEFAULT_METRICSD_LOG);
+	telemetry.setRateHz(cfg::TELEMETRY_DEFAULT_HZ);
+	telemetry.setLevel(TelemetryLevel::Basic);
 	Process process(&telemetry);
 	Sender sender(esp_dev, &telemetry);
 	const std::string run_id = make_run_id();

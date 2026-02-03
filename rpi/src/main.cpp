@@ -51,6 +51,8 @@ int main(int argc, char **argv) {
 	std::string log_path = cfg::DEFAULT_PROCESS_LOG;
 	std::string metrics_log_path = cfg::DEFAULT_METRICSD_LOG;
 	std::string run_id;
+	double telemetry_hz = cfg::TELEMETRY_DEFAULT_HZ;
+	TelemetryLevel telemetry_level = TelemetryLevel::Basic;
 	std::vector< std::string > positional;
 	for (int i = 1; i < argc; ++i) {
 		std::string a = argv[i];
@@ -58,6 +60,14 @@ int main(int argc, char **argv) {
 			log_path = argv[++i];
 		} else if (a == "--metrics-log" && i + 1 < argc) {
 			metrics_log_path = argv[++i];
+		} else if (a == "--telemetry-hz" && i + 1 < argc) {
+			telemetry_hz = std::atof(argv[++i]);
+		} else if (a == "--telemetry-level" && i + 1 < argc) {
+			std::string lv = argv[++i];
+			if (lv == "full")
+				telemetry_level = TelemetryLevel::Full;
+			else
+				telemetry_level = TelemetryLevel::Basic;
 		} else if (a == "--run-id" && i + 1 < argc) {
 			run_id = argv[++i];
 		} else {
@@ -89,6 +99,8 @@ int main(int argc, char **argv) {
 	ShmLidarReceiver lidarReceiver;
 	TelemetryEmitter telemetry;
 	telemetry.setMetricsLogPath(metrics_log_path);
+	telemetry.setRateHz(telemetry_hz);
+	telemetry.setLevel(telemetry_level);
 	Process process(&telemetry);
 	Sender sender(seriald_sock, &telemetry);
 

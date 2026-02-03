@@ -93,5 +93,12 @@ static constexpr float PROCESS_STEER_WINDOW_HALF_DEG = 25.0f;  // 前回ステ�
 // ステアリング方向への優先度: 現在の方向に近い角度を優先（0.0=優先度なし、1.0=最大優先度）
 static constexpr float PROCESS_DIRECTION_WEIGHT = 0.5f;  // 現在方向との角度差を考慮する程度
 
+//------------------------------------------------------------------------------
+// Telemetry（観測/可視化）
+//------------------------------------------------------------------------------
+
+static constexpr double TELEMETRY_DEFAULT_HZ = 10.0;
+static constexpr float TELEMETRY_CANDIDATE_EVENT_DEG = 10.0f;
+
 // clang-format on
 } // namespace cfg

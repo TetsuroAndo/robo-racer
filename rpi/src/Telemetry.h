@@ -1,10 +1,13 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 struct TelemetryCandidate {
@@ -49,6 +52,7 @@ struct TelemetrySample {
 	std::array< TelemetryCandidate, 3 > top{};
 	size_t top_count{};
 	std::vector< TelemetryCandidate > candidates;
+	bool include_candidates = false;
 
 	std::optional< float > score_obstacle;
 	std::optional< float > score_width;
@@ -62,15 +66,22 @@ struct TelemetrySample {
 	std::optional< uint16_t > ttl_ms;
 };
 
+enum class TelemetryLevel : uint8_t { Basic = 0, Full = 1 };
+
 class TelemetryEmitter {
 public:
+	TelemetryEmitter();
+	~TelemetryEmitter();
+
 	void emit(const TelemetrySample &s);
 	void emitNoLidar(uint64_t ts_us,
 					 const std::string &run_id,
 					 uint64_t tick,
 					 uint64_t scan_id);
 	void setUiEnabled(bool enabled) { ui_enabled_ = enabled; }
-	void setMetricsLogPath(std::string path) { metrics_log_path_ = std::move(path); }
+	void setLevel(TelemetryLevel lv) { level_ = lv; }
+	void setRateHz(double hz);
+	void setMetricsLogPath(std::string path);
 	void updateStatus(uint8_t auto_active,
 					  uint16_t faults,
 					  int16_t speed_mm_s,
@@ -83,6 +94,7 @@ private:
 	void emitOverrideEvent_(const TelemetrySample &s);
 	void emitUi_(const TelemetrySample &s);
 	void refreshMetrics_();
+	void metricsLoop_();
 
 	struct MetricsCache {
 		bool valid = false;
@@ -104,8 +116,16 @@ private:
 	std::string last_override_;
 	bool ui_initialized_ = false;
 	bool ui_enabled_ = true;
+	TelemetryLevel level_ = TelemetryLevel::Basic;
+	uint64_t telemetry_interval_us_ = 100000;
+	uint64_t last_telemetry_us_ = 0;
+	uint64_t last_ui_us_ = 0;
 	std::string metrics_log_path_;
 	uint64_t metrics_last_read_us_ = 0;
 	MetricsCache metrics_;
 	StatusCache status_;
+	std::mutex metrics_mtx_;
+
+	std::atomic< bool > running_{false};
+	std::thread metrics_thread_;
 };

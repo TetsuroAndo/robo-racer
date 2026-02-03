@@ -4,6 +4,7 @@
 #include "mc/core/Time.hpp"
 
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -62,12 +63,45 @@ size_t visibleLen(const std::string &s) {
 
 } // namespace
 
+TelemetryEmitter::TelemetryEmitter() {
+	running_.store(true);
+	metrics_thread_ = std::thread(&TelemetryEmitter::metricsLoop_, this);
+}
+
+TelemetryEmitter::~TelemetryEmitter() {
+	running_.store(false);
+	if (metrics_thread_.joinable())
+		metrics_thread_.join();
+	shutdownUi();
+}
+
+void TelemetryEmitter::setRateHz(double hz) {
+	if (hz <= 0.0) {
+		telemetry_interval_us_ = 0;
+		return;
+	}
+	telemetry_interval_us_ = (uint64_t)(1000000.0 / hz);
+}
+
+void TelemetryEmitter::setMetricsLogPath(std::string path) {
+	std::lock_guard< std::mutex > lk(metrics_mtx_);
+	metrics_log_path_ = std::move(path);
+}
+
 void TelemetryEmitter::emit(const TelemetrySample &s) {
-	refreshMetrics_();
-	emitJson_(s);
+	const uint64_t now_us = s.ts_us;
 	emitOverrideEvent_(s);
-	if (ui_enabled_)
+
+	if (telemetry_interval_us_ == 0 ||
+		now_us - last_telemetry_us_ >= telemetry_interval_us_) {
+		emitJson_(s);
+		last_telemetry_us_ = now_us;
+	}
+	if (ui_enabled_ && (telemetry_interval_us_ == 0 ||
+						now_us - last_ui_us_ >= telemetry_interval_us_)) {
 		emitUi_(s);
+		last_ui_us_ = now_us;
+	}
 }
 
 void TelemetryEmitter::emitNoLidar(uint64_t ts_us, const std::string &run_id,
@@ -99,14 +133,19 @@ void TelemetryEmitter::updateStatus(uint8_t auto_active, uint16_t faults,
 }
 
 void TelemetryEmitter::refreshMetrics_() {
-	if (metrics_log_path_.empty())
+	std::string path;
+	{
+		std::lock_guard< std::mutex > lk(metrics_mtx_);
+		path = metrics_log_path_;
+	}
+	if (path.empty())
 		return;
 	const uint64_t now_us = mc::core::Time::us();
 	if (now_us - metrics_last_read_us_ < 1000 * 1000)
 		return;
 	metrics_last_read_us_ = now_us;
 
-	std::ifstream ifs(metrics_log_path_, std::ios::binary);
+	std::ifstream ifs(path, std::ios::binary);
 	if (!ifs.is_open())
 		return;
 	ifs.seekg(0, std::ios::end);
@@ -157,64 +196,79 @@ void TelemetryEmitter::refreshMetrics_() {
 		return;
 	mem_total = std::stoull(line.substr(slash + 1, end_pos - slash - 1));
 
-	metrics_.valid = true;
-	metrics_.cpu_temp_cdeg = (uint16_t)temp;
-	metrics_.cpu_usage_permille = (uint16_t)cpu;
-	metrics_.mem_used_kb = (uint32_t)mem_used;
-	metrics_.mem_total_kb = (uint32_t)mem_total;
+	{
+		std::lock_guard< std::mutex > lk(metrics_mtx_);
+		metrics_.valid = true;
+		metrics_.cpu_temp_cdeg = (uint16_t)temp;
+		metrics_.cpu_usage_permille = (uint16_t)cpu;
+		metrics_.mem_used_kb = (uint32_t)mem_used;
+		metrics_.mem_total_kb = (uint32_t)mem_total;
+	}
+}
+
+void TelemetryEmitter::metricsLoop_() {
+	using namespace std::chrono_literals;
+	while (running_.load()) {
+		refreshMetrics_();
+		std::this_thread::sleep_for(1s);
+	}
 }
 
 void TelemetryEmitter::emitJson_(const TelemetrySample &s) {
 	std::ostringstream telemetry;
 	telemetry << std::fixed << std::setprecision(2);
-	telemetry
-		<< "{\"t_us\":" << s.ts_us << ",\"type\":\"telemetry\""
-		<< ",\"run_id\":\"" << s.run_id << "\",\"tick\":" << s.tick
-		<< ",\"scan_id\":" << s.scan_id << ",\"mode\":\"" << s.mode
-		<< "\",\"map_state\":\"" << s.map_state << "\""
-		<< ",\"best\":{\"ang_deg\":" << s.best_angle_deg
-		<< ",\"dist_mm\":" << s.best_dist_mm << ",\"score\":" << s.best_score
-		<< ",\"delta_deg\":"
-		<< (s.best_delta_deg ? std::to_string(*s.best_delta_deg) : "null")
-		<< ",\"terms\":{\"distance\":" << s.best_score << ",\"obstacle\":"
-		<< (s.score_obstacle ? std::to_string(*s.score_obstacle) : "null")
-		<< ",\"width\":"
-		<< (s.score_width ? std::to_string(*s.score_width) : "null")
-		<< ",\"goal\":"
-		<< (s.score_goal ? std::to_string(*s.score_goal) : "null")
-		<< ",\"curvature\":"
-		<< (s.score_curvature ? std::to_string(*s.score_curvature) : "null")
-		<< ",\"stability\":"
-		<< (s.score_stability ? std::to_string(*s.score_stability) : "null")
-		<< ",\"map_conf\":"
-		<< (s.score_map_conf ? std::to_string(*s.score_map_conf) : "null")
-		<< "}}"
-		<< ",\"min_handle\":{\"ang_deg\":" << s.min_handle_angle_deg
-		<< ",\"dist_mm\":" << s.min_handle_dist_mm << "}"
-		<< ",\"path_obst_mm\":" << s.path_obst_mm << ",\"front_dist_mm\":"
-		<< (s.front_dist_mm ? std::to_string(*s.front_dist_mm) : "null")
-		<< ",\"side_dist_mm\":"
-		<< (s.side_dist_mm ? std::to_string(*s.side_dist_mm) : "null")
-		<< ",\"cmd\":{\"v\":" << s.base_speed
-		<< ",\"v_limited\":" << s.limited_speed
-		<< ",\"steer_deg\":" << s.steer_deg
-		<< ",\"raw_steer_deg\":" << s.raw_steer_deg
-		<< ",\"curve_ratio\":" << s.curve_ratio
-		<< ",\"speed_factor\":" << s.speed_factor << "}"
-		<< ",\"limits\":{\"steer_clamp_deg\":" << s.steer_clamp_deg << "}"
-		<< ",\"override\":{\"kind\":\"" << s.override_kind << "\",\"detail\":\""
-		<< s.override_detail << "\"}"
-		<< ",\"scan_age_ms\":"
-		<< (s.scan_age_ms ? std::to_string(*s.scan_age_ms) : "null")
-		<< ",\"latency_ms\":{\"planner\":"
-		<< (s.planner_latency_ms ? std::to_string(*s.planner_latency_ms)
-								 : "null")
-		<< ",\"control\":"
-		<< (s.control_latency_ms ? std::to_string(*s.control_latency_ms)
-								 : "null")
-		<< "}"
-		<< ",\"ttl_ms\":" << (s.ttl_ms ? std::to_string(*s.ttl_ms) : "null")
-		<< ",\"top\":[";
+	telemetry << "{\"t_us\":" << s.ts_us << ",\"type\":\"telemetry\""
+			  << ",\"run_id\":\"" << s.run_id << "\",\"tick\":" << s.tick
+			  << ",\"scan_id\":" << s.scan_id << ",\"mode\":\"" << s.mode
+			  << "\",\"map_state\":\"" << s.map_state << "\""
+			  << ",\"best\":{\"ang_deg\":" << s.best_angle_deg
+			  << ",\"dist_mm\":" << s.best_dist_mm
+			  << ",\"score\":" << s.best_score << ",\"delta_deg\":"
+			  << (s.best_delta_deg ? std::to_string(*s.best_delta_deg) : "null")
+			  << ",\"terms\":{\"distance\":" << s.best_score;
+	if (level_ == TelemetryLevel::Full) {
+		telemetry
+			<< ",\"obstacle\":"
+			<< (s.score_obstacle ? std::to_string(*s.score_obstacle) : "null")
+			<< ",\"width\":"
+			<< (s.score_width ? std::to_string(*s.score_width) : "null")
+			<< ",\"goal\":"
+			<< (s.score_goal ? std::to_string(*s.score_goal) : "null")
+			<< ",\"curvature\":"
+			<< (s.score_curvature ? std::to_string(*s.score_curvature) : "null")
+			<< ",\"stability\":"
+			<< (s.score_stability ? std::to_string(*s.score_stability) : "null")
+			<< ",\"map_conf\":"
+			<< (s.score_map_conf ? std::to_string(*s.score_map_conf) : "null");
+	}
+	telemetry << "}}"
+			  << ",\"min_handle\":{\"ang_deg\":" << s.min_handle_angle_deg
+			  << ",\"dist_mm\":" << s.min_handle_dist_mm << "}"
+			  << ",\"path_obst_mm\":" << s.path_obst_mm << ",\"front_dist_mm\":"
+			  << (s.front_dist_mm ? std::to_string(*s.front_dist_mm) : "null")
+			  << ",\"side_dist_mm\":"
+			  << (s.side_dist_mm ? std::to_string(*s.side_dist_mm) : "null")
+			  << ",\"cmd\":{\"v\":" << s.base_speed
+			  << ",\"v_limited\":" << s.limited_speed
+			  << ",\"steer_deg\":" << s.steer_deg
+			  << ",\"raw_steer_deg\":" << s.raw_steer_deg
+			  << ",\"curve_ratio\":" << s.curve_ratio
+			  << ",\"speed_factor\":" << s.speed_factor << "}"
+			  << ",\"limits\":{\"steer_clamp_deg\":" << s.steer_clamp_deg << "}"
+			  << ",\"override\":{\"kind\":\"" << s.override_kind
+			  << "\",\"detail\":\"" << s.override_detail << "\"}"
+			  << ",\"scan_age_ms\":"
+			  << (s.scan_age_ms ? std::to_string(*s.scan_age_ms) : "null")
+			  << ",\"latency_ms\":{\"planner\":"
+			  << (s.planner_latency_ms ? std::to_string(*s.planner_latency_ms)
+									   : "null")
+			  << ",\"control\":"
+			  << (s.control_latency_ms ? std::to_string(*s.control_latency_ms)
+									   : "null")
+			  << "}"
+			  << ",\"ttl_ms\":"
+			  << (s.ttl_ms ? std::to_string(*s.ttl_ms) : "null")
+			  << ",\"top\":[";
 	for (size_t i = 0; i < s.top_count; ++i) {
 		if (i > 0)
 			telemetry << ",";
@@ -225,17 +279,19 @@ void TelemetryEmitter::emitJson_(const TelemetrySample &s) {
 	}
 	telemetry << "]";
 
-	telemetry << ",\"candidates\":[";
-	for (size_t i = 0; i < s.candidates.size(); ++i) {
-		if (i > 0)
-			telemetry << ",";
-		telemetry << "{\"ang_deg\":" << s.candidates[i].angle_deg
-				  << ",\"dist_mm\":" << s.candidates[i].distance_mm
-				  << ",\"score\":" << s.candidates[i].score
-				  << ",\"terms\":{\"distance\":" << s.candidates[i].score
-				  << "}}";
+	if (level_ == TelemetryLevel::Full && s.include_candidates) {
+		telemetry << ",\"candidates\":[";
+		for (size_t i = 0; i < s.candidates.size(); ++i) {
+			if (i > 0)
+				telemetry << ",";
+			telemetry << "{\"ang_deg\":" << s.candidates[i].angle_deg
+					  << ",\"dist_mm\":" << s.candidates[i].distance_mm
+					  << ",\"score\":" << s.candidates[i].score
+					  << ",\"terms\":{\"distance\":" << s.candidates[i].score
+					  << "}}";
+		}
+		telemetry << "]";
 	}
-	telemetry << "]";
 
 	if (status_.valid) {
 		telemetry << ",\"esp_status\":{\"auto_active\":"
@@ -299,6 +355,12 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	   << "  steer=" << s.raw_steer_deg << "->" << s.steer_deg << "deg"
 	   << "  curve=" << s.curve_ratio << "  sf=" << s.speed_factor;
 
+	MetricsCache metrics;
+	{
+		std::lock_guard< std::mutex > lk(metrics_mtx_);
+		metrics = metrics_;
+	}
+
 	std::ostringstream l5;
 	l5 << "mode=" << s.mode << " map=" << s.map_state;
 	if (s.scan_age_ms)
@@ -322,11 +384,11 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	}
 
 	std::ostringstream l7;
-	if (metrics_.valid) {
-		l7 << "metrics: temp=" << (metrics_.cpu_temp_cdeg / 100.0f)
-		   << "C cpu=" << (metrics_.cpu_usage_permille / 10.0f)
-		   << "% mem=" << (metrics_.mem_used_kb / 1024.0f) << "/"
-		   << (metrics_.mem_total_kb / 1024.0f) << "MB";
+	if (metrics.valid) {
+		l7 << "metrics: temp=" << (metrics.cpu_temp_cdeg / 100.0f)
+		   << "C cpu=" << (metrics.cpu_usage_permille / 10.0f)
+		   << "% mem=" << (metrics.mem_used_kb / 1024.0f) << "/"
+		   << (metrics.mem_total_kb / 1024.0f) << "MB";
 	} else {
 		l7 << "metrics: NA";
 	}
