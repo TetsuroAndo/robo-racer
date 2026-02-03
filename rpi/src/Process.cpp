@@ -1,20 +1,72 @@
 #include "Process.h"
 #include "config/Config.h"
+#include "mc/core/Log.hpp"
+#include "mc/core/Time.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+namespace {
+
+struct CandidateScore {
+	float angle_deg{};
+	int distance_mm{};
+	float score{};
+};
+
+std::string compassBar(float angle_deg) {
+	const int min_deg = -90;
+	const int max_deg = 90;
+	const int slots = 21; // odd so center aligns with 0 deg
+	std::string bar(slots, '.');
+	const int center = slots / 2;
+	bar[center] = '0';
+
+	float clamped = angle_deg;
+	if (clamped < min_deg)
+		clamped = min_deg;
+	if (clamped > max_deg)
+		clamped = max_deg;
+
+	const float ratio = (clamped - min_deg) / (float)(max_deg - min_deg);
+	int pos = (int)std::round(ratio * (slots - 1));
+	if (pos < 0)
+		pos = 0;
+	if (pos >= slots)
+		pos = slots - 1;
+	bar[pos] = '|';
+
+	return "[-90" + bar + "+90]";
+}
+
+std::string colorOverride(const std::string &ovr) {
+	if (ovr == "NONE")
+		return "\x1b[32mNONE\x1b[0m";
+	if (ovr == "STOP")
+		return "\x1b[31mSTOP\x1b[0m";
+	return "\x1b[33m" + ovr + "\x1b[0m";
+}
+
+} // namespace
 
 Process::Process() {}
 
 Process::~Process() {}
 
 ProcResult Process::proc(const std::vector< LidarData > &lidarData,
-						 float lastSteerAngle) const {
+						 float lastSteerAngle, uint64_t tick, uint64_t scan_id,
+						 const std::string &run_id) const {
 	float max = 0;
 	int maxDistance = -1;
 	float minHandleAngle = 0;
 	int minHandleDistance = INT32_MAX;
 	int minObstacleOnPath = INT32_MAX;
+	std::vector< CandidateScore > candidates;
 
 	// 前回のステアリング角度を±cfg::STEER_ANGLE_MAX_DEGにクリップ
 	float clampedSteerAngle = lastSteerAngle;
@@ -33,6 +85,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		// ハンドリング評価（±90deg）: 次の進行方向を決定
 		if (cfg::PROCESS_HANDLE_ANGLE_MIN_DEG <= i.angle &&
 			i.angle <= cfg::PROCESS_HANDLE_ANGLE_MAX_DEG) {
+			candidates.push_back(CandidateScore{.angle_deg = i.angle,
+												.distance_mm = i.distance,
+												.score = 0.0f});
 			if (maxDistance < i.distance) {
 				max = i.angle;
 				maxDistance = i.distance;
@@ -50,16 +105,22 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			}
 		}
 	}
-	std::cout << "MaxDist: " << maxDistance << " at " << max
-			  << " | MinHandleDist: " << minHandleDistance << " at "
-			  << minHandleAngle << " | PathObstacle: " << minObstacleOnPath
-			  << " (checkRange: " << pathCheckMin << "~" << pathCheckMax
-			  << "°)\n";
 
 	// データが無い場合は安全側で停止
 	if (maxDistance < 0) {
-		std::cout << "WARN: no lidar points in handling window" << std::endl;
+		const uint64_t ts_us = mc::core::Time::us();
+		std::ostringstream json;
+		json << "{\"t_us\":" << ts_us << ",\"type\":\"NO_LIDAR\""
+			 << ",\"run_id\":\"" << run_id << "\",\"tick\":" << tick
+			 << ",\"scan_id\":" << scan_id
+			 << ",\"mode\":\"UNKNOWN\",\"cmd\":{\"v\":0,\"steer_deg\":0}}";
+		MC_LOGW("event", json.str());
 		return ProcResult(0, 0);
+	}
+
+	for (auto &c : candidates) {
+		c.score = (maxDistance > 0) ? (float)c.distance_mm / (float)maxDistance
+									: 0.0f;
 	}
 
 	// 基本速度を計算
@@ -92,17 +153,15 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 
 	// 進行経路上の障害物距離に基づいて速度を制限
 	int limitedSpeed = baseSpeed;
+	std::string override_reason = "NONE";
 	if (minObstacleOnPath <= cfg::PROCESS_MIN_DIST_STOP_MM) {
 		// 停止距離以下 → 停止
 		limitedSpeed = 0;
-		std::cout << "STOP: obstacle on path too close (" << minObstacleOnPath
-				  << "mm)" << std::endl;
+		override_reason = "STOP";
 	} else if (minObstacleOnPath < cfg::PROCESS_MIN_DIST_SAFE_MM) {
 		// 安全距離未満 → 減速
 		limitedSpeed = (int)(baseSpeed * cfg::PROCESS_MIN_DIST_SPEED_FACTOR);
-		std::cout << "SLOW: obstacle on path near (" << minObstacleOnPath
-				  << "mm), speed: " << baseSpeed << " → " << limitedSpeed
-				  << std::endl;
+		override_reason = "SLOW";
 	}
 
 	// 急カーブによる速度制限
@@ -111,12 +170,80 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		float curveRatio = (float)cfg::STEER_ANGLE_MAX_DEG / absAngle;
 		float curveFactor = cfg::STEER_CURVE_SPEED_FACTOR * curveRatio;
 		int curveReducedSpeed = (int)(limitedSpeed * curveFactor);
-		std::cout << "CURVE: sharp turn needed (" << absAngle
-				  << "°), ratio: " << curveRatio << ", speed: " << limitedSpeed
-				  << " → " << curveReducedSpeed << std::endl;
 		limitedSpeed = curveReducedSpeed;
+		if (override_reason == "NONE") {
+			override_reason = "CURVE";
+		} else {
+			override_reason += "+CURVE";
+		}
 	}
 
 	int roundedAngle = static_cast< int >(std::round(calculatedAngle));
+
+	std::partial_sort(
+		candidates.begin(),
+		candidates.begin() + std::min< size_t >(3, candidates.size()),
+		candidates.end(), [](const CandidateScore &a, const CandidateScore &b) {
+			return a.score > b.score;
+		});
+
+	const uint64_t ts_us = mc::core::Time::us();
+	std::ostringstream telemetry;
+	telemetry << std::fixed << std::setprecision(2);
+	telemetry << "{\"t_us\":" << ts_us << ",\"type\":\"telemetry\""
+			  << ",\"run_id\":\"" << run_id << "\",\"tick\":" << tick
+			  << ",\"scan_id\":" << scan_id << ",\"mode\":\"UNKNOWN\""
+			  << ",\"best\":{\"ang_deg\":" << max
+			  << ",\"dist_mm\":" << maxDistance
+			  << ",\"score\":1.00,\"terms\":{\"distance\":1.00}}"
+			  << ",\"min_handle\":{\"ang_deg\":" << minHandleAngle
+			  << ",\"dist_mm\":" << minHandleDistance << "}"
+			  << ",\"path_obst_mm\":" << minObstacleOnPath
+			  << ",\"cmd\":{\"v\":" << baseSpeed
+			  << ",\"v_limited\":" << limitedSpeed
+			  << ",\"steer_deg\":" << roundedAngle << "}"
+			  << ",\"limits\":{\"steer_clamp_deg\":" << cfg::STEER_ANGLE_MAX_DEG
+			  << "}"
+			  << ",\"override\":{\"kind\":\"" << override_reason << "\"}";
+
+	telemetry << ",\"top\":[";
+	const size_t top_n = std::min< size_t >(3, candidates.size());
+	for (size_t i = 0; i < top_n; ++i) {
+		if (i > 0)
+			telemetry << ",";
+		telemetry << "{\"ang_deg\":" << candidates[i].angle_deg
+				  << ",\"dist_mm\":" << candidates[i].distance_mm
+				  << ",\"score\":" << candidates[i].score
+				  << ",\"terms\":{\"distance\":" << candidates[i].score << "}}";
+	}
+	telemetry << "]}";
+	MC_LOGI("telemetry", telemetry.str());
+
+	static std::string last_override;
+	if (override_reason != last_override) {
+		std::ostringstream event;
+		event << "{\"t_us\":" << ts_us << ",\"type\":\"OVERRIDE\""
+			  << ",\"run_id\":\"" << run_id << "\",\"tick\":" << tick
+			  << ",\"scan_id\":" << scan_id << ",\"kind\":\"" << override_reason
+			  << "\",\"path_obst_mm\":" << minObstacleOnPath
+			  << ",\"th_stop_mm\":" << cfg::PROCESS_MIN_DIST_STOP_MM
+			  << ",\"th_safe_mm\":" << cfg::PROCESS_MIN_DIST_SAFE_MM << "}";
+		MC_LOGI("event", event.str());
+		last_override = override_reason;
+	}
+	std::ostringstream ui;
+	ui << std::fixed << std::setprecision(2);
+	ui << compassBar(max) << "  best:" << std::showpos << max
+	   << "deg  score:1.00  dist:" << (maxDistance / 1000.0f) << "m\n";
+	ui << "top:";
+	for (size_t i = 0; i < candidates.size() && i < 3; ++i) {
+		ui << " " << std::showpos << candidates[i].angle_deg << "("
+		   << candidates[i].score << ")";
+	}
+	ui << "   override: " << colorOverride(override_reason) << "\n";
+	ui << "cmd: v=" << baseSpeed << "->" << limitedSpeed
+	   << "  steer=" << roundedAngle << "deg";
+	std::cout << ui.str() << std::endl;
+
 	return ProcResult(limitedSpeed, roundedAngle);
 }
