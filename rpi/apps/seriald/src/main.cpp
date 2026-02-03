@@ -359,7 +359,6 @@ int main(int argc, char **argv) {
 	run = false;
 	if (txThread.joinable())
 		txThread.join();
-	ipc.close();
 	uart.close();
 	logger.shutdown();
 	return 0;
