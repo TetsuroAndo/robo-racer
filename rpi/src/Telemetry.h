@@ -19,6 +19,7 @@ struct TelemetryCandidate {
 enum class Severity : uint8_t { Safe = 0, Warn = 1, Crit = 2 };
 
 static constexpr size_t TELEMETRY_HEAT_BINS = 37;
+static constexpr size_t TELEMETRY_COMPASS_BINS = 61;
 
 struct TelemetrySample {
 	uint64_t ts_us{};
@@ -58,6 +59,8 @@ struct TelemetrySample {
 	std::vector< TelemetryCandidate > candidates;
 	bool include_candidates = false;
 	std::array< float, TELEMETRY_HEAT_BINS > heat_bins{};
+	std::array< int, TELEMETRY_COMPASS_BINS > lidar_dist_bins{};
+	bool lidar_dist_valid = false;
 
 	std::optional< float > score_obstacle;
 	std::optional< float > score_width;

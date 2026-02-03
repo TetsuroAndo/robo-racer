@@ -72,6 +72,16 @@ std::string fitVisible(const std::string &s, size_t width) {
 	return out;
 }
 
+int glyphPriority(char c) {
+	if (c == '*' || c == 'B' || c == 'S')
+		return 3;
+	if (c == '!')
+		return 2;
+	if (c == ' ')
+		return 0;
+	return 1;
+}
+
 std::string colorWrap(const std::string &s, Severity sev) {
 	switch (sev) {
 	case Severity::Safe:
@@ -542,7 +552,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 
 	const size_t frame_width = 110;
 	const size_t inner_width = frame_width - 2;
-	const size_t scale_w = 61;
+	const size_t scale_w = TELEMETRY_COMPASS_BINS;
 	const size_t compass_w = scale_w + 2;
 	const size_t compass_pad =
 		(inner_width > compass_w) ? (inner_width - compass_w) / 2 : 0;
@@ -559,12 +569,96 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		return std::max(0, std::min((int)scale_w - 1, pos));
 	};
 
+	const int max_dist = cfg::TELEMETRY_DIST_BAR_MAX_MM;
 	std::ostringstream comp_title;
-	comp_title << "COMPASS B=best S=steer  B:" << std::showpos << std::fixed
-			   << std::setprecision(1) << s.best_angle_deg
-			   << "deg  S:" << s.raw_steer_deg << "deg";
+	comp_title << "COMPASS Fan (max " << std::fixed << std::setprecision(1)
+			   << (max_dist / 1000.0f)
+			   << "m, near<=" << cfg::TELEMETRY_NEAR_EMPH_MM
+			   << "mm) B=best S=steer";
 	const std::string top_compass =
 		compass_left + "+" + fitVisible(comp_title.str(), scale_w) + "+";
+
+	std::vector< std::string > fan_rows;
+	fan_rows.reserve(cfg::TELEMETRY_COMPASS_ROWS);
+	const size_t rows = cfg::TELEMETRY_COMPASS_ROWS;
+	const size_t min_width =
+		std::min(cfg::TELEMETRY_COMPASS_MIN_WIDTH, TELEMETRY_COMPASS_BINS);
+	std::vector< std::string > grid(rows,
+									std::string(TELEMETRY_COMPASS_BINS, ' '));
+
+	if (s.lidar_dist_valid) {
+		static const char *k = " .:-=+*#@";
+		const size_t kmax = 8;
+		for (size_t c = 0; c < TELEMETRY_COMPASS_BINS; ++c) {
+			int dist = s.lidar_dist_bins[c];
+			if (dist < 0)
+				dist = max_dist;
+			if (dist > max_dist)
+				dist = max_dist;
+			const float ratio = (max_dist > 0) ? (float)dist / max_dist : 0.0f;
+			size_t fill_rows = (size_t)std::ceil(ratio * (float)rows);
+			if (fill_rows > rows)
+				fill_rows = rows;
+			if (fill_rows == 0)
+				continue;
+			const size_t start_row = rows - fill_rows;
+			for (size_t r = start_row; r < rows; ++r) {
+				const float t = (rows > 1)
+									? (float)(rows - 1 - r) / (float)(rows - 1)
+									: 0.0f;
+				const size_t idx = (size_t)std::lround(t * (float)kmax);
+				grid[r][c] = k[idx];
+			}
+			if (dist <= cfg::TELEMETRY_NEAR_EMPH_MM) {
+				grid[start_row][c] = '!';
+			}
+		}
+	}
+
+	auto mark_grid = [&](float angle_deg, char c) {
+		const int col = posFromAngle(angle_deg);
+		int dist = s.lidar_dist_bins[(size_t)col];
+		if (dist < 0)
+			dist = max_dist;
+		if (dist > max_dist)
+			dist = max_dist;
+		const float ratio = (max_dist > 0) ? (float)dist / max_dist : 0.0f;
+		size_t fill_rows = (size_t)std::ceil(ratio * (float)rows);
+		if (fill_rows > rows)
+			fill_rows = rows;
+		size_t row = (fill_rows == 0) ? (rows - 1) : (rows - fill_rows);
+		char &slot = grid[row][(size_t)col];
+		if (slot == 'B' || slot == 'S')
+			slot = '*';
+		else
+			slot = c;
+	};
+	mark_grid(s.best_angle_deg, 'B');
+	mark_grid(s.raw_steer_deg, 'S');
+
+	for (size_t r = 0; r < rows; ++r) {
+		const float t =
+			(rows > 1) ? (float)(rows - 1 - r) / (float)(rows - 1) : 0.0f;
+		const size_t width = (size_t)std::lround(
+			(float)min_width + t * (float)(TELEMETRY_COMPASS_BINS - min_width));
+		const size_t left = (TELEMETRY_COMPASS_BINS - width) / 2;
+		std::string row_line(TELEMETRY_COMPASS_BINS, ' ');
+		for (size_t c = 0; c < TELEMETRY_COMPASS_BINS; ++c) {
+			const size_t mapped =
+				(width > 1)
+					? (size_t)std::lround((float)c * (float)(width - 1) /
+										  (float)(TELEMETRY_COMPASS_BINS - 1))
+					: 0;
+			const size_t col = left + mapped;
+			if (col >= TELEMETRY_COMPASS_BINS)
+				continue;
+			const char in = grid[r][c];
+			if (glyphPriority(in) >= glyphPriority(row_line[col])) {
+				row_line[col] = in;
+			}
+		}
+		fan_rows.push_back(row_line);
+	}
 
 	std::string labels(scale_w, ' ');
 	auto place_label = [&](const std::string &txt, int pos) {
@@ -586,26 +680,6 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	}
 	const std::string line_labels =
 		compass_left + "|" + fitVisible(labels, scale_w) + "|";
-
-	std::string scale(scale_w, '-');
-	for (int pos : ticks) {
-		if (pos >= 0 && pos < (int)scale_w)
-			scale[(size_t)pos] = '|';
-	}
-	auto mark = [&](int pos, char c) {
-		if (pos < 0 || pos >= (int)scale_w)
-			return;
-		if (scale[(size_t)pos] == 'B' || scale[(size_t)pos] == 'S')
-			scale[(size_t)pos] = '*';
-		else
-			scale[(size_t)pos] = c;
-	};
-	const int best_pos = posFromAngle(s.best_angle_deg);
-	const int steer_pos = posFromAngle(s.raw_steer_deg);
-	mark(best_pos, 'B');
-	mark(steer_pos, 'S');
-	const std::string line_scale =
-		compass_left + "|" + fitVisible(scale, scale_w) + "|";
 
 	const std::string bot_compass =
 		compass_left + "+" + std::string(scale_w, '-') + "+";
@@ -815,15 +889,17 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		return "|" + pad(sline) + "|";
 	};
 
-	const int frame_lines = 16; // top + 14 lines + bottom
+	const int frame_lines = 15 + (int)fan_rows.size();
 	if (!ui_initialized_) {
 		std::cout << "\x1b[?25l"; // hide cursor
 		std::cout << top << "\n"
 				  << line(l0.str()) << "\n"
 				  << line(l1.str()) << "\n"
-				  << line(top_compass) << "\n"
-				  << line(line_labels) << "\n"
-				  << line(line_scale) << "\n"
+				  << line(top_compass) << "\n";
+		for (const auto &row : fan_rows) {
+			std::cout << line(compass_left + "|" + row + "|") << "\n";
+		}
+		std::cout << line(line_labels) << "\n"
 				  << line(bot_compass) << "\n"
 				  << line(l3.str()) << "\n"
 				  << line(l4.str()) << "\n"
@@ -842,8 +918,11 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		std::cout << "\x1b[2K\r" << line(l0.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l1.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(top_compass) << "\n";
+		for (const auto &row : fan_rows) {
+			std::cout << "\x1b[2K\r" << line(compass_left + "|" + row + "|")
+					  << "\n";
+		}
 		std::cout << "\x1b[2K\r" << line(line_labels) << "\n";
-		std::cout << "\x1b[2K\r" << line(line_scale) << "\n";
 		std::cout << "\x1b[2K\r" << line(bot_compass) << "\n";
 		std::cout << "\x1b[2K\r" << line(l3.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l4.str()) << "\n";

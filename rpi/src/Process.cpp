@@ -33,6 +33,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	int minObstacleOnPath = INT32_MAX;
 	std::vector< CandidateScore > candidates;
 	std::array< float, TELEMETRY_HEAT_BINS > heat_bins{};
+	std::array< int, TELEMETRY_COMPASS_BINS > lidar_bins{};
+	lidar_bins.fill(-1);
+	bool lidar_bins_valid = false;
 	for (auto &v : heat_bins)
 		v = 0.0f;
 
@@ -53,6 +56,19 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		// ハンドリング評価（±90deg）: 次の進行方向を決定
 		if (cfg::PROCESS_HANDLE_ANGLE_MIN_DEG <= i.angle &&
 			i.angle <= cfg::PROCESS_HANDLE_ANGLE_MAX_DEG) {
+			const float ratio = (i.angle - cfg::PROCESS_HANDLE_ANGLE_MIN_DEG) /
+								(cfg::PROCESS_HANDLE_ANGLE_MAX_DEG -
+								 cfg::PROCESS_HANDLE_ANGLE_MIN_DEG);
+			int idx =
+				(int)std::lround(ratio * (float)(TELEMETRY_COMPASS_BINS - 1));
+			if (idx < 0)
+				idx = 0;
+			if (idx >= (int)TELEMETRY_COMPASS_BINS)
+				idx = (int)TELEMETRY_COMPASS_BINS - 1;
+			if (lidar_bins[idx] < 0 || i.distance < lidar_bins[idx]) {
+				lidar_bins[idx] = i.distance;
+			}
+			lidar_bins_valid = true;
 			candidates.push_back(CandidateScore{.angle_deg = i.angle,
 												.distance_mm = i.distance,
 												.score = 0.0f});
@@ -228,6 +244,8 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		sample.lidar_points = lidarData.size();
 		sample.lidar_expected = 181;
 		sample.heat_bins = heat_bins;
+		sample.lidar_dist_bins = lidar_bins;
+		sample.lidar_dist_valid = lidar_bins_valid;
 
 		const size_t top_n = std::min< size_t >(3, candidates.size());
 		sample.top_count = top_n;
