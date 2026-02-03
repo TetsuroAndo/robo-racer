@@ -17,6 +17,8 @@ services:
       - LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-0}
       - QT_XCB_GL_INTEGRATION=${QT_XCB_GL_INTEGRATION:-}
       - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/runtime-root}
+      - AMENT_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
+      - COLCON_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
     stdin_open: true
     tty: true
 
@@ -36,4 +38,6 @@ services:
       - NOVNC_PORT=6080
       - NOVNC_RESOLUTION=1280x800x24
       - NOVNC_BIND=0.0.0.0
+      - AMENT_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
+      - COLCON_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
     command: ["bash", "/ws/tools/ros2/scripts/novnc_start.sh", "rviz2", "-d", "/ws/tools/ros2/rviz/default.rviz"]
