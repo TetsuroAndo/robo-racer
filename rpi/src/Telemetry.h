@@ -1,5 +1,7 @@
 #pragma once
 
+#include "mc/core/Time.hpp"
+
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -156,3 +158,17 @@ private:
 	bool last_ttl_expired_ = false;
 	bool last_faults_ = false;
 };
+
+inline void TelemetryEmitter::updateStatus(uint8_t auto_active,
+										   uint16_t faults,
+										   int16_t speed_mm_s,
+										   int16_t steer_cdeg,
+										   uint16_t age_ms) {
+	status_.valid = true;
+	status_.auto_active = auto_active;
+	status_.faults = faults;
+	status_.speed_mm_s = speed_mm_s;
+	status_.steer_cdeg = steer_cdeg;
+	status_.age_ms = age_ms;
+	status_.ts_us = mc::core::Time::us();
+}
