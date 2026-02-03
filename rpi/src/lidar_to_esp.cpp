@@ -9,10 +9,12 @@
 
 #include <csignal>
 #include <cstdint>
+#include <iostream>
 #include <sstream>
 
 static volatile sig_atomic_t g_stop = 0;
 static void on_sig(int) { g_stop = 1; }
+static void show_cursor() { std::cout << "\x1b[?25h" << std::flush; }
 
 static std::string make_run_id() {
 	std::ostringstream oss;
@@ -24,6 +26,7 @@ int run_lidar_to_esp(const char *lidar_dev, int lidar_baud,
 					 const char *esp_dev) {
 	signal(SIGINT, on_sig);
 	signal(SIGTERM, on_sig);
+	std::atexit(show_cursor);
 
 	LidarReceiver lidarReceiver(lidar_dev, lidar_baud);
 	Process process;

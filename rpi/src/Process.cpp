@@ -245,22 +245,52 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	l2 << "  override: " << colorOverride(override_reason);
 
 	std::ostringstream l3;
-	l3 << "cmd: v=" << baseSpeed << "->" << limitedSpeed
+	l3 << "path_obst=" << minObstacleOnPath
+	   << "mm  min_handle=" << minHandleAngle << "deg@" << minHandleDistance
+	   << "mm";
+
+	std::ostringstream l4;
+	l4 << "cmd: v=" << baseSpeed << "->" << limitedSpeed
 	   << "  steer=" << roundedAngle << "deg";
 
 	static bool ui_initialized = false;
+	const size_t frame_width = 88;
+	auto pad = [&](const std::string &s) {
+		if (s.size() >= frame_width - 2)
+			return s.substr(0, frame_width - 2);
+		return s + std::string(frame_width - 2 - s.size(), ' ');
+	};
+
+	const std::string title = " ROBO RACER TELEMETRY ";
+	const std::string top =
+		"+" + std::string((frame_width - title.size()) / 2, '-') + title +
+		std::string(frame_width - title.size() -
+						((frame_width - title.size()) / 2) - 2,
+					'-') +
+		"+";
+	const std::string bot = "+" + std::string(frame_width - 2, '-') + "+";
+
+	auto line = [&](const std::string &s) { return "|" + pad(s) + "|"; };
+
 	if (!ui_initialized) {
 		std::cout << "\x1b[?25l"; // hide cursor
-		std::cout << l1.str() << "\n" << l2.str() << "\n" << l3.str();
-		std::cout << "\x1b[3A";
+		std::cout << top << "\n"
+				  << line(l1.str()) << "\n"
+				  << line(l2.str()) << "\n"
+				  << line(l3.str()) << "\n"
+				  << line(l4.str()) << "\n"
+				  << bot;
+		std::cout << "\x1b[6A";
 		ui_initialized = true;
 	} else {
-		std::cout << "\x1b[3A";
-		std::cout << "\x1b[2K\r" << l1.str() << "\n";
-		std::cout << "\x1b[2K\r" << l2.str() << "\n";
-		std::cout << "\x1b[2K\r" << l3.str();
-		std::cout << "\x1b[2K\r";
-		std::cout << "\x1b[3A";
+		std::cout << "\x1b[6A";
+		std::cout << "\x1b[2K\r" << top << "\n";
+		std::cout << "\x1b[2K\r" << line(l1.str()) << "\n";
+		std::cout << "\x1b[2K\r" << line(l2.str()) << "\n";
+		std::cout << "\x1b[2K\r" << line(l3.str()) << "\n";
+		std::cout << "\x1b[2K\r" << line(l4.str()) << "\n";
+		std::cout << "\x1b[2K\r" << bot;
+		std::cout << "\x1b[6A";
 	}
 	std::cout << std::flush;
 

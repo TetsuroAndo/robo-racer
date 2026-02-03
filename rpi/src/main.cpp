@@ -22,6 +22,8 @@ static void on_sig(int sig) {
 	g_stop = 1;
 }
 
+static void show_cursor() { std::cout << "\x1b[?25h" << std::flush; }
+
 static std::string make_run_id() {
 	std::ostringstream oss;
 	oss << std::hex << mc::core::Time::us() << "-p" << (unsigned)getpid();
@@ -44,6 +46,7 @@ static void ensure_dir_for(const std::string &path) {
 int main(int argc, char **argv) {
 	signal(SIGINT, on_sig);
 	signal(SIGTERM, on_sig);
+	std::atexit(show_cursor);
 
 	std::string log_path = cfg::DEFAULT_PROCESS_LOG;
 	std::string run_id;
