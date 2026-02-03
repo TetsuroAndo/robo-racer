@@ -77,6 +77,7 @@ int main(int argc, char **argv) {
 		run_id = make_run_id();
 
 	auto &logger = mc::core::Logger::instance();
+	logger.setConsoleEnabled(false);
 	if (!log_path.empty()) {
 		ensure_dir_for(log_path);
 		logger.addSink(std::make_shared< mc::core::FileSink >(log_path));

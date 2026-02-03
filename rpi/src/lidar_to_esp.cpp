@@ -5,6 +5,7 @@
 #include "LidarReceiver.h"
 #include "Process.h"
 #include "Sender.h"
+#include "mc/core/Log.hpp"
 #include "mc/core/Time.hpp"
 
 #include <csignal>
@@ -27,6 +28,7 @@ int run_lidar_to_esp(const char *lidar_dev, int lidar_baud,
 	signal(SIGINT, on_sig);
 	signal(SIGTERM, on_sig);
 	std::atexit(show_cursor);
+	mc::core::Logger::instance().setConsoleEnabled(false);
 
 	LidarReceiver lidarReceiver(lidar_dev, lidar_baud);
 	Process process;

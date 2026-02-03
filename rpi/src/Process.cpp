@@ -255,10 +255,24 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 
 	static bool ui_initialized = false;
 	const size_t frame_width = 88;
+	auto visible_len = [](const std::string &s) {
+		size_t len = 0;
+		for (size_t i = 0; i < s.size(); ++i) {
+			if (s[i] == '\x1b' && i + 1 < s.size() && s[i + 1] == '[') {
+				i += 2;
+				while (i < s.size() && s[i] != 'm')
+					++i;
+				continue;
+			}
+			++len;
+		}
+		return len;
+	};
 	auto pad = [&](const std::string &s) {
-		if (s.size() >= frame_width - 2)
-			return s.substr(0, frame_width - 2);
-		return s + std::string(frame_width - 2 - s.size(), ' ');
+		const size_t vis = visible_len(s);
+		if (vis >= frame_width - 2)
+			return s;
+		return s + std::string(frame_width - 2 - vis, ' ');
 	};
 
 	const std::string title = " ROBO RACER TELEMETRY ";

@@ -44,6 +44,7 @@ public:
 	static Logger &instance();
 
 	void addSink(std::shared_ptr< ILogSink > sink);
+	void setConsoleEnabled(bool enabled);
 
 	void setLevel(LogLevel lv) { level_.store((uint8_t)lv); }
 	LogLevel level() const { return (LogLevel)level_.load(); }
@@ -64,6 +65,8 @@ private:
 	std::condition_variable cv_;
 	std::deque< LogRecord > q_;
 	std::vector< std::shared_ptr< ILogSink > > sinks_;
+	std::shared_ptr< ConsoleSink > console_sink_;
+	std::atomic< bool > console_enabled_{true};
 
 	std::thread th_;
 };

@@ -1,6 +1,7 @@
 #include <mc/core/Log.hpp>
 #include <mc/core/Time.hpp>
 
+#include <algorithm>
 #include <cstdio>
 #include <fstream>
 
@@ -43,7 +44,8 @@ Logger &Logger::instance() {
 }
 
 Logger::Logger() : th_([this] { worker_(); }) {
-	sinks_.push_back(std::make_shared< ConsoleSink >());
+	console_sink_ = std::make_shared< ConsoleSink >();
+	sinks_.push_back(console_sink_);
 }
 
 Logger::~Logger() { shutdown(); }
@@ -51,6 +53,22 @@ Logger::~Logger() { shutdown(); }
 void Logger::addSink(std::shared_ptr< ILogSink > sink) {
 	std::lock_guard< std::mutex > lk(mtx_);
 	sinks_.push_back(std::move(sink));
+}
+
+void Logger::setConsoleEnabled(bool enabled) {
+	std::lock_guard< std::mutex > lk(mtx_);
+	if (enabled) {
+		if (!console_enabled_) {
+			sinks_.push_back(console_sink_);
+			console_enabled_ = true;
+		}
+		return;
+	}
+	if (!console_enabled_)
+		return;
+	auto it = std::remove(sinks_.begin(), sinks_.end(), console_sink_);
+	sinks_.erase(it, sinks_.end());
+	console_enabled_ = false;
 }
 
 void Logger::log(LogLevel lv, std::string tag, std::string msg) {
