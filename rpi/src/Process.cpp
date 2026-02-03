@@ -231,18 +231,38 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		MC_LOGI("event", event.str());
 		last_override = override_reason;
 	}
-	std::ostringstream ui;
-	ui << std::fixed << std::setprecision(2);
-	ui << compassBar(max) << "  best:" << std::showpos << max
-	   << "deg  score:1.00  dist:" << (maxDistance / 1000.0f) << "m  top:";
+	std::ostringstream l1;
+	l1 << std::fixed << std::setprecision(2);
+	l1 << compassBar(max) << "  best:" << std::showpos << max
+	   << "deg  score:1.00  dist:" << (maxDistance / 1000.0f) << "m";
+
+	std::ostringstream l2;
+	l2 << "top:";
 	for (size_t i = 0; i < candidates.size() && i < 3; ++i) {
-		ui << " " << std::showpos << candidates[i].angle_deg << "("
+		l2 << " " << std::showpos << candidates[i].angle_deg << "("
 		   << candidates[i].score << ")";
 	}
-	ui << "  override: " << colorOverride(override_reason)
-	   << "  cmd: v=" << baseSpeed << "->" << limitedSpeed
+	l2 << "  override: " << colorOverride(override_reason);
+
+	std::ostringstream l3;
+	l3 << "cmd: v=" << baseSpeed << "->" << limitedSpeed
 	   << "  steer=" << roundedAngle << "deg";
-	std::cout << ui.str() << std::endl;
+
+	static bool ui_initialized = false;
+	if (!ui_initialized) {
+		std::cout << "\x1b[?25l"; // hide cursor
+		std::cout << l1.str() << "\n" << l2.str() << "\n" << l3.str();
+		std::cout << "\x1b[3A";
+		ui_initialized = true;
+	} else {
+		std::cout << "\x1b[3A";
+		std::cout << "\x1b[2K\r" << l1.str() << "\n";
+		std::cout << "\x1b[2K\r" << l2.str() << "\n";
+		std::cout << "\x1b[2K\r" << l3.str();
+		std::cout << "\x1b[2K\r";
+		std::cout << "\x1b[3A";
+	}
+	std::cout << std::flush;
 
 	return ProcResult(limitedSpeed, roundedAngle);
 }
