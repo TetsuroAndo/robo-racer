@@ -82,6 +82,15 @@ int glyphPriority(char c) {
 	return 1;
 }
 
+int intensityRank(char c) {
+	const char *levels = " .:-=+*#@!";
+	for (int i = 0; levels[i] != '\0'; ++i) {
+		if (levels[i] == c)
+			return i;
+	}
+	return 0;
+}
+
 std::string colorWrap(const std::string &s, Severity sev) {
 	switch (sev) {
 	case Severity::Safe:
@@ -587,7 +596,9 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		static const char *k = " .:-=+*#@";
 		const size_t kmax = 8;
 		for (size_t c = 0; c < TELEMETRY_COMPASS_BINS; ++c) {
-			int dist = s.lidar_dist_bins[c];
+			const int raw_dist = s.lidar_dist_bins[c];
+			const bool has_wall = (raw_dist >= 0 && raw_dist < max_dist);
+			int dist = raw_dist;
 			if (dist < 0)
 				dist = max_dist;
 			if (dist > max_dist)
@@ -599,6 +610,11 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 			if (fill_rows == 0)
 				continue;
 			const size_t start_row = rows - fill_rows;
+			if (has_wall) {
+				for (size_t r = 0; r < rows; ++r) {
+					grid[r][c] = '.';
+				}
+			}
 			for (size_t r = start_row; r < rows; ++r) {
 				const float t = (rows > 1)
 									? (float)(rows - 1 - r) / (float)(rows - 1)
@@ -629,7 +645,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 			if (col >= TELEMETRY_COMPASS_BINS)
 				continue;
 			const char in = grid[r][c];
-			if (glyphPriority(in) >= glyphPriority(row_line[col])) {
+			if (intensityRank(in) >= intensityRank(row_line[col])) {
 				row_line[col] = in;
 			}
 		}
@@ -662,12 +678,22 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		if (pos >= 0 && pos < (int)scale_w)
 			marker[(size_t)pos] = '|';
 	}
+	auto marker_prio = [](char c) {
+		switch (c) {
+		case 'A':
+			return 3;
+		case 'T':
+			return 2;
+		case 'B':
+			return 1;
+		default:
+			return 0;
+		}
+	};
 	auto place_marker = [&](float angle_deg, char c) {
 		const int pos = posFromAngle(angle_deg);
 		char &slot = marker[(size_t)pos];
-		if (slot == 'B' || slot == 'T' || slot == 'A' || slot == '*')
-			slot = '*';
-		else
+		if (marker_prio(c) >= marker_prio(slot))
 			slot = c;
 	};
 	place_marker(s.best_angle_deg, 'B');
