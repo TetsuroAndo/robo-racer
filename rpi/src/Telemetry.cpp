@@ -4,6 +4,7 @@
 #include "mc/core/Log.hpp"
 #include "mc/core/Time.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -15,31 +16,6 @@
 #include <string>
 
 namespace {
-
-std::string compassBar(float angle_deg) {
-	const int min_deg = -90;
-	const int max_deg = 90;
-	const int slots = 21; // odd so center aligns with 0 deg
-	std::string bar(slots, '.');
-	const int center = slots / 2;
-	bar[center] = '0';
-
-	float clamped = angle_deg;
-	if (clamped < min_deg)
-		clamped = min_deg;
-	if (clamped > max_deg)
-		clamped = max_deg;
-
-	const float ratio = (clamped - min_deg) / (float)(max_deg - min_deg);
-	int pos = (int)std::round(ratio * (slots - 1));
-	if (pos < 0)
-		pos = 0;
-	if (pos >= slots)
-		pos = slots - 1;
-	bar[pos] = '|';
-
-	return "[-90" + bar + "+90]";
-}
 
 std::string colorOverride(const std::string &ovr) {
 	if (ovr == "NONE")
@@ -88,7 +64,13 @@ std::string trimVisible(const std::string &s, size_t max_vis) {
 	return out;
 }
 
-enum class Severity { Safe, Warn, Crit };
+std::string fitVisible(const std::string &s, size_t width) {
+	std::string out = trimVisible(s, width);
+	const size_t vis = visibleLen(out);
+	if (vis < width)
+		out += std::string(width - vis, ' ');
+	return out;
+}
 
 std::string colorWrap(const std::string &s, Severity sev) {
 	switch (sev) {
@@ -296,7 +278,7 @@ void TelemetryEmitter::pushEvent_(std::string e) {
 	if (e.empty())
 		return;
 	events_.push_back(std::move(e));
-	const size_t max_events = 3;
+	const size_t max_events = 5;
 	if (events_.size() > max_events)
 		events_.erase(events_.begin(),
 					  events_.begin() + (events_.size() - max_events));
@@ -480,8 +462,12 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		dist_sev = Severity::Warn;
 	}
 
-	Severity map_sev =
-		(s.map_state == "UNKNOWN") ? Severity::Warn : Severity::Safe;
+	Severity map_sev = Severity::Safe;
+	if (s.map_state == "INVALID" || s.map_state == "ERROR")
+		map_sev = Severity::Crit;
+	else if (s.map_state == "UNKNOWN" || s.map_state == "PARTIAL" ||
+			 s.map_state == "BUILDING")
+		map_sev = Severity::Warn;
 	Severity loc_sev = Severity::Warn;
 	if (s.scan_age_ms) {
 		if (*s.scan_age_ms >= cfg::TELEMETRY_SCAN_AGE_CRIT_MS)
@@ -492,22 +478,43 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 			loc_sev = Severity::Safe;
 	}
 
-	Severity sens_sev = Severity::Safe;
+	float sens_ratio = -1.0f;
+	Severity sens_sev = Severity::Warn;
 	if (s.lidar_points && s.lidar_expected && *s.lidar_expected > 0) {
-		const float ratio = (float)*s.lidar_points / (float)*s.lidar_expected;
-		if (ratio < 0.5f)
+		sens_ratio = (float)*s.lidar_points / (float)*s.lidar_expected;
+		if (sens_ratio < 0.5f)
 			sens_sev = Severity::Crit;
-		else if (ratio < 0.8f)
+		else if (sens_ratio < 0.8f)
 			sens_sev = Severity::Warn;
+		else
+			sens_sev = Severity::Safe;
 	}
 
 	Severity ctrl_sev = Severity::Safe;
+	bool ttl_expired = false;
+	if (status_.valid && s.ttl_ms) {
+		const float ttl = (float)*s.ttl_ms;
+		if ((float)status_.age_ms >= ttl * cfg::TELEMETRY_TTL_CRIT_FACTOR) {
+			ctrl_sev = Severity::Crit;
+			ttl_expired = true;
+		} else if ((float)status_.age_ms >=
+				   ttl * cfg::TELEMETRY_TTL_WARN_FACTOR) {
+			ctrl_sev = Severity::Warn;
+			ttl_expired = true;
+		}
+	}
 	if (s.override_kind == "STOP")
 		ctrl_sev = Severity::Crit;
 	else if (s.override_kind != "NONE")
-		ctrl_sev = Severity::Warn;
-	else if (status_.valid && status_.faults != 0)
-		ctrl_sev = Severity::Warn;
+		ctrl_sev = std::max(ctrl_sev, Severity::Warn);
+	if (status_.valid && status_.faults != 0)
+		ctrl_sev = std::max(ctrl_sev, Severity::Warn);
+	if (s.planner_latency_ms &&
+		*s.planner_latency_ms >= cfg::TELEMETRY_LATENCY_CRIT_MS)
+		ctrl_sev = std::max(ctrl_sev, Severity::Crit);
+	else if (s.planner_latency_ms &&
+			 *s.planner_latency_ms >= cfg::TELEMETRY_LATENCY_WARN_MS)
+		ctrl_sev = std::max(ctrl_sev, Severity::Warn);
 
 	std::ostringstream l0;
 	l0 << "MAP " << colorWrap(s.map_state, map_sev) << " | MODE " << s.mode;
@@ -533,11 +540,75 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	if (hz > 0.0)
 		l1 << " hz=" << std::fixed << std::setprecision(1) << hz;
 
-	std::ostringstream l2;
-	l2 << std::fixed << std::setprecision(2);
-	l2 << compassBar(s.best_angle_deg) << "  best:" << std::showpos
-	   << s.best_angle_deg << "deg  score:" << s.best_score
-	   << "  dist:" << (s.best_dist_mm / 1000.0f) << "m";
+	const size_t frame_width = 110;
+	const size_t inner_width = frame_width - 2;
+	const size_t scale_w = 61;
+	const size_t compass_w = scale_w + 2;
+	const size_t compass_pad =
+		(inner_width > compass_w) ? (inner_width - compass_w) / 2 : 0;
+	const std::string compass_left(compass_pad, ' ');
+
+	auto posFromAngle = [&](float angle_deg) {
+		float clamped = angle_deg;
+		if (clamped < -90.0f)
+			clamped = -90.0f;
+		if (clamped > 90.0f)
+			clamped = 90.0f;
+		const float ratio = (clamped + 90.0f) / 180.0f;
+		const int pos = (int)std::lround(ratio * (float)(scale_w - 1));
+		return std::max(0, std::min((int)scale_w - 1, pos));
+	};
+
+	std::ostringstream comp_title;
+	comp_title << "COMPASS B=best S=steer  B:" << std::showpos << std::fixed
+			   << std::setprecision(1) << s.best_angle_deg
+			   << "deg  S:" << s.raw_steer_deg << "deg";
+	const std::string top_compass =
+		compass_left + "+" + fitVisible(comp_title.str(), scale_w) + "+";
+
+	std::string labels(scale_w, ' ');
+	auto place_label = [&](const std::string &txt, int pos) {
+		int start = pos - (int)txt.size() / 2;
+		if (start < 0)
+			start = 0;
+		if (start + (int)txt.size() > (int)scale_w)
+			start = (int)scale_w - (int)txt.size();
+		for (size_t i = 0; i < txt.size(); ++i) {
+			if (start + (int)i >= 0 && start + (int)i < (int)scale_w) {
+				labels[(size_t)(start + (int)i)] = txt[i];
+			}
+		}
+	};
+	const int ticks[] = {0, 10, 20, 30, 40, 50, 60};
+	const char *tick_labels[] = {"-90", "-60", "-30", "0", "+30", "+60", "+90"};
+	for (size_t i = 0; i < 7; ++i) {
+		place_label(tick_labels[i], ticks[i]);
+	}
+	const std::string line_labels =
+		compass_left + "|" + fitVisible(labels, scale_w) + "|";
+
+	std::string scale(scale_w, '-');
+	for (int pos : ticks) {
+		if (pos >= 0 && pos < (int)scale_w)
+			scale[(size_t)pos] = '|';
+	}
+	auto mark = [&](int pos, char c) {
+		if (pos < 0 || pos >= (int)scale_w)
+			return;
+		if (scale[(size_t)pos] == 'B' || scale[(size_t)pos] == 'S')
+			scale[(size_t)pos] = '*';
+		else
+			scale[(size_t)pos] = c;
+	};
+	const int best_pos = posFromAngle(s.best_angle_deg);
+	const int steer_pos = posFromAngle(s.raw_steer_deg);
+	mark(best_pos, 'B');
+	mark(steer_pos, 'S');
+	const std::string line_scale =
+		compass_left + "|" + fitVisible(scale, scale_w) + "|";
+
+	const std::string bot_compass =
+		compass_left + "+" + std::string(scale_w, '-') + "+";
 
 	std::ostringstream l3;
 	l3 << "top:";
@@ -612,6 +683,80 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		   << (metrics.mem_total_kb / 1024.0f) << "MB";
 	}
 
+	auto sev_name = [](Severity s) {
+		switch (s) {
+		case Severity::Safe:
+			return "SAFE";
+		case Severity::Warn:
+			return "WARN";
+		case Severity::Crit:
+			return "CRIT";
+		}
+		return "UNK";
+	};
+	auto sev_rank = [](Severity s) {
+		switch (s) {
+		case Severity::Safe:
+			return 0;
+		case Severity::Warn:
+			return 1;
+		case Severity::Crit:
+			return 2;
+		}
+		return 0;
+	};
+
+	const bool best_jump = s.best_delta_deg && std::fabs(*s.best_delta_deg) >=
+												   cfg::TELEMETRY_BEST_JUMP_DEG;
+	if (best_jump && !last_best_jump_) {
+		pushEvent_("BEST_JUMP " + std::to_string(*s.best_delta_deg));
+	}
+	last_best_jump_ = best_jump;
+
+	const bool slowdown = (s.speed_factor <= cfg::TELEMETRY_SLOWDOWN_SF);
+	if (slowdown && !last_slowdown_) {
+		pushEvent_("SLOWDOWN sf=" + std::to_string(s.speed_factor));
+	}
+	last_slowdown_ = slowdown;
+
+	if (s.scan_age_ms && sev_rank(loc_sev) > sev_rank(last_loc_sev_)) {
+		pushEvent_("SCAN_STALE " + std::to_string(*s.scan_age_ms) + "ms");
+	}
+	last_loc_sev_ = loc_sev;
+
+	if (sev_rank(map_sev) > sev_rank(last_map_sev_)) {
+		pushEvent_(std::string("MAP ") + sev_name(map_sev));
+	}
+	last_map_sev_ = map_sev;
+
+	if (sev_rank(sens_sev) > sev_rank(last_sens_sev_)) {
+		if (sens_ratio >= 0.0f) {
+			const int miss_pct = (int)std::round((1.0f - sens_ratio) * 100.0f);
+			pushEvent_("SENS_DROP miss=" + std::to_string(miss_pct) + "%");
+		} else {
+			pushEvent_("SENS_DROP");
+		}
+	}
+	last_sens_sev_ = sens_sev;
+
+	if (sev_rank(ctrl_sev) > sev_rank(last_ctrl_sev_)) {
+		pushEvent_(std::string("CTRL ") + sev_name(ctrl_sev));
+	}
+	last_ctrl_sev_ = ctrl_sev;
+
+	if (ttl_expired && !last_ttl_expired_) {
+		pushEvent_("TTL_EXPIRED age=" + std::to_string(status_.age_ms) + "ms");
+	}
+	last_ttl_expired_ = ttl_expired;
+
+	const bool faults_now = status_.valid && status_.faults != 0;
+	if (faults_now && !last_faults_) {
+		std::ostringstream f;
+		f << "FAULTS 0x" << std::hex << status_.faults << std::dec;
+		pushEvent_(f.str());
+	}
+	last_faults_ = faults_now;
+
 	std::ostringstream l9;
 	if (s.lidar_points && s.lidar_expected) {
 		const float miss = 100.0f *
@@ -649,7 +794,6 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		l10 << "events: NA";
 	}
 
-	const size_t frame_width = 110;
 	auto pad = [&](const std::string &sline) {
 		const std::string trimmed = trimVisible(sline, frame_width - 2);
 		const size_t vis = visibleLen(trimmed);
@@ -671,13 +815,16 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		return "|" + pad(sline) + "|";
 	};
 
-	const int frame_lines = 13; // top + 11 lines + bottom
+	const int frame_lines = 16; // top + 14 lines + bottom
 	if (!ui_initialized_) {
 		std::cout << "\x1b[?25l"; // hide cursor
 		std::cout << top << "\n"
 				  << line(l0.str()) << "\n"
 				  << line(l1.str()) << "\n"
-				  << line(l2.str()) << "\n"
+				  << line(top_compass) << "\n"
+				  << line(line_labels) << "\n"
+				  << line(line_scale) << "\n"
+				  << line(bot_compass) << "\n"
 				  << line(l3.str()) << "\n"
 				  << line(l4.str()) << "\n"
 				  << line(l5.str()) << "\n"
@@ -694,7 +841,10 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		std::cout << "\x1b[2K\r" << top << "\n";
 		std::cout << "\x1b[2K\r" << line(l0.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l1.str()) << "\n";
-		std::cout << "\x1b[2K\r" << line(l2.str()) << "\n";
+		std::cout << "\x1b[2K\r" << line(top_compass) << "\n";
+		std::cout << "\x1b[2K\r" << line(line_labels) << "\n";
+		std::cout << "\x1b[2K\r" << line(line_scale) << "\n";
+		std::cout << "\x1b[2K\r" << line(bot_compass) << "\n";
 		std::cout << "\x1b[2K\r" << line(l3.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l4.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l5.str()) << "\n";

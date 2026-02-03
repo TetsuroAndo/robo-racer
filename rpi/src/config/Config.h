@@ -108,6 +108,12 @@ static constexpr size_t TELEMETRY_BAR_WIDTH = 12;
 static constexpr size_t TELEMETRY_SPARK_LEN = 20;
 static constexpr uint32_t TELEMETRY_SCAN_AGE_WARN_MS = 100;
 static constexpr uint32_t TELEMETRY_SCAN_AGE_CRIT_MS = 200;
+static constexpr float TELEMETRY_BEST_JUMP_DEG = 15.0f;
+static constexpr float TELEMETRY_SLOWDOWN_SF = 0.5f;
+static constexpr uint32_t TELEMETRY_LATENCY_WARN_MS = 20;
+static constexpr uint32_t TELEMETRY_LATENCY_CRIT_MS = 50;
+static constexpr float TELEMETRY_TTL_WARN_FACTOR = 1.0f;
+static constexpr float TELEMETRY_TTL_CRIT_FACTOR = 2.0f;
 
 // clang-format on
 } // namespace cfg

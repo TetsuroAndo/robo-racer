@@ -16,6 +16,8 @@ struct TelemetryCandidate {
 	float score{};
 };
 
+enum class Severity : uint8_t { Safe = 0, Warn = 1, Crit = 2 };
+
 static constexpr size_t TELEMETRY_HEAT_BINS = 37;
 
 struct TelemetrySample {
@@ -142,4 +144,12 @@ private:
 	std::vector< std::string > events_;
 	bool has_last_delta_ = false;
 	float last_delta_ = 0.0f;
+	Severity last_loc_sev_ = Severity::Safe;
+	Severity last_sens_sev_ = Severity::Safe;
+	Severity last_ctrl_sev_ = Severity::Safe;
+	Severity last_map_sev_ = Severity::Safe;
+	bool last_best_jump_ = false;
+	bool last_slowdown_ = false;
+	bool last_ttl_expired_ = false;
+	bool last_faults_ = false;
 };
