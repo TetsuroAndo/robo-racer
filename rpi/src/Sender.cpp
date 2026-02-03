@@ -1,10 +1,11 @@
 #include "Sender.h"
+#include "mc/core/Log.hpp"
 
 #include <array>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
+#include <sstream>
 #include <sys/socket.h>
 #include <time.h>
 
@@ -69,7 +70,7 @@ void Sender::send(int speed, int angle) {
 		out, sizeof(out), out_len, mc::proto::Type::DRIVE, 0, seq,
 		reinterpret_cast< const uint8_t * >(&payload), sizeof(payload));
 	if (!ok || ::send(ipc_.fd(), out, out_len, MSG_NOSIGNAL) <= 0) {
-		std::cerr << "DRIVE send failed\n";
+		MC_LOGW("sender", "DRIVE send failed");
 	}
 }
 
@@ -86,7 +87,7 @@ void Sender::sendHeartbeatIfDue() {
 	const bool ok = mc::proto::PacketWriter::build(
 		out, sizeof(out), out_len, mc::proto::Type::PING, 0, seq, nullptr, 0);
 	if (!ok || ::send(ipc_.fd(), out, out_len, MSG_NOSIGNAL) <= 0) {
-		std::cerr << "PING send failed\n";
+		MC_LOGW("sender", "PING send failed");
 	}
 }
 
@@ -99,7 +100,7 @@ void Sender::sendAutoMode(bool enable) {
 		out, sizeof(out), out_len, mc::proto::Type::MODE_SET,
 		mc::proto::FLAG_ACK_REQ, seq, &mode, 1);
 	if (!ok || ::send(ipc_.fd(), out, out_len, MSG_NOSIGNAL) <= 0) {
-		std::cerr << "AUTO_MODE send failed\n";
+		MC_LOGW("sender", "AUTO_MODE send failed");
 		return;
 	}
 	trackPending(seq, out, (uint16_t)out_len);
@@ -115,7 +116,7 @@ void Sender::sendKill() {
 		out, sizeof(out), out_len, mc::proto::Type::KILL,
 		mc::proto::FLAG_ACK_REQ, seq, payload, sizeof(payload));
 	if (!ok || ::send(ipc_.fd(), out, out_len, MSG_NOSIGNAL) <= 0) {
-		std::cerr << "KILL send failed\n";
+		MC_LOGW("sender", "KILL send failed");
 		return;
 	}
 	trackPending(seq, out, (uint16_t)out_len);
@@ -141,7 +142,8 @@ void Sender::poll() {
 
 void Sender::_init(const char *sock_path) {
 	if (!ipc_.connect(sock_path)) {
-		std::cerr << "Failed to connect seriald socket: " << sock_path << "\n";
+		MC_LOGE("sender",
+				std::string("Failed to connect seriald socket: ") + sock_path);
 		exit(1);
 	}
 
@@ -181,10 +183,12 @@ void Sender::handleStatus(const mc::proto::StatusPayload &payload) {
 	const int16_t steer =
 		(int16_t)mc::proto::from_le16((uint16_t)payload.steer_cdeg_le);
 	const uint16_t age_ms = mc::proto::from_le16(payload.age_ms_le);
-	std::cerr << "STATUS seq=" << (unsigned)seq
-			  << " auto=" << (unsigned)auto_active << " speed_mm_s=" << speed
-			  << " steer_cdeg=" << steer << " age_ms=" << age_ms << " faults=0x"
-			  << std::hex << faults << std::dec << "\n";
+	std::ostringstream ss;
+	ss << "STATUS seq=" << (unsigned)seq << " auto=" << (unsigned)auto_active
+	   << " speed_mm_s=" << speed << " steer_cdeg=" << steer
+	   << " age_ms=" << age_ms << " faults=0x" << std::hex << faults
+	   << std::dec;
+	MC_LOGI("status", ss.str());
 }
 
 void Sender::handleAck(uint16_t seq) {
@@ -216,12 +220,13 @@ void Sender::checkPending() {
 			continue;
 		}
 		if (p.retries >= cfg::ACK_MAX_RETRY) {
-			std::cerr << "ACK timeout seq=" << it->first << "\n";
+			MC_LOGW("sender", "ACK timeout seq=" + std::to_string(it->first));
 			it = pending_.erase(it);
 			continue;
 		}
 		if (::send(ipc_.fd(), p.data.data(), p.len, MSG_NOSIGNAL) <= 0) {
-			std::cerr << "ACK retry send failed seq=" << it->first << "\n";
+			MC_LOGW("sender",
+					"ACK retry send failed seq=" + std::to_string(it->first));
 		}
 		p.retries = (uint8_t)(p.retries + 1);
 		p.deadline_ms = now + cfg::ACK_TIMEOUT_MS;
@@ -236,7 +241,8 @@ void Sender::checkStatusLiveness() {
 	if ((uint32_t)(now - last_status_ms_) > cfg::STATUS_DEAD_MS) {
 		if (!status_stale_) {
 			status_stale_ = true;
-			std::cerr << "STATUS stale (> " << cfg::STATUS_DEAD_MS << " ms)\n";
+			MC_LOGW("status", "STATUS stale (> " +
+								  std::to_string(cfg::STATUS_DEAD_MS) + " ms)");
 		}
 	}
 }

@@ -13,6 +13,7 @@
 - [完了] TTY 固定UI（フレーム化/追加情報/終了時カーソル復帰）
 - [完了] UIとログの混線回避（console sink 無効化）
 - [完了] テレメトリ出力のモジュール分離（TelemetryEmitter）
+- [完了] rpi/src の標準出力/標準エラーを Logger へ移行（Sender/LidarReceiver/main）
 
 ## メモ
 - 参照資料: `docs/observability/logging_v1.md`

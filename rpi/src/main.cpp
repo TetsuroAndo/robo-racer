@@ -16,9 +16,9 @@
 #include <vector>
 
 static volatile sig_atomic_t g_stop = 0;
+static volatile sig_atomic_t g_last_sig = 0;
 static void on_sig(int sig) {
-	std::cout << "\nSignal " << sig << " received, shutting down..."
-			  << std::endl;
+	g_last_sig = sig;
 	g_stop = 1;
 }
 
@@ -40,7 +40,7 @@ static void ensure_dir_for(const std::string &path) {
 	const int rc = mkdir(dir.c_str(), 0755);
 	if (rc == 0 || errno == EEXIST)
 		return;
-	std::cerr << "WARN: mkdir failed for log dir: " << dir << std::endl;
+	MC_LOGW("main", "mkdir failed for log dir: " + dir);
 }
 
 int main(int argc, char **argv) {
@@ -88,8 +88,13 @@ int main(int argc, char **argv) {
 	Process process(&telemetry);
 	Sender sender(seriald_sock);
 
+	uint64_t last_wait_log_us = 0;
 	while (!g_stop && !lidarReceiver.connect()) {
-		std::cerr << "Waiting for lidar_received shared memory..." << std::endl;
+		const uint64_t now_us = mc::core::Time::us();
+		if (now_us - last_wait_log_us > 1000 * 1000) {
+			MC_LOGW("main", "Waiting for lidar_received shared memory...");
+			last_wait_log_us = now_us;
+		}
 		usleep(200 * 1000);
 	}
 	if (g_stop)
@@ -120,7 +125,11 @@ int main(int argc, char **argv) {
 	}
 
 	// 正常なシャットダウン
-	std::cout << "Main thread: shutdown complete" << std::endl;
+	if (g_last_sig != 0) {
+		MC_LOGI("main", "Signal " + std::to_string((int)g_last_sig) +
+							" received, shutting down...");
+	}
+	MC_LOGI("main", "shutdown complete");
 	telemetry.shutdownUi();
 	logger.shutdown();
 
