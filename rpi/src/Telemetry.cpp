@@ -551,11 +551,8 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		l1 << " hz=" << std::fixed << std::setprecision(1) << hz;
 
 	const size_t frame_width = 110;
-	const size_t inner_width = frame_width - 2;
 	const size_t scale_w = TELEMETRY_COMPASS_BINS;
-	const size_t compass_w = scale_w + 2;
-	const size_t compass_pad =
-		(inner_width > compass_w) ? (inner_width - compass_w) / 2 : 0;
+	const size_t compass_pad = 0;
 	const std::string compass_left(compass_pad, ' ');
 
 	auto posFromAngle = [&](float angle_deg) {
@@ -574,7 +571,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	comp_title << "COMPASS Fan (max " << std::fixed << std::setprecision(1)
 			   << (max_dist / 1000.0f)
 			   << "m, near<=" << cfg::TELEMETRY_NEAR_EMPH_MM
-			   << "mm) B=best S=steer";
+			   << "mm) B=best T=target A=applied";
 	const std::string top_compass =
 		compass_left + "+" + fitVisible(comp_title.str(), scale_w) + "+";
 
@@ -614,27 +611,6 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 			}
 		}
 	}
-
-	auto mark_grid = [&](float angle_deg, char c) {
-		const int col = posFromAngle(angle_deg);
-		int dist = s.lidar_dist_bins[(size_t)col];
-		if (dist < 0)
-			dist = max_dist;
-		if (dist > max_dist)
-			dist = max_dist;
-		const float ratio = (max_dist > 0) ? (float)dist / max_dist : 0.0f;
-		size_t fill_rows = (size_t)std::ceil(ratio * (float)rows);
-		if (fill_rows > rows)
-			fill_rows = rows;
-		size_t row = (fill_rows == 0) ? (rows - 1) : (rows - fill_rows);
-		char &slot = grid[row][(size_t)col];
-		if (slot == 'B' || slot == 'S')
-			slot = '*';
-		else
-			slot = c;
-	};
-	mark_grid(s.best_angle_deg, 'B');
-	mark_grid(s.raw_steer_deg, 'S');
 
 	for (size_t r = 0; r < rows; ++r) {
 		const float t =
@@ -681,8 +657,57 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	const std::string line_labels =
 		compass_left + "|" + fitVisible(labels, scale_w) + "|";
 
+	std::string marker(scale_w, '-');
+	for (int pos : ticks) {
+		if (pos >= 0 && pos < (int)scale_w)
+			marker[(size_t)pos] = '|';
+	}
+	auto place_marker = [&](float angle_deg, char c) {
+		const int pos = posFromAngle(angle_deg);
+		char &slot = marker[(size_t)pos];
+		if (slot == 'B' || slot == 'T' || slot == 'A' || slot == '*')
+			slot = '*';
+		else
+			slot = c;
+	};
+	place_marker(s.best_angle_deg, 'B');
+	place_marker(s.raw_steer_deg, 'T');
+	place_marker((float)s.steer_deg, 'A');
+	std::string marker_colored;
+	marker_colored.reserve(marker.size() * 4);
+	for (char c : marker) {
+		switch (c) {
+		case 'B':
+			marker_colored += "\x1b[32mB\x1b[0m";
+			break;
+		case 'T':
+			marker_colored += "\x1b[33mT\x1b[0m";
+			break;
+		case 'A':
+			marker_colored += "\x1b[36mA\x1b[0m";
+			break;
+		case '*':
+			marker_colored += "\x1b[31m*\x1b[0m";
+			break;
+		case '|':
+			marker_colored += "\x1b[90m|\x1b[0m";
+			break;
+		default:
+			marker_colored.push_back(c);
+			break;
+		}
+	}
+	const std::string line_markers =
+		compass_left + "|" + fitVisible(marker_colored, scale_w) + "|";
+
 	const std::string bot_compass =
 		compass_left + "+" + std::string(scale_w, '-') + "+";
+
+	std::ostringstream l2;
+	l2 << std::fixed << std::setprecision(1)
+	   << "angles \x1b[32mB\x1b[0m=" << std::showpos << s.best_angle_deg
+	   << "deg  \x1b[33mT\x1b[0m=" << s.raw_steer_deg
+	   << "deg  \x1b[36mA\x1b[0m=" << (float)s.steer_deg << "deg";
 
 	std::ostringstream l3;
 	l3 << "top:";
@@ -889,7 +914,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		return "|" + pad(sline) + "|";
 	};
 
-	const int frame_lines = 15 + (int)fan_rows.size();
+	const int frame_lines = 17 + (int)fan_rows.size();
 	if (!ui_initialized_) {
 		std::cout << "\x1b[?25l"; // hide cursor
 		std::cout << top << "\n"
@@ -899,8 +924,10 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		for (const auto &row : fan_rows) {
 			std::cout << line(compass_left + "|" + row + "|") << "\n";
 		}
-		std::cout << line(line_labels) << "\n"
+		std::cout << line(line_markers) << "\n"
+				  << line(line_labels) << "\n"
 				  << line(bot_compass) << "\n"
+				  << line(l2.str()) << "\n"
 				  << line(l3.str()) << "\n"
 				  << line(l4.str()) << "\n"
 				  << line(l5.str()) << "\n"
@@ -922,8 +949,10 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 			std::cout << "\x1b[2K\r" << line(compass_left + "|" + row + "|")
 					  << "\n";
 		}
+		std::cout << "\x1b[2K\r" << line(line_markers) << "\n";
 		std::cout << "\x1b[2K\r" << line(line_labels) << "\n";
 		std::cout << "\x1b[2K\r" << line(bot_compass) << "\n";
+		std::cout << "\x1b[2K\r" << line(l2.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l3.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l4.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l5.str()) << "\n";
