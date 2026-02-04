@@ -1,4 +1,5 @@
 #include "LidarReceiver.h"
+#include "mc/core/Log.hpp"
 
 #include "config/Config.h"
 
@@ -9,10 +10,8 @@
 #include <cerrno>
 #include <cmath>
 #include <csignal>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
 #include <string>
 #include <unistd.h>
 
@@ -120,7 +119,7 @@ void LidarReceiver::startReceivingThread() {
 	}
 	_isReceiving = true;
 	_receivingThread = std::thread(&LidarReceiver::_receivingThreadLoop, this);
-	std::cout << "LiDAR receiving thread started" << std::endl;
+	MC_LOGI("lidar", "receiving thread started");
 }
 
 void LidarReceiver::stopReceivingThread() {
@@ -131,7 +130,7 @@ void LidarReceiver::stopReceivingThread() {
 	if (_receivingThread.joinable()) {
 		_receivingThread.join();
 	}
-	std::cout << "LiDAR receiving thread stopped" << std::endl;
+	MC_LOGI("lidar", "receiving thread stopped");
 }
 
 bool LidarReceiver::getLatestData(std::vector< LidarData > &out) {
@@ -170,8 +169,9 @@ void LidarReceiver::_init(const char *lidar_dev_c, int lidar_baud) {
 		sl::createSerialPortChannel(std::string(lidar_dev_c), lidar_baud);
 
 	if (!channelRes) {
-		std::fprintf(stderr, "Failed to create serial channel (%s, %d)\n",
-					 lidar_dev_c, lidar_baud);
+		MC_LOGF("lidar", std::string("Failed to create serial channel (") +
+							 lidar_dev_c + ", " + std::to_string(lidar_baud) +
+							 ")");
 		exit(1);
 	}
 	_channel = channelRes.value;
@@ -179,7 +179,7 @@ void LidarReceiver::_init(const char *lidar_dev_c, int lidar_baud) {
 	// --- Driver 作成 ---
 	auto lidarRes = sl::createLidarDriver();
 	if (!lidarRes) {
-		std::fprintf(stderr, "Failed to create lidar driver\n");
+		MC_LOGF("lidar", "Failed to create lidar driver");
 		exit(1);
 	}
 	_lidar = lidarRes.value;
@@ -187,8 +187,8 @@ void LidarReceiver::_init(const char *lidar_dev_c, int lidar_baud) {
 	// connect
 	sl_result res = _lidar->connect(_channel);
 	if (!SL_IS_OK(res)) {
-		std::fprintf(stderr, "Failed to connect to LIDAR: %08x\n",
-					 (unsigned int)res);
+		MC_LOGF("lidar", "Failed to connect to LIDAR: " +
+							 std::to_string((unsigned int)res));
 		exit(1);
 	}
 
@@ -196,32 +196,36 @@ void LidarReceiver::_init(const char *lidar_dev_c, int lidar_baud) {
 	sl_lidar_response_device_info_t devinfo;
 	res = _lidar->getDeviceInfo(devinfo);
 	if (!SL_IS_OK(res)) {
-		std::fprintf(stderr, "getDeviceInfo failed: %08x\n", (unsigned int)res);
+		MC_LOGF("lidar",
+				"getDeviceInfo failed: " + std::to_string((unsigned int)res));
 		exit(1);
 	}
 
 	sl_lidar_response_device_health_t health;
 	res = _lidar->getHealth(health);
 	if (!SL_IS_OK(res) || health.status == SL_LIDAR_STATUS_ERROR) {
-		std::fprintf(stderr, "getHealth failed or unhealthy: %08x status=%u\n",
-					 (unsigned int)res, (unsigned int)health.status);
+		MC_LOGF("lidar", "getHealth failed or unhealthy: " +
+							 std::to_string((unsigned int)res) + " status=" +
+							 std::to_string((unsigned int)health.status));
 		exit(1);
 	}
 
 	// モータ回転（サンプルと同じく開始前に回す）
 	res = _lidar->setMotorSpeed();
 	if (!SL_IS_OK(res)) {
-		std::fprintf(stderr, "setMotorSpeed failed: %08x\n", (unsigned int)res);
+		MC_LOGF("lidar",
+				"setMotorSpeed failed: " + std::to_string((unsigned int)res));
 		exit(1);
 	}
 
 	// スキャン開始
 	sl::LidarScanMode scanMode;
 	res = _lidar->startScan(false, true, 0, &scanMode);
-	std::cerr << "LIDAR startScan result: " << res
-			  << ", mode=" << scanMode.scan_mode << std::endl;
+	MC_LOGI("lidar", "startScan result=" + std::to_string((unsigned int)res) +
+						 " mode=" + std::string(scanMode.scan_mode));
 	if (!SL_IS_OK(res)) {
-		std::fprintf(stderr, "startScan failed: %08x\n", (unsigned int)res);
+		MC_LOGF("lidar",
+				"startScan failed: " + std::to_string((unsigned int)res));
 		exit(1);
 	}
 }
