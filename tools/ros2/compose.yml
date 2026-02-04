@@ -8,7 +8,7 @@ services:
     entrypoint: ["/usr/local/bin/ros2_entrypoint.sh"]
     volumes:
       - ../..:/ws
-      - /tmp/roboracer:/run/roboracer
+      - /tmp/roboracer:/tmp/roboracer
       - /dev/shm:/dev/shm
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     environment:
@@ -18,6 +18,8 @@ services:
       - LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-0}
       - QT_XCB_GL_INTEGRATION=${QT_XCB_GL_INTEGRATION:-}
       - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/runtime-root}
+      - AMENT_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
+      - COLCON_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
     stdin_open: true
     tty: true
 
@@ -30,7 +32,7 @@ services:
     entrypoint: ["/usr/local/bin/ros2_entrypoint.sh"]
     volumes:
       - ../..:/ws
-      - /tmp/roboracer:/run/roboracer
+      - /tmp/roboracer:/tmp/roboracer
       - /dev/shm:/dev/shm
     ports:
       - "127.0.0.1:6080:6080"
@@ -38,4 +40,6 @@ services:
       - NOVNC_PORT=6080
       - NOVNC_RESOLUTION=1280x800x24
       - NOVNC_BIND=0.0.0.0
+      - AMENT_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
+      - COLCON_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
     command: ["bash", "/ws/tools/ros2/scripts/novnc_start.sh", "rviz2", "-d", "/ws/tools/ros2/rviz/default.rviz"]

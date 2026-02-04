@@ -97,11 +97,13 @@ class BridgeNode(Node):
         self.declare_parameter("demo_log", False)
         self.declare_parameter("demo_period_sec", 1.0)
         self.declare_parameter(
-            "telemetry_sock", "/run/roboracer/seriald.telemetry.sock"
+            "telemetry_sock", "/tmp/roboracer/seriald.telemetry.sock"
         )
         self.declare_parameter(
-            "telemetry_compat_sock", "/tmp/roboracer/seriald.telemetry.sock"
+            "telemetry_compat_sock", "/run/roboracer/seriald.telemetry.sock"
         )
+        self.declare_parameter("telemetry_tcp_host", "")
+        self.declare_parameter("telemetry_tcp_port", 0)
 
         qos_reliable = QoSProfile(depth=10)
         qos_reliable.reliability = QoSReliabilityPolicy.RELIABLE
@@ -141,7 +143,25 @@ class BridgeNode(Node):
         ts_ms = int(now_ns / 1_000_000)
         self._log_pub.publish(2, msg, ts_ms)
 
-    def _connect_telemetry(self) -> socket.socket | None:
+    def _connect_telemetry(self) -> tuple[socket.socket | None, bool]:
+        tcp_host = str(self.get_parameter("telemetry_tcp_host").value)
+        tcp_port = int(self.get_parameter("telemetry_tcp_port").value)
+        if tcp_host and tcp_port > 0:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1.0)
+                sock.connect((tcp_host, tcp_port))
+                self.get_logger().info(
+                    f"connected telemetry tcp: {tcp_host}:{tcp_port}"
+                )
+                return sock, True
+            except OSError:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+                return None, False
+
         primary = str(self.get_parameter("telemetry_sock").value)
         compat = str(self.get_parameter("telemetry_compat_sock").value)
         for path in (primary, compat):
@@ -150,20 +170,21 @@ class BridgeNode(Node):
                 sock.settimeout(0.5)
                 sock.connect(path)
                 self.get_logger().info(f"connected telemetry socket: {path}")
-                return sock
+                return sock, False
             except OSError:
                 try:
                     sock.close()
                 except Exception:
                     pass
-        return None
+        return None, False
 
     def _telemetry_loop(self) -> None:
         while not self._stop_evt.is_set():
-            sock = self._connect_telemetry()
+            sock, is_stream = self._connect_telemetry()
             if sock is None:
                 time.sleep(0.5)
                 continue
+            buf = bytearray()
             try:
                 while not self._stop_evt.is_set():
                     try:
@@ -174,51 +195,65 @@ class BridgeNode(Node):
                         break
                     if not data:
                         break
-                    pkt, err = decode_packet(data)
-                    if pkt is None:
-                        self._warn_decode(f"decode_error: {err}", err == "crc")
-                        continue
-                    ptype, _flags, _seq, payload = pkt
-                    now_ns = self.get_clock().now().nanoseconds
-                    if ptype == TYPE_STATUS:
-                        dec = decode_status(payload)
-                        if dec is None:
-                            self._warn_decode("decode_error: status_len", False)
-                            continue
-                        msg = Status()
-                        (
-                            msg.seq_applied,
-                            msg.auto_active,
-                            msg.faults,
-                            msg.speed_mm_s,
-                            msg.steer_cdeg,
-                            msg.age_ms,
-                        ) = dec
-                        self._status_pub.publish(msg)
-                    elif ptype == TYPE_DRIVE:
-                        dec = decode_drive(payload)
-                        if dec is None:
-                            self._warn_decode("decode_error: drive_len", False)
-                            continue
-                        msg = DriveCmd()
-                        msg.steer_cdeg, msg.speed_mm_s, msg.ttl_ms, msg.dist_mm = dec
-                        self._drive_pub.publish(msg)
-                    elif ptype == TYPE_HILS_STATE:
-                        dec = decode_hils_state(payload)
-                        if dec is None:
-                            self._warn_decode("decode_error: hils_len", False)
-                            continue
-                        msg = HilsState()
-                        msg.timestamp, msg.throttle_raw, msg.steer_cdeg, msg.flags = dec
-                        self._hils_pub.publish(msg)
-                    elif ptype == TYPE_LOG:
-                        dec = decode_log(payload)
-                        if dec is None:
-                            self._warn_decode("decode_error: log_len", False)
-                            continue
-                        level, text = dec
-                        ts_ms = int(now_ns / 1_000_000)
-                        self._log_pub.publish(level, text, ts_ms)
+                    frames = []
+                    if is_stream:
+                        buf.extend(data)
+                        while True:
+                            try:
+                                end = buf.index(0)
+                            except ValueError:
+                                break
+                            frame = bytes(buf[: end + 1])
+                            del buf[: end + 1]
+                            frames.append(frame)
+                    else:
+                        frames.append(data)
+                        for frame in frames:
+                            pkt, err = decode_packet(frame)
+                            if pkt is None:
+                                self._warn_decode(f"decode_error: {err}", err == "crc")
+                                continue
+                            ptype, _flags, _seq, payload = pkt
+                            now_ns = self.get_clock().now().nanoseconds
+                            if ptype == TYPE_STATUS:
+                                dec = decode_status(payload)
+                            if dec is None:
+                                self._warn_decode("decode_error: status_len", False)
+                                continue
+                            msg = Status()
+                            (
+                                msg.seq_applied,
+                                msg.auto_active,
+                                msg.faults,
+                                msg.speed_mm_s,
+                                msg.steer_cdeg,
+                                msg.age_ms,
+                            ) = dec
+                            self._status_pub.publish(msg)
+                        elif ptype == TYPE_DRIVE:
+                            dec = decode_drive(payload)
+                            if dec is None:
+                                self._warn_decode("decode_error: drive_len", False)
+                                continue
+                            msg = DriveCmd()
+                            msg.steer_cdeg, msg.speed_mm_s, msg.ttl_ms, msg.dist_mm = dec
+                            self._drive_pub.publish(msg)
+                        elif ptype == TYPE_HILS_STATE:
+                            dec = decode_hils_state(payload)
+                            if dec is None:
+                                self._warn_decode("decode_error: hils_len", False)
+                                continue
+                            msg = HilsState()
+                            msg.timestamp, msg.throttle_raw, msg.steer_cdeg, msg.flags = dec
+                            self._hils_pub.publish(msg)
+                            elif ptype == TYPE_LOG:
+                                dec = decode_log(payload)
+                                if dec is None:
+                                    self._warn_decode("decode_error: log_len", False)
+                                    continue
+                                level, text = dec
+                                ts_ms = int(now_ns / 1_000_000)
+                                self._log_pub.publish(level, text, ts_ms)
             finally:
                 try:
                     sock.close()

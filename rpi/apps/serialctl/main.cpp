@@ -12,7 +12,7 @@
 
 static void usage() {
 	std::cerr
-		<< "serialctl --uds /run/roboracer/seriald.sock [--log path] "
+		<< "serialctl --uds /tmp/roboracer/seriald.sock [--log path] "
 		   "[drive|kill|mode] ...\n"
 		   "  drive --seq N --steer_cdeg X --speed_mm_s V --ttl_ms T --dist_mm "
 		   "D\n"
@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
 	using mc::core::Logger;
 	Logger::instance().setLevel(mc::core::LogLevel::Info);
 
-	std::string uds = "/run/roboracer/seriald.sock";
+	std::string uds = "/tmp/roboracer/seriald.sock";
 	std::string log_path = serialctl_cfg::DEFAULT_LOG;
 	std::string cmd;
 

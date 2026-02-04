@@ -48,17 +48,16 @@
 
 **最小仕様**
 - **Control Socket（送信権あり）**
-  - `/run/roboracer/seriald.sock`（推奨）
+  - `/tmp/roboracer/seriald.sock`
   - ルール：**送信者は1プロセスのみ**（= racerd）
   - 例外：`serialctl` はデバッグ時のみ
 - **Telemetry Socket（観測専用）**
-  - `/run/roboracer/seriald.telemetry.sock`
+  - `/tmp/roboracer/seriald.telemetry.sock`
   - ルール：`send()` したら **即切断**（または無視＋WARN）
   - UART受信フレームを **telemetryへbroadcast**
 
 **注意**
-- 現状デフォルトは `/tmp/roboracer/seriald.sock`（`rpi/apps/seriald/config/Config.h`）。
-  本仕様では `/run/roboracer` への移行を前提に、**移行計画を明記**する。
+- `/tmp/roboracer` を正とする。
 
 **作業**
 - `docs/contracts/ipc_uds.md` を作成
@@ -107,8 +106,8 @@
 **タスク**
 1. `seriald` に `telemetry_ipc` を追加
 2. listen path：
-   - control: `/run/roboracer/seriald.sock`
-   - telemetry: `/run/roboracer/seriald.telemetry.sock`
+   - control: `/tmp/roboracer/seriald.sock`
+   - telemetry: `/tmp/roboracer/seriald.telemetry.sock`
 3. UART→UDS broadcast を
    - control clients にも流す（既存維持）
    - telemetry clients にも流す（新規）
