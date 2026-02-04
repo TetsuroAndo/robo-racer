@@ -6,7 +6,7 @@
 
 ## ステータス
 - 進行中: 0
-- 完了: 4
+- 完了: 5
 - 再検討: 1
 
 ## タスク一覧
@@ -14,6 +14,7 @@
 - [x] `playground/tsd20_bridge`に実装を追加
 - [x] `playground/tsd20_bridge/platformio.ini`を追加
 - [x] I2Cスキャン/Change IICのフォールバック追加
+- [x] TSD20共用ピンを`GPIO32/33`に変更、RPi UARTを`GPIO16/17`へ移動
 - [ ] PlatformIOでビルド確認（`~/.platformio`の権限不足で失敗）
 
 ## メモ

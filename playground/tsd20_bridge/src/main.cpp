@@ -5,12 +5,12 @@
 // Pin Assign (EDIT HERE)
 // =======================
 // TSD20 shared pins (same wires used for UART switching and I2C operation)
-static const int PIN_TSD20_SDA = 22; // I2C SDA after switch
-static const int PIN_TSD20_SCL = 21; // I2C SCL after switch
+static const int PIN_TSD20_SDA = 32; // I2C SDA after switch
+static const int PIN_TSD20_SCL = 33; // I2C SCL after switch
 
 // Raspberry Pi <-> ESP32 UART (control/log)
-static const int PIN_RPI_UART_RX = 32; // ESP32 RX (from RPi TX)
-static const int PIN_RPI_UART_TX = 33; // ESP32 TX (to   RPi RX)
+static const int PIN_RPI_UART_RX = 16; // ESP32 RX (from RPi TX)
+static const int PIN_RPI_UART_TX = 17; // ESP32 TX (to   RPi RX)
 
 // =======================
 // Config
@@ -86,17 +86,17 @@ static bool tsd20ReadDistanceMm(uint16_t &mm) {
 // =======================
 // UART -> I2C switching (Change IIC command)
 // =======================
-static bool tsd20SendChangeIICAtBaud(uint32_t baud, bool &sawResponse) {
+static bool tsd20SendChangeIICAtBaud(uint32_t baud, int rxPin, int txPin,
+									 bool &sawResponse) {
 	sawResponse = false;
 	// Change IIC: 5A 1F 02 1F 1F A0  (manual)
 	const uint8_t cmd[] = {0x5A, 0x1F, 0x02, 0x1F, 0x1F, 0xA0};
 
-	// Use same wires: RX must be on pin connected to TSD20 TX (Pin3) => GPIO21
-	// TX must be on pin connected to TSD20 RX (Pin4) => GPIO22
+	// Use same wires: RX must be on pin connected to TSD20 TX (Pin3),
+	// TX must be on pin connected to TSD20 RX (Pin4).
 	TsdUart.end();
 	delay(20);
-	TsdUart.begin(baud, SERIAL_8N1, /*rx=*/PIN_TSD20_SCL,
-				  /*tx=*/PIN_TSD20_SDA);
+	TsdUart.begin(baud, SERIAL_8N1, /*rx=*/rxPin, /*tx=*/txPin);
 	delay(50);
 
 	// Flush any garbage
@@ -134,12 +134,31 @@ static bool tsd20SendChangeIICAtBaud(uint32_t baud, bool &sawResponse) {
 
 static bool tsd20SendChangeIIC() {
 	bool sawResponse = false;
-	(void)tsd20SendChangeIICAtBaud(TSD20_UART_BAUD_PRIMARY, sawResponse);
+	(void)tsd20SendChangeIICAtBaud(TSD20_UART_BAUD_PRIMARY,
+								   /*rx=*/PIN_TSD20_SCL,
+								   /*tx=*/PIN_TSD20_SDA, sawResponse);
 	if (!sawResponse) {
 		Serial.printf("[TSD20] no UART response @%lu. Trying %lu...\n",
 					  (unsigned long)TSD20_UART_BAUD_PRIMARY,
 					  (unsigned long)TSD20_UART_BAUD_FALLBACK);
-		(void)tsd20SendChangeIICAtBaud(TSD20_UART_BAUD_FALLBACK, sawResponse);
+		(void)tsd20SendChangeIICAtBaud(TSD20_UART_BAUD_FALLBACK,
+									   /*rx=*/PIN_TSD20_SCL,
+									   /*tx=*/PIN_TSD20_SDA, sawResponse);
+	}
+	if (!sawResponse) {
+		Serial.println("[TSD20] retry UART with swapped pins...");
+		(void)tsd20SendChangeIICAtBaud(TSD20_UART_BAUD_PRIMARY,
+									   /*rx=*/PIN_TSD20_SDA,
+									   /*tx=*/PIN_TSD20_SCL, sawResponse);
+	}
+	if (!sawResponse) {
+		Serial.printf(
+			"[TSD20] no UART response @%lu (swapped). Trying %lu...\n",
+			(unsigned long)TSD20_UART_BAUD_PRIMARY,
+			(unsigned long)TSD20_UART_BAUD_FALLBACK);
+		(void)tsd20SendChangeIICAtBaud(TSD20_UART_BAUD_FALLBACK,
+									   /*rx=*/PIN_TSD20_SDA,
+									   /*tx=*/PIN_TSD20_SCL, sawResponse);
 	}
 	return sawResponse;
 }
@@ -154,10 +173,21 @@ static void piDistance(uint16_t mm) {
 	RpiSerial.printf("D,%u,%lu\n", mm, (unsigned long)millis());
 }
 
+static bool g_i2cSwapped = false;
+static bool g_i2cKnown = false;
+
 static void printBanner() {
 	Serial.println("=== TSD20 AutoSwitch(I2C) -> RPi(UART) Bridge ===");
-	Serial.printf("TSD20 pins: SDA=GPIO%d, SCL=GPIO%d\n", PIN_TSD20_SDA,
+	Serial.printf("TSD20 pins (cfg): SDA=GPIO%d, SCL=GPIO%d\n", PIN_TSD20_SDA,
 				  PIN_TSD20_SCL);
+	if (g_i2cKnown) {
+		const int sdaPin = g_i2cSwapped ? PIN_TSD20_SCL : PIN_TSD20_SDA;
+		const int sclPin = g_i2cSwapped ? PIN_TSD20_SDA : PIN_TSD20_SCL;
+		Serial.printf("TSD20 pins (active): SDA=GPIO%d, SCL=GPIO%d%s\n", sdaPin,
+					  sclPin, g_i2cSwapped ? " (swapped)" : "");
+	} else {
+		Serial.println("TSD20 pins (active): unknown (auto-swap enabled)");
+	}
 	Serial.printf("RPi UART : RX=GPIO%d TX=GPIO%d baud=%lu\n", PIN_RPI_UART_RX,
 				  PIN_RPI_UART_TX, (unsigned long)RPI_BAUD);
 	Serial.println("Commands (USB Serial):");
@@ -174,34 +204,86 @@ static void printBanner() {
 // =======================
 static bool g_tsd20Ready = false;
 
-static void initI2C() {
+static void initI2CWithPins(int sdaPin, int sclPin) {
 	Wire.end();
 	delay(10);
-	Wire.begin(PIN_TSD20_SDA, PIN_TSD20_SCL, I2C_FREQ_HZ);
+	Wire.begin(sdaPin, sclPin, I2C_FREQ_HZ);
 	delay(30);
 }
 
+static void initI2C() {
+	const int sdaPin = g_i2cSwapped ? PIN_TSD20_SCL : PIN_TSD20_SDA;
+	const int sclPin = g_i2cSwapped ? PIN_TSD20_SDA : PIN_TSD20_SCL;
+	initI2CWithPins(sdaPin, sclPin);
+}
+
+static bool probeI2CWithPins(int sdaPin, int sclPin, uint8_t &id) {
+	initI2CWithPins(sdaPin, sclPin);
+	return tsd20ProbeI2C(id);
+}
+
 static void i2cScan() {
-	initI2C();
+	const int sdaPrimary = PIN_TSD20_SDA;
+	const int sclPrimary = PIN_TSD20_SCL;
+	const int sdaSwap = PIN_TSD20_SCL;
+	const int sclSwap = PIN_TSD20_SDA;
+
+	g_i2cKnown = false;
+	g_i2cSwapped = false;
 	Serial.println("[I2C] scan start");
 	uint8_t found = 0;
+	initI2CWithPins(sdaPrimary, sclPrimary);
 	for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
 		Wire.beginTransmission(addr);
 		uint8_t rc = Wire.endTransmission(true);
 		if (rc == 0) {
-			Serial.printf("[I2C] found addr=0x%02X\n", addr);
+			Serial.printf("[I2C] found addr=0x%02X (primary)\n", addr);
 			found++;
 		}
+	}
+	if (found == 0) {
+		initI2CWithPins(sdaSwap, sclSwap);
+		for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
+			Wire.beginTransmission(addr);
+			uint8_t rc = Wire.endTransmission(true);
+			if (rc == 0) {
+				Serial.printf("[I2C] found addr=0x%02X (swapped)\n", addr);
+				found++;
+			}
+		}
+		if (found > 0) {
+			g_i2cSwapped = true;
+			g_i2cKnown = true;
+		}
+	} else {
+		g_i2cSwapped = false;
+		g_i2cKnown = true;
 	}
 	Serial.printf("[I2C] scan done. found=%u\n", found);
 }
 
-static void probeOrSwitch() {
-	initI2C();
+static bool detectI2C(uint8_t &id) {
+	g_i2cKnown = false;
+	g_i2cSwapped = false;
+	if (probeI2CWithPins(PIN_TSD20_SDA, PIN_TSD20_SCL, id)) {
+		g_i2cSwapped = false;
+		g_i2cKnown = true;
+		return true;
+	}
+	if (probeI2CWithPins(PIN_TSD20_SCL, PIN_TSD20_SDA, id)) {
+		g_i2cSwapped = true;
+		g_i2cKnown = true;
+		return true;
+	}
+	return false;
+}
 
+static void probeOrSwitch() {
 	uint8_t id = 0;
-	if (tsd20ProbeI2C(id)) {
+	if (detectI2C(id)) {
 		Serial.printf("[TSD20] I2C detected. ID=0x%02X\n", id);
+		if (g_i2cSwapped)
+			Serial.println("[TSD20] I2C pins are swapped (auto-corrected).");
 		g_tsd20Ready = true;
 		piStatus("tsd20_i2c_ok");
 		return;
@@ -215,9 +297,10 @@ static void probeOrSwitch() {
 
 	// After switching, some units require power cycle. We still try immediate
 	// re-probe.
-	initI2C();
-	if (tsd20ProbeI2C(id)) {
+	if (detectI2C(id)) {
 		Serial.printf("[TSD20] I2C detected after switch. ID=0x%02X\n", id);
+		if (g_i2cSwapped)
+			Serial.println("[TSD20] I2C pins are swapped (auto-corrected).");
 		g_tsd20Ready = true;
 		piStatus("tsd20_i2c_ok_after_switch");
 		return;
