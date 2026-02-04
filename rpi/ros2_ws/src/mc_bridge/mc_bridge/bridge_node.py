@@ -208,15 +208,15 @@ class BridgeNode(Node):
                             frames.append(frame)
                     else:
                         frames.append(data)
-                        for frame in frames:
-                            pkt, err = decode_packet(frame)
-                            if pkt is None:
-                                self._warn_decode(f"decode_error: {err}", err == "crc")
-                                continue
-                            ptype, _flags, _seq, payload = pkt
-                            now_ns = self.get_clock().now().nanoseconds
-                            if ptype == TYPE_STATUS:
-                                dec = decode_status(payload)
+                    for frame in frames:
+                        pkt, err = decode_packet(frame)
+                        if pkt is None:
+                            self._warn_decode(f"decode_error: {err}", err == "crc")
+                            continue
+                        ptype, _flags, _seq, payload = pkt
+                        now_ns = self.get_clock().now().nanoseconds
+                        if ptype == TYPE_STATUS:
+                            dec = decode_status(payload)
                             if dec is None:
                                 self._warn_decode("decode_error: status_len", False)
                                 continue
@@ -246,14 +246,14 @@ class BridgeNode(Node):
                             msg = HilsState()
                             msg.timestamp, msg.throttle_raw, msg.steer_cdeg, msg.flags = dec
                             self._hils_pub.publish(msg)
-                            elif ptype == TYPE_LOG:
-                                dec = decode_log(payload)
-                                if dec is None:
-                                    self._warn_decode("decode_error: log_len", False)
-                                    continue
-                                level, text = dec
-                                ts_ms = int(now_ns / 1_000_000)
-                                self._log_pub.publish(level, text, ts_ms)
+                        elif ptype == TYPE_LOG:
+                            dec = decode_log(payload)
+                            if dec is None:
+                                self._warn_decode("decode_error: log_len", False)
+                                continue
+                            level, text = dec
+                            ts_ms = int(now_ns / 1_000_000)
+                            self._log_pub.publish(level, text, ts_ms)
             finally:
                 try:
                     sock.close()
