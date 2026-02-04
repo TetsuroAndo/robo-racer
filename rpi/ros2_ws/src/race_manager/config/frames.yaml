@@ -1,0 +1,10 @@
+mc_tf_static:
+  ros__parameters:
+    parent_frame: base_link
+    child_frame: laser
+    translation_x: 0.0
+    translation_y: 0.0
+    translation_z: 0.0
+    rotation_roll: 0.0
+    rotation_pitch: 0.0
+    rotation_yaw: 0.0

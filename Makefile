@@ -217,6 +217,24 @@ test: $(PYTHON_LOCAL)
 activate: $(PYTHON_LOCAL)
 	@bash -lc 'source "$(VENV)/bin/activate" && exec $$SHELL -l'
 
+ros2-mapping:
+	@echo "🛠️ パスを強制補正して Mapping を起動します..."
+	# 1. ソースコードの修正 (未実施の場合のみ)
+	@$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash -c "if ! grep -q 'lap_manager' /ws/rpi/ros2_ws/src/race_manager/launch/mapping.launch.py 2>/dev/null; then \
+			sed -i 's/robo_racer/race_manager/g; s/robo-racer/lap_manager/g' /ws/rpi/ros2_ws/src/race_manager/launch/mapping.launch.py; \
+			mkdir -p /ws/rpi/ros2_ws/src/mc_tf_static/resource; \
+			touch /ws/rpi/ros2_ws/src/mc_tf_static/resource/mc_tf_static; \
+		fi"
+	# 2. AMENT_PREFIX_PATH に直接 race_manager のパスを叩き込む
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash -c "source /opt/ros/humble/setup.bash; \
+		         cd /ws/rpi/ros2_ws; \
+		         colcon build; \
+		         export AMENT_PREFIX_PATH=/ws/rpi/ros2_ws/install/race_manager:$(AMENT_PREFIX_PATH); \
+		         source /opt/ros/humble/setup.bash; \
+		         source install/local_setup.bash; \
+		         ros2 launch race_manager mapping.launch.py"
 # ================================
 # Debugs
 # ================================
