@@ -9,13 +9,6 @@
 #include <vector>
 
 namespace {
-
-struct CandidateScore {
-	float angle_deg{};
-	int distance_mm{};
-	float score{};
-};
-
 } // namespace
 
 Process::Process(TelemetryEmitter *telemetry) : telemetry_(telemetry) {}
@@ -23,244 +16,170 @@ Process::Process(TelemetryEmitter *telemetry) : telemetry_(telemetry) {}
 Process::~Process() {}
 
 ProcResult Process::proc(const std::vector< LidarData > &lidarData,
-						 float lastSteerAngle, uint64_t tick, uint64_t scan_id,
-						 const std::string &run_id) const {
+					 float lastSteerAngle, uint64_t tick, uint64_t scan_id,
+					 const std::string &run_id) const {
 	const uint64_t t0_us = mc::core::Time::us();
-	float max = 0;
-	int maxDistance = -1;
-	float minHandleAngle = 0;
-	int minHandleDistance = INT32_MAX;
-	int minObstacleOnPath = INT32_MAX;
-	std::vector< CandidateScore > candidates;
-	std::array< float, TELEMETRY_HEAT_BINS > heat_bins{};
-	std::array< int, TELEMETRY_COMPASS_BINS > lidar_bins{};
-	lidar_bins.fill(-1);
-	bool lidar_bins_valid = false;
-	for (auto &v : heat_bins)
-		v = 0.0f;
-
-	// 前回のステアリング角度を±cfg::STEER_ANGLE_MAX_DEGにクリップ
-	float clampedSteerAngle = lastSteerAngle;
-	if (clampedSteerAngle > cfg::STEER_ANGLE_MAX_DEG) {
-		clampedSteerAngle = cfg::STEER_ANGLE_MAX_DEG;
-	} else if (clampedSteerAngle < -cfg::STEER_ANGLE_MAX_DEG) {
-		clampedSteerAngle = -cfg::STEER_ANGLE_MAX_DEG;
+	(void)lastSteerAngle;
+	static constexpr float kRadToDeg = 57.2957795f;
+	std::array< int32_t, cfg::FTG_BIN_COUNT > bins{};
+	std::array< float, cfg::FTG_BIN_COUNT > smoothed{};
+	for (int i = 0; i < cfg::FTG_BIN_COUNT; ++i) {
+		bins[(size_t)i] = 0;
+		smoothed[(size_t)i] = 0.0f;
 	}
 
-	// クリップされたステアリング角度を中心とした評価範囲を計算
-	float pathCheckMin = clampedSteerAngle - cfg::PROCESS_STEER_WINDOW_HALF_DEG;
-	float pathCheckMax = clampedSteerAngle + cfg::PROCESS_STEER_WINDOW_HALF_DEG;
+	for (const auto &p : lidarData) {
+		int angle = static_cast< int >(std::lround(p.angle));
+		if (angle < cfg::FTG_ANGLE_MIN_DEG || angle > cfg::FTG_ANGLE_MAX_DEG)
+			continue;
+		if (p.distance <= 0)
+			continue;
+		const int idx = angle - cfg::FTG_ANGLE_MIN_DEG;
+		if (p.distance > bins[(size_t)idx])
+			bins[(size_t)idx] = p.distance;
+	}
 
-	// std::cout << lidarData.size() << "\n";
-	for (const auto &i : lidarData) {
-		// ハンドリング評価（±90deg）: 次の進行方向を決定
-		if (cfg::PROCESS_HANDLE_ANGLE_MIN_DEG <= i.angle &&
-			i.angle <= cfg::PROCESS_HANDLE_ANGLE_MAX_DEG) {
-			const float ratio = (i.angle - cfg::PROCESS_HANDLE_ANGLE_MIN_DEG) /
-								(cfg::PROCESS_HANDLE_ANGLE_MAX_DEG -
-								 cfg::PROCESS_HANDLE_ANGLE_MIN_DEG);
-			int idx =
-				(int)std::lround(ratio * (float)(TELEMETRY_COMPASS_BINS - 1));
-			if (idx < 0)
-				idx = 0;
-			if (idx >= (int)TELEMETRY_COMPASS_BINS)
-				idx = (int)TELEMETRY_COMPASS_BINS - 1;
-			if (lidar_bins[idx] < 0 || i.distance < lidar_bins[idx]) {
-				lidar_bins[idx] = i.distance;
-			}
-			lidar_bins_valid = true;
-			candidates.push_back(CandidateScore{.angle_deg = i.angle,
-												.distance_mm = i.distance,
-												.score = 0.0f});
-			if (maxDistance < i.distance) {
-				max = i.angle;
-				maxDistance = i.distance;
-			}
-			if (i.distance < minHandleDistance) {
-				minHandleAngle = i.angle;
-				minHandleDistance = i.distance;
+	for (int angle = cfg::FTG_ANGLE_MIN_DEG; angle <= cfg::FTG_ANGLE_MAX_DEG;
+			 ++angle) {
+		int sum = 0;
+		int count = 0;
+		for (int d = -cfg::FTG_SMOOTH_RADIUS_BINS;
+			 d <= cfg::FTG_SMOOTH_RADIUS_BINS; ++d) {
+			int a = angle + d;
+			if (a < cfg::FTG_ANGLE_MIN_DEG)
+				a = cfg::FTG_ANGLE_MIN_DEG;
+			else if (a > cfg::FTG_ANGLE_MAX_DEG)
+				a = cfg::FTG_ANGLE_MAX_DEG;
+			const int idx = a - cfg::FTG_ANGLE_MIN_DEG;
+			const int32_t dist = bins[(size_t)idx];
+			if (dist > 0) {
+				sum += dist;
+				++count;
 			}
 		}
+		const int idx = angle - cfg::FTG_ANGLE_MIN_DEG;
+		smoothed[(size_t)idx] = (count > 0) ? (float)sum / (float)count : 0.0f;
+	}
 
-		// 進行経路上の障害物評価: 前回のステアリング角度±25度
-		if (pathCheckMin <= i.angle && i.angle <= pathCheckMax) {
-			if (i.distance < minObstacleOnPath) {
-				minObstacleOnPath = i.distance;
-			}
+	int best_angle = 0;
+	float best_dist = -1.0f;
+	for (int angle = cfg::FTG_ANGLE_MIN_DEG; angle <= cfg::FTG_ANGLE_MAX_DEG;
+			 ++angle) {
+		const int idx = angle - cfg::FTG_ANGLE_MIN_DEG;
+		const float dist = smoothed[(size_t)idx];
+		if (dist > best_dist) {
+			best_dist = dist;
+			best_angle = angle;
+		} else if (dist == best_dist && std::abs(angle) < std::abs(best_angle)) {
+			best_angle = angle;
 		}
 	}
 
-	// データが無い場合は安全側で停止
-	if (maxDistance < 0) {
+	if (best_dist <= 0.0f) {
 		const uint64_t ts_us = mc::core::Time::us();
 		if (telemetry_)
 			telemetry_->emitNoLidar(ts_us, run_id, tick, scan_id);
 		return ProcResult(0, 0);
 	}
 
-	for (auto &c : candidates) {
-		c.score = (maxDistance > 0) ? (float)c.distance_mm / (float)maxDistance
-									: 0.0f;
-		const float step = 180.0f / (float)(TELEMETRY_HEAT_BINS - 1);
-		int idx = (int)std::round((c.angle_deg + 90.0f) / step);
-		if (idx < 0)
-			idx = 0;
-		if (idx >= (int)TELEMETRY_HEAT_BINS)
-			idx = (int)TELEMETRY_HEAT_BINS - 1;
-		if (c.score > heat_bins[(size_t)idx])
-			heat_bins[(size_t)idx] = c.score;
-	}
+	const float r_m = std::max(0.001f, best_dist / 1000.0f);
+	const float theta_req_rad =
+		2.0f *
+		std::atan((cfg::FTG_CAR_WIDTH_M * 0.5f + cfg::FTG_MARGIN_M) / r_m);
+	const float theta_req_deg = theta_req_rad * kRadToDeg;
+	int n = static_cast< int >(std::ceil(theta_req_deg));
+	if (n < 0)
+		n = 0;
+	const int max_n = std::max(-cfg::FTG_ANGLE_MIN_DEG, cfg::FTG_ANGLE_MAX_DEG);
+	if (n > max_n)
+		n = max_n;
 
-	// 基本速度を計算
-	int baseSpeed = maxDistance / cfg::PROCESS_SPEED_DIV;
-
-	// 最大速度でクリップ
-	baseSpeed = (baseSpeed > cfg::PROCESS_MAX_SPEED) ? cfg::PROCESS_MAX_SPEED
-													 : baseSpeed;
-
-	// 計算される角度（クリップ前）
-	// ハンドリング用の最近接角度が無い場合は直進
-	float steerSourceAngle =
-		(minHandleDistance == INT32_MAX) ? 0.0f : minHandleAngle;
-
-	// 現在のステアリング方向との角度差に基づいた重み付け
-	// 角度差が小さいほど、現在の方向をより優先
-	if (minHandleDistance != INT32_MAX) {
-		float angleDiff = std::abs(steerSourceAngle - clampedSteerAngle);
-		// 角度差に基づいた重み（0°:1.0、90°:減少）
-		float directionWeight =
-			1.0f - (angleDiff / 90.0f) * cfg::PROCESS_DIRECTION_WEIGHT;
-		// 現在の方向との平均を取ることで滑らかに遷移（角度差に応じて重みを変化）
-		steerSourceAngle = steerSourceAngle * (1.0f - directionWeight) +
-						   clampedSteerAngle * directionWeight;
-	}
-
-	float calculatedAngle = steerSourceAngle * cfg::PROCESS_MIN_ANGLE_SIGN *
-							cfg::PROCESS_STEER_GAIN;
-	float absAngle = std::fabs(calculatedAngle);
-	float curve_ratio = 1.0f;
-
-	// 進行経路上の障害物距離に基づいて速度を制限
-	int limitedSpeed = baseSpeed;
-	std::string override_reason = "NONE";
-	if (minObstacleOnPath <= cfg::PROCESS_MIN_DIST_STOP_MM) {
-		// 停止距離以下 → 停止
-		limitedSpeed = 0;
-		override_reason = "STOP";
-	} else if (minObstacleOnPath < cfg::PROCESS_MIN_DIST_SAFE_MM) {
-		// 安全距離未満 → 減速
-		limitedSpeed = (int)(baseSpeed * cfg::PROCESS_MIN_DIST_SPEED_FACTOR);
-		override_reason = "SLOW";
-	}
-
-	// 急カーブによる速度制限
-	// 計算角度が物理上限を超える場合、その比率に応じて速度を減速
-	if (absAngle > cfg::STEER_ANGLE_MAX_DEG) {
-		curve_ratio = (float)cfg::STEER_ANGLE_MAX_DEG / absAngle;
-		float curveFactor = cfg::STEER_CURVE_SPEED_FACTOR * curve_ratio;
-		int curveReducedSpeed = (int)(limitedSpeed * curveFactor);
-		limitedSpeed = curveReducedSpeed;
-		if (override_reason == "NONE") {
-			override_reason = "CURVE";
-		} else {
-			override_reason += "+CURVE";
+	bool blocked = false;
+	for (int angle = best_angle - n; angle <= best_angle + n; ++angle) {
+		if (angle < cfg::FTG_ANGLE_MIN_DEG || angle > cfg::FTG_ANGLE_MAX_DEG)
+			continue;
+		const int idx = angle - cfg::FTG_ANGLE_MIN_DEG;
+		const int32_t dist = bins[(size_t)idx];
+		if (dist > 0 && dist <= cfg::FTG_NEAR_OBSTACLE_MM) {
+			blocked = true;
+			break;
 		}
 	}
 
-	int roundedAngle = static_cast< int >(std::round(calculatedAngle));
-	const float speed_factor =
-		(baseSpeed > 0) ? (float)limitedSpeed / (float)baseSpeed : 0.0f;
+	int out_angle = blocked ? 0 : best_angle;
+	if (out_angle > cfg::STEER_ANGLE_MAX_DEG)
+		out_angle = cfg::STEER_ANGLE_MAX_DEG;
+	else if (out_angle < -cfg::STEER_ANGLE_MAX_DEG)
+		out_angle = -cfg::STEER_ANGLE_MAX_DEG;
 
-	std::partial_sort(
-		candidates.begin(),
-		candidates.begin() + std::min< size_t >(3, candidates.size()),
-		candidates.end(), [](const CandidateScore &a, const CandidateScore &b) {
-			return a.score > b.score;
-		});
+	int out_speed = 0;
+	if (!blocked) {
+		const float v_min = (float)cfg::FTG_SPEED_MIN;
+		const float v_max = (float)cfg::FTG_SPEED_MAX;
+		const float r_m = std::max(0.0f, best_dist / 1000.0f);
+		float v_dist = v_min;
+		if (r_m <= cfg::FTG_SPEED_R_SAFE_M) {
+			v_dist = v_min;
+		} else if (r_m >= cfg::FTG_SPEED_R_MAX_M) {
+			v_dist = v_max;
+		} else {
+			v_dist = v_min + (v_max - v_min) *
+							(1.0f - std::exp(-(r_m - cfg::FTG_SPEED_R_SAFE_M) /
+											   cfg::FTG_SPEED_K_M));
+		}
+
+		const float steer_ratio =
+			std::min(1.0f, std::fabs((float)out_angle) /
+							 (float)cfg::STEER_ANGLE_MAX_DEG);
+		static constexpr float kPiOver2 = 1.57079632679f;
+		const float v_steer = v_min + (v_max - v_min) *
+							 std::cos(steer_ratio * kPiOver2);
+
+		const float v_final = std::min(v_dist, v_steer);
+		const int speed = (int)std::lround(
+			std::max(v_min, std::min(v_max, v_final)));
+		out_speed = speed;
+	}
 
 	if (telemetry_) {
-		std::optional< float > best_delta;
-		if (has_last_best_) {
-			best_delta = max - last_best_angle_;
-		}
-		last_best_angle_ = max;
-		has_last_best_ = true;
-		const bool include_candidates =
-			(override_reason != "NONE") ||
-			(best_delta &&
-			 std::fabs(*best_delta) >= cfg::TELEMETRY_CANDIDATE_EVENT_DEG);
-
-		std::string override_detail = override_reason;
-		if (override_reason == "STOP") {
-			override_detail =
-				"STOP<=" + std::to_string(cfg::PROCESS_MIN_DIST_STOP_MM) + "mm";
-		} else if (override_reason == "SLOW") {
-			override_detail =
-				"SLOW<" + std::to_string(cfg::PROCESS_MIN_DIST_SAFE_MM) + "mm";
-		}
-		if (override_reason.find("CURVE") != std::string::npos) {
-			override_detail += " curve_ratio=" + std::to_string(curve_ratio);
-		}
-
 		TelemetrySample sample;
 		sample.ts_us = mc::core::Time::us();
 		sample.run_id = run_id;
 		sample.tick = tick;
 		sample.scan_id = scan_id;
-		sample.best_delta_deg = best_delta;
-		sample.include_candidates = include_candidates;
-		sample.best_angle_deg = max;
-		sample.best_dist_mm = maxDistance;
+		sample.best_angle_deg = (float)best_angle;
+		sample.best_dist_mm = static_cast< int >(best_dist);
 		sample.best_score = 1.0f;
-		sample.score_obstacle = std::nullopt;
-		sample.score_width = std::nullopt;
-		sample.score_goal = std::nullopt;
-		sample.score_curvature = std::nullopt;
-		sample.score_stability = std::nullopt;
-		sample.score_map_conf = std::nullopt;
-		sample.min_handle_angle_deg = minHandleAngle;
-		sample.min_handle_dist_mm = minHandleDistance;
-		sample.path_obst_mm = minObstacleOnPath;
+		sample.best_delta_deg = std::nullopt;
+		sample.min_handle_angle_deg = 0.0f;
+		sample.min_handle_dist_mm = 0;
+		sample.path_obst_mm = blocked ? cfg::FTG_NEAR_OBSTACLE_MM : 0;
 		sample.front_dist_mm = std::nullopt;
 		sample.side_dist_mm = std::nullopt;
-		sample.base_speed = baseSpeed;
-		sample.limited_speed = limitedSpeed;
-		sample.steer_deg = roundedAngle;
-		sample.raw_steer_deg = calculatedAngle;
-		sample.curve_ratio = curve_ratio;
-		sample.speed_factor = speed_factor;
+		sample.base_speed = out_speed;
+		sample.limited_speed = out_speed;
+		sample.steer_deg = out_angle;
+		sample.raw_steer_deg = (float)out_angle;
+		sample.curve_ratio = 1.0f;
+		sample.speed_factor = (out_speed > 0) ? 1.0f : 0.0f;
 		sample.steer_clamp_deg = cfg::STEER_ANGLE_MAX_DEG;
-		sample.override_kind = override_reason;
-		sample.override_detail = override_detail;
-		sample.th_stop_mm = cfg::PROCESS_MIN_DIST_STOP_MM;
-		sample.th_safe_mm = cfg::PROCESS_MIN_DIST_SAFE_MM;
+		sample.override_kind = blocked ? "BLOCKED" : "NONE";
+		sample.override_detail =
+			blocked ? ("NEAR<=" +
+					   std::to_string(cfg::FTG_NEAR_OBSTACLE_MM) + "mm")
+					  : "NONE";
+		sample.th_stop_mm = cfg::FTG_NEAR_OBSTACLE_MM;
+		sample.th_safe_mm = cfg::FTG_NEAR_OBSTACLE_MM;
 		sample.scan_age_ms = std::nullopt;
 		const uint64_t t1_us = mc::core::Time::us();
 		sample.planner_latency_ms = (uint32_t)((t1_us - t0_us) / 1000);
 		sample.control_latency_ms = std::nullopt;
 		sample.ttl_ms = cfg::AUTO_TTL_MS;
 		sample.lidar_points = lidarData.size();
-		sample.lidar_expected = 181;
-		sample.heat_bins = heat_bins;
-		sample.lidar_dist_bins = lidar_bins;
-		sample.lidar_dist_valid = lidar_bins_valid;
-
-		const size_t top_n = std::min< size_t >(3, candidates.size());
-		sample.top_count = top_n;
-		for (size_t i = 0; i < top_n; ++i) {
-			sample.top[i] = {candidates[i].angle_deg, candidates[i].distance_mm,
-							 candidates[i].score};
-		}
-		if (include_candidates) {
-			sample.candidates.clear();
-			sample.candidates.reserve(candidates.size());
-			for (const auto &c : candidates) {
-				sample.candidates.push_back(
-					{c.angle_deg, c.distance_mm, c.score});
-			}
-		}
+		sample.lidar_expected = cfg::FTG_BIN_COUNT;
+		sample.include_candidates = false;
 		telemetry_->emit(sample);
 	}
 
-	return ProcResult(limitedSpeed, roundedAngle);
+	return ProcResult(out_speed, out_angle);
 }
