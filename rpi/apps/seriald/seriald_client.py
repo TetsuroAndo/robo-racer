@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import select
 import socket
 import struct
+import stat
 import time
 
 MAGIC = b"MC"
@@ -17,6 +19,30 @@ TYPE_STATUS = 0x11
 TYPE_ACK = 0x80
 
 FLAG_ACK_REQ = 1 << 0
+
+
+def default_sock() -> str:
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime_dir:
+        return os.path.join(runtime_dir, "roboracer", "seriald.sock")
+    return "/tmp/roboracer/seriald.sock"  # noqa: S108 - dev fallback
+
+
+def check_tmp_socket_dir_safe(sock_path: str) -> None:
+    if not sock_path.startswith("/tmp/"):
+        return
+    sock_dir = os.path.dirname(sock_path)
+    try:
+        st = os.stat(sock_dir)
+    except FileNotFoundError:
+        raise SystemExit(f"socket dir missing: {sock_dir}")
+    if not stat.S_ISDIR(st.st_mode):
+        raise SystemExit(f"socket dir is not a directory: {sock_dir}")
+    uid = os.getuid()
+    if st.st_uid not in (0, uid):
+        raise SystemExit(f"socket dir owner mismatch: {sock_dir}")
+    if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise SystemExit(f"socket dir is group/world-writable: {sock_dir}")
 
 
 def crc16_ccitt(data: bytes) -> int:
@@ -146,7 +172,7 @@ def print_frame(dec):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sock", default="/tmp/roboracer/seriald.sock")
+    ap.add_argument("--sock", default=default_sock())
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     s1 = sub.add_parser("drive")
@@ -171,6 +197,8 @@ def main():
     s4.add_argument("--timeout-ms", type=int, default=0)
 
     args = ap.parse_args()
+
+    check_tmp_socket_dir_safe(args.sock)
 
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     sock.connect(args.sock)

@@ -8,6 +8,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <exception>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -224,7 +225,11 @@ void TelemetryEmitter::refreshMetrics_() {
 			++end;
 		if (end == i)
 			return false;
-		val = std::stoull(line.substr(i, end - i));
+		try {
+			val = std::stoull(line.substr(i, end - i));
+		} catch (const std::exception &) {
+			return false;
+		}
 		return true;
 	};
 
@@ -242,7 +247,11 @@ void TelemetryEmitter::refreshMetrics_() {
 		++end_pos;
 	if (end_pos == slash + 1)
 		return;
-	mem_total = std::stoull(line.substr(slash + 1, end_pos - slash - 1));
+	try {
+		mem_total = std::stoull(line.substr(slash + 1, end_pos - slash - 1));
+	} catch (const std::exception &) {
+		return;
+	}
 
 	{
 		std::lock_guard< std::mutex > lk(metrics_mtx_);
@@ -274,6 +283,11 @@ void TelemetryEmitter::pushEvent_(std::string e) {
 
 void TelemetryEmitter::emitJson_(const TelemetrySample &s) {
 	std::ostringstream telemetry;
+	StatusCache status;
+	{
+		std::lock_guard< std::mutex > lk(metrics_mtx_);
+		status = status_;
+	}
 	telemetry << std::fixed << std::setprecision(2);
 	telemetry << "{\"t_us\":" << s.ts_us << ",\"type\":\"telemetry\""
 			  << ",\"run_id\":\"" << s.run_id << "\",\"tick\":" << s.tick
@@ -351,13 +365,13 @@ void TelemetryEmitter::emitJson_(const TelemetrySample &s) {
 		telemetry << "]";
 	}
 
-	if (status_.valid) {
+	if (status.valid) {
 		telemetry << ",\"esp_status\":{\"auto_active\":"
-				  << (unsigned)status_.auto_active
-				  << ",\"faults\":" << status_.faults
-				  << ",\"speed_mm_s\":" << status_.speed_mm_s
-				  << ",\"steer_cdeg\":" << status_.steer_cdeg
-				  << ",\"age_ms\":" << status_.age_ms << "}";
+				  << (unsigned)status.auto_active
+				  << ",\"faults\":" << status.faults
+				  << ",\"speed_mm_s\":" << status.speed_mm_s
+				  << ",\"steer_cdeg\":" << status.steer_cdeg
+				  << ",\"age_ms\":" << status.age_ms << "}";
 	} else {
 		telemetry << ",\"esp_status\":null";
 	}
@@ -390,9 +404,11 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	};
 
 	MetricsCache metrics;
+	StatusCache status;
 	{
 		std::lock_guard< std::mutex > lk(metrics_mtx_);
 		metrics = metrics_;
+		status = status_;
 	}
 
 	int path_mm = s.path_obst_mm;
@@ -480,12 +496,12 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 
 	Severity ctrl_sev = Severity::Safe;
 	bool ttl_expired = false;
-	if (status_.valid && s.ttl_ms) {
+	if (status.valid && s.ttl_ms) {
 		const float ttl = (float)*s.ttl_ms;
-		if ((float)status_.age_ms >= ttl * cfg::TELEMETRY_TTL_CRIT_FACTOR) {
+		if ((float)status.age_ms >= ttl * cfg::TELEMETRY_TTL_CRIT_FACTOR) {
 			ctrl_sev = Severity::Crit;
 			ttl_expired = true;
-		} else if ((float)status_.age_ms >=
+		} else if ((float)status.age_ms >=
 				   ttl * cfg::TELEMETRY_TTL_WARN_FACTOR) {
 			ctrl_sev = Severity::Warn;
 			ttl_expired = true;
@@ -495,7 +511,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		ctrl_sev = Severity::Crit;
 	else if (s.override_kind != "NONE")
 		ctrl_sev = std::max(ctrl_sev, Severity::Warn);
-	if (status_.valid && status_.faults != 0)
+	if (status.valid && status.faults != 0)
 		ctrl_sev = std::max(ctrl_sev, Severity::Warn);
 	if (s.planner_latency_ms &&
 		*s.planner_latency_ms >= cfg::TELEMETRY_LATENCY_CRIT_MS)
@@ -702,10 +718,10 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	   << "ms c="
 	   << (s.control_latency_ms ? std::to_string(*s.control_latency_ms) : "NA")
 	   << "ms ttl=" << (s.ttl_ms ? std::to_string(*s.ttl_ms) : "NA");
-	if (status_.valid) {
-		l5 << " auto=" << (unsigned)status_.auto_active << " faults=0x"
-		   << std::hex << status_.faults << std::dec
-		   << " age=" << status_.age_ms << "ms";
+	if (status.valid) {
+		l5 << " auto=" << (unsigned)status.auto_active << " faults=0x"
+		   << std::hex << status.faults << std::dec << " age=" << status.age_ms
+		   << "ms";
 	}
 
 	std::ostringstream l6;
@@ -815,14 +831,14 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	last_ctrl_sev_ = ctrl_sev;
 
 	if (ttl_expired && !last_ttl_expired_) {
-		pushEvent_("TTL_EXPIRED age=" + std::to_string(status_.age_ms) + "ms");
+		pushEvent_("TTL_EXPIRED age=" + std::to_string(status.age_ms) + "ms");
 	}
 	last_ttl_expired_ = ttl_expired;
 
-	const bool faults_now = status_.valid && status_.faults != 0;
+	const bool faults_now = status.valid && status.faults != 0;
 	if (faults_now && !last_faults_) {
 		std::ostringstream f;
-		f << "FAULTS 0x" << std::hex << status_.faults << std::dec;
+		f << "FAULTS 0x" << std::hex << status.faults << std::dec;
 		pushEvent_(f.str());
 	}
 	last_faults_ = faults_now;

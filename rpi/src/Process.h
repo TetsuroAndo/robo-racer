@@ -26,4 +26,6 @@ public:
 
 private:
 	TelemetryEmitter *telemetry_;
+	mutable bool has_last_best_ = false;
+	mutable float last_best_angle_ = 0.0f;
 };

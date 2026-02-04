@@ -179,14 +179,12 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		});
 
 	if (telemetry_) {
-		static bool has_last_best = false;
-		static float last_best_angle = 0.0f;
 		std::optional< float > best_delta;
-		if (has_last_best) {
-			best_delta = max - last_best_angle;
+		if (has_last_best_) {
+			best_delta = max - last_best_angle_;
 		}
-		last_best_angle = max;
-		has_last_best = true;
+		last_best_angle_ = max;
+		has_last_best_ = true;
 		const bool include_candidates =
 			(override_reason != "NONE") ||
 			(best_delta &&

@@ -164,6 +164,7 @@ inline void TelemetryEmitter::updateStatus(uint8_t auto_active,
 										   int16_t speed_mm_s,
 										   int16_t steer_cdeg,
 										   uint16_t age_ms) {
+	std::lock_guard< std::mutex > lk(metrics_mtx_);
 	status_.valid = true;
 	status_.auto_active = auto_active;
 	status_.faults = faults;

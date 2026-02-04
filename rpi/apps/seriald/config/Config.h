@@ -10,9 +10,9 @@ static constexpr const char *DEFAULT_TELEMETRY_SOCK =
 	"/tmp/roboracer/seriald.telemetry.sock";
 static constexpr int DEFAULT_TELEMETRY_TCP_PORT = 5001;
 static constexpr const char *DEFAULT_COMPAT_CONTROL_SOCK =
-	"/tmp/roboracer/seriald.sock";
+	"/run/roboracer/seriald.sock";
 static constexpr const char *DEFAULT_COMPAT_TELEMETRY_SOCK =
-	"/tmp/roboracer/seriald.telemetry.sock";
+	"/run/roboracer/seriald.telemetry.sock";
 static constexpr const char* DEFAULT_LOG = "./logs/seriald.log";
 
 static constexpr int POLL_TIMEOUT_MS = 10;
