@@ -220,7 +220,7 @@ activate: $(PYTHON_LOCAL)
 
 .PHONY: ros2-mapping
 ros2-mapping:
-	@echo "🚀 Mapping を起動します..."
+	@echo "🚀 Starting mapping..."
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
 		bash -c "source /opt/ros/humble/setup.bash; \
 		         cd /ws/rpi/ros2_ws; \
