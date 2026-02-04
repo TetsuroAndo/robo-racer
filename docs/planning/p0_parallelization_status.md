@@ -23,7 +23,7 @@
 | --- | --- | --- | --- |
 | P0-1 seriald control/telemetry 分離 | 実装済み（未検証） | 2026-02-03 | 互換パス維持・送信遮断・ミラー配信 |
 | P0-2 mc_bridge 実働化 | 実装済み（未検証） | 2026-02-04 | telemetry decode → /mc/* publish |
-| P0-3 lidar_bridge 追加 | 未着手 | 2026-02-04 | SHM → /scan publish |
+| P0-3 lidar_bridge 追加 | 実装済み（未検証） | 2026-02-04 | SHM → /scan publish |
 
 ## P0-1 詳細（seriald 分離）
 - 対象: `rpi/apps/seriald/src/main.cpp`, `rpi/apps/seriald/config/Config.h` ほか
@@ -49,3 +49,4 @@
 - 2026-02-01: ステータス管理を開始。P0-1〜P0-3 をブランチ分割で実装する方針を確定。
 - 2026-02-01: seriald を control/telemetry に分離（送信遮断・ミラー配信・/tmp 互換listen）。
 - 2026-02-01: mc_bridge に telemetry decode を追加（/mc/status /mc/drive_cmd /mc/hils_state /mc/log）。
+- 2026-02-01: lidar_bridge を追加（/dev/shm/lidar_scan → /scan）。
