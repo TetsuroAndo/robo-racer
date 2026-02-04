@@ -26,7 +26,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 						 float lastSteerAngle, uint64_t tick, uint64_t scan_id,
 						 const std::string &run_id) const {
 	const uint64_t t0_us = mc::core::Time::us();
-	float max = 0;
+	float bestAngle = 0.0f;
 	int maxDistance = -1;
 	float minHandleAngle = 0;
 	int minHandleDistance = INT32_MAX;
@@ -73,7 +73,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 												.distance_mm = i.distance,
 												.score = 0.0f});
 			if (maxDistance < i.distance) {
-				max = i.angle;
+				bestAngle = i.angle;
 				maxDistance = i.distance;
 			}
 			if (i.distance < minHandleDistance) {
@@ -119,8 +119,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 													 : baseSpeed;
 
 	// 計算される角度（クリップ前）
-	// best 角（最大距離）が無い場合は直進
-	float steerSourceAngle = (maxDistance < 0) ? 0.0f : max;
+	float steerSourceAngle = bestAngle;
 
 	// 現在のステアリング方向との角度差に基づいた重み付け
 	// 角度差が小さいほど、現在の方向をより優先
@@ -180,9 +179,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	if (telemetry_) {
 		std::optional< float > best_delta;
 		if (has_last_best_) {
-			best_delta = max - last_best_angle_;
+			best_delta = bestAngle - last_best_angle_;
 		}
-		last_best_angle_ = max;
+		last_best_angle_ = bestAngle;
 		has_last_best_ = true;
 		const bool include_candidates =
 			(override_reason != "NONE") ||
@@ -208,7 +207,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		sample.scan_id = scan_id;
 		sample.best_delta_deg = best_delta;
 		sample.include_candidates = include_candidates;
-		sample.best_angle_deg = max;
+		sample.best_angle_deg = bestAngle;
 		sample.best_dist_mm = maxDistance;
 		sample.best_score = 1.0f;
 		sample.score_obstacle = std::nullopt;
