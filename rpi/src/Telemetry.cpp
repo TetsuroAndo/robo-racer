@@ -409,9 +409,11 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	};
 
 	MetricsCache metrics;
+	StatusCache status;
 	{
 		std::lock_guard< std::mutex > lk(metrics_mtx_);
 		metrics = metrics_;
+		status = status_;
 	}
 
 	int path_mm = s.path_obst_mm;
@@ -499,12 +501,12 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 
 	Severity ctrl_sev = Severity::Safe;
 	bool ttl_expired = false;
-	if (status_.valid && s.ttl_ms) {
+	if (status.valid && s.ttl_ms) {
 		const float ttl = (float)*s.ttl_ms;
-		if ((float)status_.age_ms >= ttl * cfg::TELEMETRY_TTL_CRIT_FACTOR) {
+		if ((float)status.age_ms >= ttl * cfg::TELEMETRY_TTL_CRIT_FACTOR) {
 			ctrl_sev = Severity::Crit;
 			ttl_expired = true;
-		} else if ((float)status_.age_ms >=
+		} else if ((float)status.age_ms >=
 				   ttl * cfg::TELEMETRY_TTL_WARN_FACTOR) {
 			ctrl_sev = Severity::Warn;
 			ttl_expired = true;
@@ -514,7 +516,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		ctrl_sev = Severity::Crit;
 	else if (s.override_kind != "NONE")
 		ctrl_sev = std::max(ctrl_sev, Severity::Warn);
-	if (status_.valid && status_.faults != 0)
+	if (status.valid && status.faults != 0)
 		ctrl_sev = std::max(ctrl_sev, Severity::Warn);
 	if (s.planner_latency_ms &&
 		*s.planner_latency_ms >= cfg::TELEMETRY_LATENCY_CRIT_MS)
@@ -721,10 +723,10 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	   << "ms c="
 	   << (s.control_latency_ms ? std::to_string(*s.control_latency_ms) : "NA")
 	   << "ms ttl=" << (s.ttl_ms ? std::to_string(*s.ttl_ms) : "NA");
-	if (status_.valid) {
-		l5 << " auto=" << (unsigned)status_.auto_active << " faults=0x"
-		   << std::hex << status_.faults << std::dec
-		   << " age=" << status_.age_ms << "ms";
+	if (status.valid) {
+		l5 << " auto=" << (unsigned)status.auto_active << " faults=0x"
+		   << std::hex << status.faults << std::dec << " age=" << status.age_ms
+		   << "ms";
 	}
 
 	std::ostringstream l6;
