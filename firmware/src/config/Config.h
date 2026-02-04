@@ -23,6 +23,37 @@ static constexpr int SERIAL_TX_PIN             = 17;
 static constexpr uint32_t SERIAL_BAUD          = 921600;
 
 //------------------------------------------------------------------------------
+// TSD20 (1D LiDAR)
+//------------------------------------------------------------------------------
+
+// I2C pins
+static constexpr int TSD20_SDA_PIN             = 32;
+static constexpr int TSD20_SCL_PIN             = 33;
+
+// I2C settings
+static constexpr uint32_t TSD20_I2C_HZ         = 100000;
+static constexpr uint8_t TSD20_I2C_ADDR        = 0x52;
+
+// UART "Change IIC" settings
+static constexpr uint32_t TSD20_UART_BAUD_PRIMARY  = 460800;
+static constexpr uint32_t TSD20_UART_BAUD_FALLBACK = 115200;
+
+// Wiring fallback
+static constexpr bool TSD20_ALLOW_PIN_SWAP     = true;
+
+// Read/processing
+static constexpr bool TSD20_ENABLE              = true;
+static constexpr uint32_t TSD20_READ_INTERVAL_MS = 50;
+static constexpr uint32_t TSD20_INIT_RETRY_MS     = 2000;
+static constexpr uint8_t TSD20_MAX_FAILS         = 5;
+static constexpr bool TSD20_REQUIRE_OK           = true;
+static constexpr bool TSD20_CLAMP_IN_MANUAL      = false;
+
+// Distance clamp (tune to your course)
+static constexpr uint16_t TSD20_STOP_DISTANCE_MM    = 400;
+static constexpr uint16_t TSD20_SLOWDOWN_DISTANCE_MM = 800;
+
+//------------------------------------------------------------------------------
 // 自動モードのハートビート監視タイムアウト
 //------------------------------------------------------------------------------
 static constexpr uint32_t HEARTBEAT_TIMEOUT_MS = 200;
