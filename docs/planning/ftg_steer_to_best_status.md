@@ -12,3 +12,4 @@
 
 ## メモ
 - 参照: `docs/planning/process_decision_telemetry_status.md`
+- `PROCESS_MIN_ANGLE_SIGN` を `+1.0f` に変更し、Bと操舵の符号を一致させた
