@@ -119,9 +119,8 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 													 : baseSpeed;
 
 	// 計算される角度（クリップ前）
-	// ハンドリング用の最近接角度が無い場合は直進
-	float steerSourceAngle =
-		(minHandleDistance == INT32_MAX) ? 0.0f : minHandleAngle;
+	// best 角（最大距離）が無い場合は直進
+	float steerSourceAngle = (maxDistance < 0) ? 0.0f : max;
 
 	// 現在のステアリング方向との角度差に基づいた重み付け
 	// 角度差が小さいほど、現在の方向をより優先
