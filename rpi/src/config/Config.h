@@ -73,8 +73,10 @@ static constexpr float PROCESS_SLOW_ANGLE_MAX_DEG   = 70.0f;
 // 出力スケール
 static constexpr int PROCESS_SPEED_DIV           = 50;
 static constexpr int PROCESS_MAX_SPEED           = 100;  // Raspberry Pi内部での最大速度
+// FTGでbest角(B)を操舵基準に統一したため符号を一致させる
 static constexpr float PROCESS_MIN_ANGLE_SIGN    = 1.0f;
 
+// FTG基準に合わせて角度補正を外す（1.0 = 補正なし）
 // ステアリングゲイン（浅めの角度を補正: 1.0 = 補正なし、> 1.0 で角度を強める）
 static constexpr float PROCESS_STEER_GAIN        = 1.0f;
 
