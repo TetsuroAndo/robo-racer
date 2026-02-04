@@ -37,10 +37,10 @@ def generate_launch_description():
         ]),
         launch_arguments={'use_sim_time': 'False'}.items()
     )
-    manager_node = Node(package='race_manager', executable='lap_manager', name='lap_manager', output='screen')
+
 
     return LaunchDescription([
         LogInfo(msg=f"Using frames config: {frames_config_path}"),
         lidar_dev_arg, shm_path_arg, lidar_frame_arg, range_min_arg, range_max_arg,
-        tf_node, bridge_node, lidar_node, driver_node, slam_launch, manager_node
+        tf_node, bridge_node, lidar_node, driver_node, slam_launch
     ])
