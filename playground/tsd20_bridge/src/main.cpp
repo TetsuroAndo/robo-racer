@@ -9,8 +9,8 @@ static const int PIN_TSD20_SDA = 22; // I2C SDA after switch
 static const int PIN_TSD20_SCL = 21; // I2C SCL after switch
 
 // Raspberry Pi <-> ESP32 UART (control/log)
-static const int PIN_RPI_UART_RX = 16; // ESP32 RX (from RPi TX)
-static const int PIN_RPI_UART_TX = 17; // ESP32 TX (to   RPi RX)
+static const int PIN_RPI_UART_RX = 32; // ESP32 RX (from RPi TX)
+static const int PIN_RPI_UART_TX = 33; // ESP32 TX (to   RPi RX)
 
 // =======================
 // Config
@@ -24,6 +24,8 @@ static const uint8_t REG_ID = 0x03;
 static const uint8_t EXPECTED_ID = 0x4A;
 
 static const uint32_t RPI_BAUD = 115200;
+static const uint32_t TSD20_UART_BAUD_PRIMARY = 460800;
+static const uint32_t TSD20_UART_BAUD_FALLBACK = 115200;
 
 // NOTE: Avoid name "PI" (Arduino defines PI macro)
 static HardwareSerial RpiSerial(1);
@@ -84,7 +86,8 @@ static bool tsd20ReadDistanceMm(uint16_t &mm) {
 // =======================
 // UART -> I2C switching (Change IIC command)
 // =======================
-static bool tsd20SendChangeIIC() {
+static bool tsd20SendChangeIICAtBaud(uint32_t baud, bool &sawResponse) {
+	sawResponse = false;
 	// Change IIC: 5A 1F 02 1F 1F A0  (manual)
 	const uint8_t cmd[] = {0x5A, 0x1F, 0x02, 0x1F, 0x1F, 0xA0};
 
@@ -92,7 +95,7 @@ static bool tsd20SendChangeIIC() {
 	// TX must be on pin connected to TSD20 RX (Pin4) => GPIO22
 	TsdUart.end();
 	delay(20);
-	TsdUart.begin(460800, SERIAL_8N1, /*rx=*/PIN_TSD20_SCL,
+	TsdUart.begin(baud, SERIAL_8N1, /*rx=*/PIN_TSD20_SCL,
 				  /*tx=*/PIN_TSD20_SDA);
 	delay(50);
 
@@ -121,11 +124,24 @@ static bool tsd20SendChangeIIC() {
 	if (n >= 6) {
 		for (size_t i = 0; i + 5 < n; i++) {
 			if (buf[i] == 0x5A && buf[i + 1] == 0x9F && buf[i + 2] == 0x02) {
+				sawResponse = true;
 				return true;
 			}
 		}
 	}
 	return false; // unknown; caller will re-probe I2C anyway
+}
+
+static bool tsd20SendChangeIIC() {
+	bool sawResponse = false;
+	(void)tsd20SendChangeIICAtBaud(TSD20_UART_BAUD_PRIMARY, sawResponse);
+	if (!sawResponse) {
+		Serial.printf("[TSD20] no UART response @%lu. Trying %lu...\n",
+					  (unsigned long)TSD20_UART_BAUD_PRIMARY,
+					  (unsigned long)TSD20_UART_BAUD_FALLBACK);
+		(void)tsd20SendChangeIICAtBaud(TSD20_UART_BAUD_FALLBACK, sawResponse);
+	}
+	return sawResponse;
 }
 
 // =======================
@@ -149,6 +165,7 @@ static void printBanner() {
 	Serial.println("  p : probe I2C (read ID)");
 	Serial.println("  o : laser ON (I2C)");
 	Serial.println("  f : laser OFF (I2C)");
+	Serial.println("  s : I2C scan");
 	Serial.println("  h : help");
 }
 
@@ -162,6 +179,21 @@ static void initI2C() {
 	delay(10);
 	Wire.begin(PIN_TSD20_SDA, PIN_TSD20_SCL, I2C_FREQ_HZ);
 	delay(30);
+}
+
+static void i2cScan() {
+	initI2C();
+	Serial.println("[I2C] scan start");
+	uint8_t found = 0;
+	for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
+		Wire.beginTransmission(addr);
+		uint8_t rc = Wire.endTransmission(true);
+		if (rc == 0) {
+			Serial.printf("[I2C] found addr=0x%02X\n", addr);
+			found++;
+		}
+	}
+	Serial.printf("[I2C] scan done. found=%u\n", found);
 }
 
 static void probeOrSwitch() {
@@ -251,6 +283,8 @@ void loop() {
 			Serial.println(i2cWrite8(TSD20_ADDR, REG_LASER_CTRL, 0x00)
 							   ? "[TSD20] laser OFF"
 							   : "[TSD20] laser OFF failed");
+		} else if (c == 's') {
+			i2cScan();
 		}
 	}
 

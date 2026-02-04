@@ -6,13 +6,14 @@
 
 ## ステータス
 - 進行中: 0
-- 完了: 3
+- 完了: 4
 - 再検討: 1
 
 ## タスク一覧
 - [x] `message.txt`内容の移植先構成を決定
 - [x] `playground/tsd20_bridge`に実装を追加
 - [x] `playground/tsd20_bridge/platformio.ini`を追加
+- [x] I2Cスキャン/Change IICのフォールバック追加
 - [ ] PlatformIOでビルド確認（`~/.platformio`の権限不足で失敗）
 
 ## メモ
