@@ -14,6 +14,8 @@ namespace cfg {
 static constexpr const char* DEFAULT_LIDAR_DEVICE = "/dev/ttyAMA2";
 static constexpr const char* DEFAULT_ESP_DEVICE   = "/dev/ttyAMA0";
 static constexpr const char* DEFAULT_SERIALD_SOCK = "/tmp/roboracer/seriald.sock";
+static constexpr const char* DEFAULT_PROCESS_LOG  = "./logs/process_telemetry.jsonl";
+static constexpr const char* DEFAULT_METRICSD_LOG = "./logs/metricsd.log";
 
 // ボーレート
 static constexpr int DEFAULT_LIDAR_BAUD = 460800;
@@ -90,6 +92,31 @@ static constexpr float PROCESS_STEER_WINDOW_HALF_DEG = 25.0f;  // 前回ステ�
 
 // ステアリング方向への優先度: 現在の方向に近い角度を優先（0.0=優先度なし、1.0=最大優先度）
 static constexpr float PROCESS_DIRECTION_WEIGHT = 0.5f;  // 現在方向との角度差を考慮する程度
+
+//------------------------------------------------------------------------------
+// Telemetry（観測/可視化）
+//------------------------------------------------------------------------------
+
+static constexpr double TELEMETRY_DEFAULT_HZ = 10.0;
+static constexpr float TELEMETRY_CANDIDATE_EVENT_DEG = 10.0f;
+static constexpr uint16_t TELEMETRY_CPU_WARN_PERMILLE = 800;
+static constexpr uint16_t TELEMETRY_CPU_CRIT_PERMILLE = 950;
+static constexpr uint16_t TELEMETRY_TEMP_WARN_CDEG = 7000;
+static constexpr uint16_t TELEMETRY_TEMP_CRIT_CDEG = 8000;
+static constexpr int TELEMETRY_DIST_BAR_MAX_MM = 12000;
+static constexpr size_t TELEMETRY_BAR_WIDTH = 12;
+static constexpr size_t TELEMETRY_SPARK_LEN = 20;
+static constexpr size_t TELEMETRY_COMPASS_ROWS = 6;
+static constexpr size_t TELEMETRY_COMPASS_MIN_WIDTH = 21;
+static constexpr int TELEMETRY_NEAR_EMPH_MM = 1000;
+static constexpr uint32_t TELEMETRY_SCAN_AGE_WARN_MS = 100;
+static constexpr uint32_t TELEMETRY_SCAN_AGE_CRIT_MS = 200;
+static constexpr float TELEMETRY_BEST_JUMP_DEG = 15.0f;
+static constexpr float TELEMETRY_SLOWDOWN_SF = 0.5f;
+static constexpr uint32_t TELEMETRY_LATENCY_WARN_MS = 20;
+static constexpr uint32_t TELEMETRY_LATENCY_CRIT_MS = 50;
+static constexpr float TELEMETRY_TTL_WARN_FACTOR = 1.0f;
+static constexpr float TELEMETRY_TTL_CRIT_FACTOR = 2.0f;
 
 // clang-format on
 } // namespace cfg

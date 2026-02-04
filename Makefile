@@ -36,6 +36,14 @@ FIRMWARE			:= $(PIO_BUILD_DIR)/firmware.elf
 RPI_SRC_DIR			:= $(ROOT)/rpi/src
 RPI_LIB_DIR			:= $(ROOT)/rpi/lib
 RPI_BUILD_DIR		:= $(ROOT)/rpi/build
+RPI_BUILD_TYPE		?= Release
+TSAN				?= 0
+ifeq ($(TSAN),1)
+  RPI_BUILD_TYPE	:= RelWithDebInfo
+  RPI_TSAN			:= -DROBO_RACER_TSAN=ON
+else
+  RPI_TSAN			:=
+endif
 
 RPLIDAR_SDK_DIR		:= $(RPI_LIB_DIR)/rplidar_sdk
 RPLIDAR_INC			:= $(RPLIDAR_SDK_DIR)/sdk/include
@@ -80,7 +88,7 @@ all: pio rpi
 .PHONY: rpi c-rpi
 $(NAME): rpi
 rpi: | rplidar_sdk $(LOG_DIR)
-	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release -DROBO_RACER_NAME=$(NAME)
+	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=$(RPI_BUILD_TYPE) -DROBO_RACER_NAME=$(NAME) $(RPI_TSAN)
 	$(CMAKE) --build $(RPI_BUILD_DIR) -j $(shell nproc)
 
 c-rpi:
@@ -126,7 +134,8 @@ $(LOG_DIR):
 # ================================
 # Runs
 # ================================
-.PHONY: test activate hils-build hils-local ros2-up ros2-shell ros2-build \
+.PHONY: test activate hils-build hils-local ros2-up ros2-shell ros2-build ros2-build-clean \
+	ros2-mc-bridge ros2-topic-echo \
 	ros2-rviz ros2-novnc ros2-bag-record ros2-bag-play ros2-session-up
 
 hils-build:
@@ -147,6 +156,30 @@ ros2-shell:
 ros2-build:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
 		bash /ws/tools/ros2/scripts/ros2_build.sh
+
+ros2-build-clean:
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash -lc "rm -rf /ws/rpi/ros2_ws/build /ws/rpi/ros2_ws/install /ws/rpi/ros2_ws/log && /ws/tools/ros2/scripts/ros2_build.sh"
+
+ros2-mc-bridge:
+	@if [ -z "$(HOST)" ]; then \
+		echo "Error: HOST パラメータが未設定です。例: make ros2-mc-bridge HOST=100.102.92.54"; \
+		exit 1; \
+	fi
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash -c "source /opt/ros/humble/setup.bash; source /ws/rpi/ros2_ws/install/setup.bash; \
+		ros2 run mc_bridge mc_bridge --ros-args -p telemetry_tcp_host:=$(HOST) -p telemetry_tcp_port:=5001"
+
+ros2-topic-echo:
+	@if [ -z "$(TOPIC)" ]; then \
+		echo "Error: TOPIC パラメータが未設定です。例: make ros2-topic-echo TOPIC=/mc/status TYPE=mc_msgs/msg/Status ONCE=1"; \
+		exit 1; \
+	fi; \
+	CMD="ros2 topic echo $(TOPIC)"; \
+	if [ -n "$(TYPE)" ]; then CMD="$$CMD $(TYPE)"; fi; \
+	if [ "$(ONCE)" = "1" ]; then CMD="$$CMD --once"; fi; \
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash -c "source /opt/ros/humble/setup.bash; source /ws/rpi/ros2_ws/install/setup.bash; $$CMD"
 
 ros2-rviz:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \

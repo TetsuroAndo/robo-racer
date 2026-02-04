@@ -183,8 +183,8 @@ mc_demo_pub/                 # bridge無しで /scan を出す
 **作業**
 - `docs/contracts/ipc_uds_v0.1.md` を追加（control/telemetryの契約）
 - 可能なら `seriald` に以下を実装：
-  - `/run/roboracer/seriald.sock`（control：送信権あり。原則 racerd のみ）
-  - `/run/roboracer/seriald.telemetry.sock`（telemetry：観測専用。送信禁止）
+  - `/tmp/roboracer/seriald.sock`（control：送信権あり。原則 racerd のみ）
+  - `/tmp/roboracer/seriald.telemetry.sock`（telemetry：観測専用。送信禁止）
   - telemetryクライアントが送信したら切断 or 無視＋WARN（安全）
 
 **受け入れ基準**

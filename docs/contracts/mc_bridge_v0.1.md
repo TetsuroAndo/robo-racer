@@ -11,8 +11,7 @@ B/C が **実機なしでも ROS2 上で可視化/検証**できる状態を作�
 
 ### ソケット
 - `seriald.telemetry.sock`（観測専用）
-  - 既定: `/run/roboracer/seriald.telemetry.sock`
-  - 互換: `/tmp/roboracer/seriald.telemetry.sock`（移行期間の暫定）
+  - 既定: `/tmp/roboracer/seriald.telemetry.sock`
 
 ### フレーム種別
 - UART 受信フレーム（ESP32→RPi）

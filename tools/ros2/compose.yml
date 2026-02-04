@@ -1,5 +1,6 @@
 services:
   ros2:
+    platform: linux/arm64
     build:
       context: ../..
       dockerfile: tools/ros2/Dockerfile
@@ -7,6 +8,8 @@ services:
     entrypoint: ["/usr/local/bin/ros2_entrypoint.sh"]
     volumes:
       - ../..:/ws
+      - /tmp/roboracer:/tmp/roboracer
+      - /dev/shm:/dev/shm
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     environment:
       - DISPLAY=${DISPLAY:-host.docker.internal:0}
@@ -15,10 +18,15 @@ services:
       - LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-0}
       - QT_XCB_GL_INTEGRATION=${QT_XCB_GL_INTEGRATION:-}
       - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/runtime-root}
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-0}
+      - AMENT_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
+      - COLCON_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
     stdin_open: true
     tty: true
 
   ros2-novnc:
+    platform: linux/arm64
     build:
       context: ../..
       dockerfile: tools/ros2/Dockerfile
@@ -26,10 +34,16 @@ services:
     entrypoint: ["/usr/local/bin/ros2_entrypoint.sh"]
     volumes:
       - ../..:/ws
+      - /tmp/roboracer:/tmp/roboracer
+      - /dev/shm:/dev/shm
     ports:
       - "127.0.0.1:6080:6080"
     environment:
       - NOVNC_PORT=6080
       - NOVNC_RESOLUTION=1280x800x24
       - NOVNC_BIND=0.0.0.0
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-0}
+      - AMENT_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
+      - COLCON_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
     command: ["bash", "/ws/tools/ros2/scripts/novnc_start.sh", "rviz2", "-d", "/ws/tools/ros2/rviz/default.rviz"]
