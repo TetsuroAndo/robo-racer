@@ -1,4 +1,5 @@
 #include <atomic>
+#include <errno.h>
 #include <fcntl.h>
 #include <memory>
 #include <mutex>
@@ -113,9 +114,11 @@ static void broadcast_to(const std::vector< ServerEntry > &servers,
 		const std::vector< int > clients = entry.server->clients();
 		for (int cfd : clients) {
 			const ssize_t w = ::send(cfd, data, len, MSG_NOSIGNAL);
-			if (w != (ssize_t)len) {
-				entry.server->remove_client(cfd);
-			}
+			if (w == (ssize_t)len)
+				continue;
+			if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+				continue;
+			entry.server->remove_client(cfd);
 		}
 	}
 }
@@ -188,6 +191,14 @@ static void tcp_broadcast(const uint8_t *data, size_t len) {
 	for (size_t i = 0; i < g_tcp_clients.size();) {
 		int fd = g_tcp_clients[i].fd;
 		ssize_t w = ::send(fd, data, len, MSG_NOSIGNAL);
+		if (w == (ssize_t)len) {
+			++i;
+			continue;
+		}
+		if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+			++i;
+			continue;
+		}
 		if (w < 0 || (size_t)w != len) {
 			tcp_remove_client(i);
 			continue;
