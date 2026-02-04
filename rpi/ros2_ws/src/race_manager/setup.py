@@ -20,7 +20,7 @@ setup(
     maintainer='User',
     maintainer_email='user@example.com',
     description='Race Manager',
-    license='Apache-2.0',
+    license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
