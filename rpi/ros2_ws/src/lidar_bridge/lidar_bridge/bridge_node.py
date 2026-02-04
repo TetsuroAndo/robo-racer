@@ -1,6 +1,5 @@
 import mmap
 import struct
-import time
 
 import rclpy
 from rclpy.node import Node
