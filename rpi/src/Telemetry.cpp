@@ -72,15 +72,6 @@ std::string fitVisible(const std::string &s, size_t width) {
 	return out;
 }
 
-int intensityRank(char c) {
-	const char *levels = " .:-=+*#@!";
-	for (int i = 0; levels[i] != '\0'; ++i) {
-		if (levels[i] == c)
-			return i;
-	}
-	return 0;
-}
-
 std::string colorWrap(const std::string &s, Severity sev) {
 	switch (sev) {
 	case Severity::Safe:
@@ -555,79 +546,51 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 
 	const int max_dist = cfg::TELEMETRY_DIST_BAR_MAX_MM;
 	std::ostringstream comp_title;
-	comp_title << "COMPASS Fan (max " << std::fixed << std::setprecision(1)
+	comp_title << "LIDAR HEATMAP (max " << std::fixed << std::setprecision(1)
 			   << (max_dist / 1000.0f)
 			   << "m, near<=" << cfg::TELEMETRY_NEAR_EMPH_MM
 			   << "mm) B=best T=target A=applied";
 	const std::string top_compass =
 		compass_left + "+" + fitVisible(comp_title.str(), scale_w) + "+";
 
-	std::vector< std::string > fan_rows;
-	fan_rows.reserve(cfg::TELEMETRY_COMPASS_ROWS);
+	std::vector< std::string > heat_rows;
 	const size_t rows = cfg::TELEMETRY_COMPASS_ROWS;
-	const size_t min_width =
-		std::min(cfg::TELEMETRY_COMPASS_MIN_WIDTH, TELEMETRY_COMPASS_BINS);
+	heat_rows.reserve(rows);
 	std::vector< std::string > grid(rows,
 									std::string(TELEMETRY_COMPASS_BINS, ' '));
 
-	if (s.lidar_dist_valid) {
-		static const char *k = " .:-=+*#@";
-		const size_t kmax = 8;
+	if (s.lidar_dist_valid && rows > 0) {
+		static const char *levels = "@#*+=-:.";
+		const size_t levels_len = 8;
+		const float band = (rows > 0) ? (float)max_dist / (float)rows : 1.0f;
 		for (size_t c = 0; c < TELEMETRY_COMPASS_BINS; ++c) {
-			const int raw_dist = s.lidar_dist_bins[c];
-			const bool has_wall = (raw_dist >= 0 && raw_dist < max_dist);
-			int dist = raw_dist;
-			if (dist < 0)
-				dist = max_dist;
-			if (dist > max_dist)
-				dist = max_dist;
-			const float ratio = (max_dist > 0) ? (float)dist / max_dist : 0.0f;
-			size_t fill_rows = (size_t)std::ceil(ratio * (float)rows);
-			if (fill_rows > rows)
-				fill_rows = rows;
-			if (fill_rows == 0)
+			int dist = s.lidar_dist_bins[c];
+			if (dist < 0 || dist >= max_dist)
 				continue;
+			const float ratio =
+				(max_dist > 0) ? (float)dist / (float)max_dist : 1.0f;
+			const size_t idx =
+				(size_t)std::lround(std::min(1.0f, std::max(0.0f, ratio)) *
+									(float)(levels_len - 1));
+			const char glyph = levels[idx];
+			int band_idx = (band > 0.0f) ? (int)std::floor(dist / band) : 0;
+			if (band_idx < 0)
+				band_idx = 0;
+			if (band_idx >= (int)rows)
+				continue;
+			const size_t fill_rows = rows - (size_t)band_idx;
 			const size_t start_row = rows - fill_rows;
-			if (has_wall) {
-				for (size_t r = 0; r < rows; ++r) {
-					grid[r][c] = '.';
-				}
-			}
 			for (size_t r = start_row; r < rows; ++r) {
-				const float t = (rows > 1)
-									? (float)(rows - 1 - r) / (float)(rows - 1)
-									: 0.0f;
-				const size_t idx = (size_t)std::lround(t * (float)kmax);
-				grid[r][c] = k[idx];
+				grid[r][c] = glyph;
 			}
 			if (dist <= cfg::TELEMETRY_NEAR_EMPH_MM) {
-				grid[start_row][c] = '!';
+				grid[rows - 1][c] = '!';
 			}
 		}
 	}
 
 	for (size_t r = 0; r < rows; ++r) {
-		const float t =
-			(rows > 1) ? (float)(rows - 1 - r) / (float)(rows - 1) : 0.0f;
-		const size_t width = (size_t)std::lround(
-			(float)min_width + t * (float)(TELEMETRY_COMPASS_BINS - min_width));
-		const size_t left = (TELEMETRY_COMPASS_BINS - width) / 2;
-		std::string row_line(TELEMETRY_COMPASS_BINS, ' ');
-		for (size_t c = 0; c < TELEMETRY_COMPASS_BINS; ++c) {
-			const size_t mapped =
-				(width > 1)
-					? (size_t)std::lround((float)c * (float)(width - 1) /
-										  (float)(TELEMETRY_COMPASS_BINS - 1))
-					: 0;
-			const size_t col = left + mapped;
-			if (col >= TELEMETRY_COMPASS_BINS)
-				continue;
-			const char in = grid[r][c];
-			if (intensityRank(in) >= intensityRank(row_line[col])) {
-				row_line[col] = in;
-			}
-		}
-		fan_rows.push_back(row_line);
+		heat_rows.push_back(grid[r]);
 	}
 
 	std::string labels(scale_w, ' ');
@@ -922,14 +885,14 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		return "|" + pad(sline) + "|";
 	};
 
-	const int frame_lines = 17 + (int)fan_rows.size();
+	const int frame_lines = 17 + (int)heat_rows.size();
 	if (!ui_initialized_) {
 		std::cout << "\x1b[?25l"; // hide cursor
 		std::cout << top << "\n"
 				  << line(l0.str()) << "\n"
 				  << line(l1.str()) << "\n"
 				  << line(top_compass) << "\n";
-		for (const auto &row : fan_rows) {
+		for (const auto &row : heat_rows) {
 			std::cout << line(compass_left + "|" + row + "|") << "\n";
 		}
 		std::cout << line(line_markers) << "\n"
@@ -953,7 +916,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		std::cout << "\x1b[2K\r" << line(l0.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l1.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(top_compass) << "\n";
-		for (const auto &row : fan_rows) {
+		for (const auto &row : heat_rows) {
 			std::cout << "\x1b[2K\r" << line(compass_left + "|" + row + "|")
 					  << "\n";
 		}
