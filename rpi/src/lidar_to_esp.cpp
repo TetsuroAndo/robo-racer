@@ -40,15 +40,17 @@ int run_lidar_to_esp(const char *lidar_dev, int lidar_baud,
 	Sender sender(esp_dev, &telemetry);
 	const std::string run_id = make_run_id();
 	uint64_t tick = 0;
+	uint64_t scan_id = 0;
 	float lastSteerAngle = 0.0f;
 
 	while (!g_stop) {
 		const auto &res = lidarReceiver.receive();
 		const auto procResult =
-			process.proc(res, lastSteerAngle, tick, tick, run_id);
+			process.proc(res, lastSteerAngle, tick, scan_id, run_id);
 		sender.send(procResult.speed, procResult.angle);
 		lastSteerAngle = procResult.angle;
 		++tick;
+		++scan_id;
 	}
 	telemetry.shutdownUi();
 	return 0;

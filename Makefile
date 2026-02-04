@@ -166,9 +166,11 @@ ros2-mc-bridge:
 		echo "Error: HOST パラメータが未設定です。例: make ros2-mc-bridge HOST=100.102.92.54"; \
 		exit 1; \
 	fi
-	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm \
+		-e TELEMETRY_TCP_HOST="$(HOST)" \
+		ros2 \
 		bash -c "source /opt/ros/humble/setup.bash; source /ws/rpi/ros2_ws/install/setup.bash; \
-		ros2 run mc_bridge mc_bridge --ros-args -p telemetry_tcp_host:=$(HOST) -p telemetry_tcp_port:=5001"
+		ros2 run mc_bridge mc_bridge --ros-args -p telemetry_tcp_host:=$$TELEMETRY_TCP_HOST -p telemetry_tcp_port:=5001"
 
 ros2-topic-echo:
 	@if [ -z "$(TOPIC)" ]; then \

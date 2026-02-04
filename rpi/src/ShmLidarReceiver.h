@@ -19,6 +19,7 @@ public:
 	bool connect();
 	bool isConnected() const;
 	bool getLatestData(std::vector< LidarData > &out);
+	uint32_t lastSeq() const { return _lastSeq; }
 
 private:
 	void cleanup();

@@ -8,6 +8,8 @@
 #include <iostream>
 #include <string>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 static void usage() {
@@ -24,6 +26,35 @@ static int argi(int &i, int argc, char **argv) {
 	if (i + 1 >= argc)
 		return 0;
 	return std::stoi(argv[++i]);
+}
+
+static bool check_tmp_socket_dir_safe(const std::string &sock_path) {
+	if (sock_path.rfind("/tmp/", 0) != 0)
+		return true;
+	const std::string dir = mc::core::dir_of(sock_path);
+	if (dir.empty())
+		return true;
+	struct stat st{};
+	if (::stat(dir.c_str(), &st) != 0) {
+		std::cerr << "serialctl: socket dir stat failed: " << dir << "\n";
+		return false;
+	}
+	if (!S_ISDIR(st.st_mode)) {
+		std::cerr << "serialctl: socket dir is not a directory: " << dir
+				  << "\n";
+		return false;
+	}
+	const uid_t uid = ::getuid();
+	if (st.st_uid != 0 && st.st_uid != uid) {
+		std::cerr << "serialctl: socket dir owner mismatch: " << dir << "\n";
+		return false;
+	}
+	if (st.st_mode & (S_IWGRP | S_IWOTH)) {
+		std::cerr << "serialctl: socket dir is group/world-writable: " << dir
+				  << "\n";
+		return false;
+	}
+	return true;
 }
 
 int main(int argc, char **argv) {
@@ -76,6 +107,9 @@ int main(int argc, char **argv) {
 		else if (a == "--mode")
 			mode = argi(i, argc, argv);
 	}
+
+	if (!check_tmp_socket_dir_safe(uds))
+		return 1;
 
 	mc::ipc::UdsClient c;
 	if (!c.connect(uds)) {

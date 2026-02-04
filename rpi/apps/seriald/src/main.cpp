@@ -1,4 +1,5 @@
 #include <atomic>
+#include <errno.h>
 #include <fcntl.h>
 #include <memory>
 #include <mutex>
@@ -110,8 +111,14 @@ static void broadcast_to(const std::vector< ServerEntry > &servers,
 	for (const auto &entry : servers) {
 		if (entry.telemetry != telemetry)
 			continue;
-		for (int cfd : entry.server->clients()) {
-			(void)::send(cfd, data, len, MSG_NOSIGNAL);
+		const std::vector< int > clients = entry.server->clients();
+		for (int cfd : clients) {
+			const ssize_t w = ::send(cfd, data, len, MSG_NOSIGNAL);
+			if (w == (ssize_t)len)
+				continue;
+			if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+				continue;
+			entry.server->remove_client(cfd);
 		}
 	}
 }
@@ -163,6 +170,10 @@ static void tcp_accept_clients(mc::core::Logger &logger) {
 		int cfd = ::accept(g_tcp_listen_fd, nullptr, nullptr);
 		if (cfd < 0)
 			break;
+		int fl = fcntl(cfd, F_GETFL, 0);
+		if (fl >= 0) {
+			(void)fcntl(cfd, F_SETFL, fl | O_NONBLOCK);
+		}
 		g_tcp_clients.push_back(TcpClientEntry{cfd});
 		logger.log(mc::core::LogLevel::Info, "seriald",
 				   "tcp telemetry client connected fd=" + std::to_string(cfd));
@@ -180,7 +191,15 @@ static void tcp_broadcast(const uint8_t *data, size_t len) {
 	for (size_t i = 0; i < g_tcp_clients.size();) {
 		int fd = g_tcp_clients[i].fd;
 		ssize_t w = ::send(fd, data, len, MSG_NOSIGNAL);
-		if (w <= 0) {
+		if (w == (ssize_t)len) {
+			++i;
+			continue;
+		}
+		if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+			++i;
+			continue;
+		}
+		if (w < 0 || (size_t)w != len) {
 			tcp_remove_client(i);
 			continue;
 		}

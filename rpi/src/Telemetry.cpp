@@ -8,6 +8,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <exception>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -171,7 +172,7 @@ void TelemetryEmitter::emitNoLidar(uint64_t ts_us, const std::string &run_id,
 		 << ",\"scan_id\":" << scan_id
 		 << ",\"mode\":\"UNKNOWN\",\"cmd\":{\"v\":0,\"steer_deg\":0}}";
 	MC_LOGW("event", json.str());
-	pushEvent_("NO_LIDAR");
+	pushEvent_(EventCategory::Sens, Severity::Crit, ts_us, "NO_LIDAR");
 }
 
 void TelemetryEmitter::shutdownUi() {
@@ -224,7 +225,11 @@ void TelemetryEmitter::refreshMetrics_() {
 			++end;
 		if (end == i)
 			return false;
-		val = std::stoull(line.substr(i, end - i));
+		try {
+			val = std::stoull(line.substr(i, end - i));
+		} catch (const std::exception &) {
+			return false;
+		}
 		return true;
 	};
 
@@ -242,7 +247,11 @@ void TelemetryEmitter::refreshMetrics_() {
 		++end_pos;
 	if (end_pos == slash + 1)
 		return;
-	mem_total = std::stoull(line.substr(slash + 1, end_pos - slash - 1));
+	try {
+		mem_total = std::stoull(line.substr(slash + 1, end_pos - slash - 1));
+	} catch (const std::exception &) {
+		return;
+	}
 
 	{
 		std::lock_guard< std::mutex > lk(metrics_mtx_);
@@ -262,18 +271,33 @@ void TelemetryEmitter::metricsLoop_() {
 	}
 }
 
-void TelemetryEmitter::pushEvent_(std::string e) {
-	if (e.empty())
+void TelemetryEmitter::pushEvent_(EventCategory category, Severity severity,
+								  uint64_t ts_us, std::string label) {
+	if (label.empty())
 		return;
-	events_.push_back(std::move(e));
-	const size_t max_events = 5;
-	if (events_.size() > max_events)
-		events_.erase(events_.begin(),
-					  events_.begin() + (events_.size() - max_events));
+	const size_t idx = static_cast< size_t >(category);
+	if (idx >= event_state_.size())
+		return;
+	auto &state = event_state_[idx];
+	if (state.valid && state.label == label) {
+		if (state.count < 9999u)
+			++state.count;
+	} else {
+		state.label = std::move(label);
+		state.count = 1;
+	}
+	state.severity = severity;
+	state.ts_us = ts_us;
+	state.valid = true;
 }
 
 void TelemetryEmitter::emitJson_(const TelemetrySample &s) {
 	std::ostringstream telemetry;
+	StatusCache status;
+	{
+		std::lock_guard< std::mutex > lk(metrics_mtx_);
+		status = status_;
+	}
 	telemetry << std::fixed << std::setprecision(2);
 	telemetry << "{\"t_us\":" << s.ts_us << ",\"type\":\"telemetry\""
 			  << ",\"run_id\":\"" << s.run_id << "\",\"tick\":" << s.tick
@@ -351,13 +375,13 @@ void TelemetryEmitter::emitJson_(const TelemetrySample &s) {
 		telemetry << "]";
 	}
 
-	if (status_.valid) {
+	if (status.valid) {
 		telemetry << ",\"esp_status\":{\"auto_active\":"
-				  << (unsigned)status_.auto_active
-				  << ",\"faults\":" << status_.faults
-				  << ",\"speed_mm_s\":" << status_.speed_mm_s
-				  << ",\"steer_cdeg\":" << status_.steer_cdeg
-				  << ",\"age_ms\":" << status_.age_ms << "}";
+				  << (unsigned)status.auto_active
+				  << ",\"faults\":" << status.faults
+				  << ",\"speed_mm_s\":" << status.speed_mm_s
+				  << ",\"steer_cdeg\":" << status.steer_cdeg
+				  << ",\"age_ms\":" << status.age_ms << "}";
 	} else {
 		telemetry << ",\"esp_status\":null";
 	}
@@ -378,7 +402,16 @@ void TelemetryEmitter::emitOverrideEvent_(const TelemetrySample &s) {
 		  << ",\"th_stop_mm\":" << s.th_stop_mm
 		  << ",\"th_safe_mm\":" << s.th_safe_mm << "}";
 	MC_LOGI("event", event.str());
-	pushEvent_("OVERRIDE " + s.override_kind);
+	Severity sev = Severity::Warn;
+	if (s.override_kind == "NONE")
+		sev = Severity::Safe;
+	else if (s.override_kind == "STOP")
+		sev = Severity::Crit;
+	std::string label = s.override_kind;
+	if (s.override_detail != "NONE" && s.override_detail != s.override_kind) {
+		label += " " + s.override_detail;
+	}
+	pushEvent_(EventCategory::Override, sev, s.ts_us, std::move(label));
 	last_override_ = s.override_kind;
 }
 
@@ -390,9 +423,11 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	};
 
 	MetricsCache metrics;
+	StatusCache status;
 	{
 		std::lock_guard< std::mutex > lk(metrics_mtx_);
 		metrics = metrics_;
+		status = status_;
 	}
 
 	int path_mm = s.path_obst_mm;
@@ -480,12 +515,12 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 
 	Severity ctrl_sev = Severity::Safe;
 	bool ttl_expired = false;
-	if (status_.valid && s.ttl_ms) {
+	if (status.valid && s.ttl_ms) {
 		const float ttl = (float)*s.ttl_ms;
-		if ((float)status_.age_ms >= ttl * cfg::TELEMETRY_TTL_CRIT_FACTOR) {
+		if ((float)status.age_ms >= ttl * cfg::TELEMETRY_TTL_CRIT_FACTOR) {
 			ctrl_sev = Severity::Crit;
 			ttl_expired = true;
-		} else if ((float)status_.age_ms >=
+		} else if ((float)status.age_ms >=
 				   ttl * cfg::TELEMETRY_TTL_WARN_FACTOR) {
 			ctrl_sev = Severity::Warn;
 			ttl_expired = true;
@@ -495,7 +530,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		ctrl_sev = Severity::Crit;
 	else if (s.override_kind != "NONE")
 		ctrl_sev = std::max(ctrl_sev, Severity::Warn);
-	if (status_.valid && status_.faults != 0)
+	if (status.valid && status.faults != 0)
 		ctrl_sev = std::max(ctrl_sev, Severity::Warn);
 	if (s.planner_latency_ms &&
 		*s.planner_latency_ms >= cfg::TELEMETRY_LATENCY_CRIT_MS)
@@ -702,10 +737,10 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	   << "ms c="
 	   << (s.control_latency_ms ? std::to_string(*s.control_latency_ms) : "NA")
 	   << "ms ttl=" << (s.ttl_ms ? std::to_string(*s.ttl_ms) : "NA");
-	if (status_.valid) {
-		l5 << " auto=" << (unsigned)status_.auto_active << " faults=0x"
-		   << std::hex << status_.faults << std::dec
-		   << " age=" << status_.age_ms << "ms";
+	if (status.valid) {
+		l5 << " auto=" << (unsigned)status.auto_active << " faults=0x"
+		   << std::hex << status.faults << std::dec << " age=" << status.age_ms
+		   << "ms";
 	}
 
 	std::ostringstream l6;
@@ -778,53 +813,67 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 
 	const bool best_jump = s.best_delta_deg && std::fabs(*s.best_delta_deg) >=
 												   cfg::TELEMETRY_BEST_JUMP_DEG;
-	if (best_jump && !last_best_jump_) {
-		pushEvent_("BEST_JUMP " + std::to_string(*s.best_delta_deg));
+	const bool slowdown = (s.speed_factor <= cfg::TELEMETRY_SLOWDOWN_SF);
+
+	bool plan_event = false;
+	if (slowdown && !last_slowdown_) {
+		std::ostringstream ev;
+		ev << "SLOWDOWN sf=" << std::fixed << std::setprecision(2)
+		   << s.speed_factor;
+		pushEvent_(EventCategory::Plan, Severity::Warn, s.ts_us, ev.str());
+		plan_event = true;
+	}
+	if (!plan_event && best_jump && !last_best_jump_) {
+		std::ostringstream ev;
+		ev << "BEST_JUMP d=" << std::fixed << std::setprecision(1)
+		   << *s.best_delta_deg << "deg";
+		pushEvent_(EventCategory::Plan, Severity::Warn, s.ts_us, ev.str());
 	}
 	last_best_jump_ = best_jump;
-
-	const bool slowdown = (s.speed_factor <= cfg::TELEMETRY_SLOWDOWN_SF);
-	if (slowdown && !last_slowdown_) {
-		pushEvent_("SLOWDOWN sf=" + std::to_string(s.speed_factor));
-	}
 	last_slowdown_ = slowdown;
 
 	if (s.scan_age_ms && sev_rank(loc_sev) > sev_rank(last_loc_sev_)) {
-		pushEvent_("SCAN_STALE " + std::to_string(*s.scan_age_ms) + "ms");
+		pushEvent_(EventCategory::Loc, loc_sev, s.ts_us,
+				   "SCAN_STALE " + std::to_string(*s.scan_age_ms) + "ms");
 	}
 	last_loc_sev_ = loc_sev;
 
 	if (sev_rank(map_sev) > sev_rank(last_map_sev_)) {
-		pushEvent_(std::string("MAP ") + sev_name(map_sev));
+		pushEvent_(EventCategory::Map, map_sev, s.ts_us,
+				   "MAP state=" + s.map_state);
 	}
 	last_map_sev_ = map_sev;
 
 	if (sev_rank(sens_sev) > sev_rank(last_sens_sev_)) {
 		if (sens_ratio >= 0.0f) {
 			const int miss_pct = (int)std::round((1.0f - sens_ratio) * 100.0f);
-			pushEvent_("SENS_DROP miss=" + std::to_string(miss_pct) + "%");
+			pushEvent_(EventCategory::Sens, sens_sev, s.ts_us,
+					   "SENS_DROP miss=" + std::to_string(miss_pct) + "%");
 		} else {
-			pushEvent_("SENS_DROP");
+			pushEvent_(EventCategory::Sens, sens_sev, s.ts_us, "SENS_DROP");
 		}
 	}
 	last_sens_sev_ = sens_sev;
 
-	if (sev_rank(ctrl_sev) > sev_rank(last_ctrl_sev_)) {
-		pushEvent_(std::string("CTRL ") + sev_name(ctrl_sev));
+	const bool faults_now = status.valid && status.faults != 0;
+
+	bool ctrl_event = false;
+	if (ttl_expired && !last_ttl_expired_) {
+		pushEvent_(EventCategory::Ctrl, ctrl_sev, s.ts_us,
+				   "TTL_EXPIRED age=" + std::to_string(status.age_ms) + "ms");
+		ctrl_event = true;
+	}
+	if (!ctrl_event && faults_now && !last_faults_) {
+		std::ostringstream f;
+		f << "FAULTS 0x" << std::hex << status.faults << std::dec;
+		pushEvent_(EventCategory::Ctrl, ctrl_sev, s.ts_us, f.str());
+		ctrl_event = true;
+	}
+	if (!ctrl_event && sev_rank(ctrl_sev) > sev_rank(last_ctrl_sev_)) {
+		pushEvent_(EventCategory::Ctrl, ctrl_sev, s.ts_us, "CTRL");
 	}
 	last_ctrl_sev_ = ctrl_sev;
-
-	if (ttl_expired && !last_ttl_expired_) {
-		pushEvent_("TTL_EXPIRED age=" + std::to_string(status_.age_ms) + "ms");
-	}
 	last_ttl_expired_ = ttl_expired;
-
-	const bool faults_now = status_.valid && status_.faults != 0;
-	if (faults_now && !last_faults_) {
-		std::ostringstream f;
-		f << "FAULTS 0x" << std::hex << status_.faults << std::dec;
-		pushEvent_(f.str());
-	}
 	last_faults_ = faults_now;
 
 	std::ostringstream l9;
@@ -852,16 +901,57 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	}
 	l9 << heat;
 
-	std::ostringstream l10;
-	if (!events_.empty()) {
-		l10 << "events:";
-		for (size_t i = 0; i < events_.size(); ++i) {
-			if (i > 0)
-				l10 << " | ";
-			l10 << events_[i];
+	auto format_age = [&](uint64_t now_us, uint64_t ts_us) {
+		double age_s = 0.0;
+		if (now_us > ts_us)
+			age_s = (double)(now_us - ts_us) / 1000000.0;
+		std::ostringstream age;
+		age << std::fixed << std::setprecision(age_s < 10.0 ? 1 : 0) << age_s
+			<< "s";
+		return age.str();
+	};
+	auto category_name = [](EventCategory cat) -> const char * {
+		switch (cat) {
+		case EventCategory::Ctrl:
+			return "CTRL";
+		case EventCategory::Sens:
+			return "SENS";
+		case EventCategory::Map:
+			return "MAP";
+		case EventCategory::Loc:
+			return "LOC";
+		case EventCategory::Plan:
+			return "PLAN";
+		case EventCategory::Override:
+			return "OVR";
+		case EventCategory::Count:
+			break;
 		}
-	} else {
-		l10 << "events: NA";
+		return "UNK";
+	};
+	auto event_line = [&](EventCategory cat) {
+		const size_t idx = static_cast< size_t >(cat);
+		std::ostringstream line;
+		line << "EVENT " << category_name(cat) << ": ";
+		if (idx >= event_state_.size() || !event_state_[idx].valid) {
+			line << "NA";
+			return line.str();
+		}
+		const auto &state = event_state_[idx];
+		line << colorWrap(sev_name(state.severity), state.severity);
+		line << " +" << format_age(s.ts_us, state.ts_us);
+		line << " x" << state.count << " " << state.label;
+		return line.str();
+	};
+	constexpr size_t kEventLineCount =
+		static_cast< size_t >(EventCategory::Count);
+	const std::array< EventCategory, kEventLineCount > event_order = {
+		EventCategory::Ctrl, EventCategory::Sens, EventCategory::Map,
+		EventCategory::Loc,	 EventCategory::Plan, EventCategory::Override,
+	};
+	std::array< std::string, kEventLineCount > event_lines{};
+	for (size_t i = 0; i < event_order.size(); ++i) {
+		event_lines[i] = event_line(event_order[i]);
 	}
 
 	auto pad = [&](const std::string &sline) {
@@ -885,7 +975,8 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		return "|" + pad(sline) + "|";
 	};
 
-	const int frame_lines = 17 + (int)heat_rows.size();
+	const int frame_lines =
+		16 + (int)heat_rows.size() + (int)event_lines.size();
 	if (!ui_initialized_) {
 		std::cout << "\x1b[?25l"; // hide cursor
 		std::cout << top << "\n"
@@ -905,9 +996,11 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 				  << line(l6.str()) << "\n"
 				  << line(l7.str()) << "\n"
 				  << line(l8.str()) << "\n"
-				  << line(l9.str()) << "\n"
-				  << line(l10.str()) << "\n"
-				  << bot;
+				  << line(l9.str()) << "\n";
+		for (const auto &ev : event_lines) {
+			std::cout << line(ev) << "\n";
+		}
+		std::cout << bot;
 		std::cout << "\x1b[" << frame_lines << "A";
 		ui_initialized_ = true;
 	} else {
@@ -931,7 +1024,9 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		std::cout << "\x1b[2K\r" << line(l7.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l8.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l9.str()) << "\n";
-		std::cout << "\x1b[2K\r" << line(l10.str()) << "\n";
+		for (const auto &ev : event_lines) {
+			std::cout << "\x1b[2K\r" << line(ev) << "\n";
+		}
 		std::cout << "\x1b[2K\r" << bot;
 		std::cout << "\x1b[" << frame_lines << "A";
 	}
