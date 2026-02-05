@@ -12,7 +12,7 @@ def main():
     settings = gpiod.LineSettings(
         direction=Direction.OUTPUT,
         active_low=False,  # “GPIOの電圧”をそのまま扱う
-        output_value=Value.INACTIVE,  # 起動時はLOW（=リセットしない）
+        output_value=Value.INACTIVE,  # 起動時はLOW(=リセットしない)
     )
 
     with gpiod.request_lines(
@@ -20,7 +20,7 @@ def main():
         consumer="rpi-reset-esp32",
         config={RESET_GPIO: settings},
     ) as req:
-        # RPi GPIO を HIGH にしてリセット（反転回路を前提）
+        # RPi GPIO を HIGH にしてリセット(反転回路を前提)
         req.set_value(RESET_GPIO, Value.ACTIVE)  # HIGH
         time.sleep(PULSE_SEC)
         req.set_value(RESET_GPIO, Value.INACTIVE)  # LOW

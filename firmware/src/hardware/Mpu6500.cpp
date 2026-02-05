@@ -34,13 +34,28 @@ bool Mpu6500::begin(TwoWire &wire) {
 	}
 	delay(10);
 
-	(void)writeReg(REG_SMPLRT_DIV, 0x00);
-	(void)writeReg(REG_CONFIG, (uint8_t)(cfg::IMU_DLPF_CFG & 0x07));
-	(void)writeReg(REG_GYRO_CONFIG,
-				   (uint8_t)((cfg::IMU_GYRO_FS_SEL & 0x03) << 3));
-	(void)writeReg(REG_ACCEL_CONFIG,
-				   (uint8_t)((cfg::IMU_ACCEL_FS_SEL & 0x03) << 3));
-	(void)writeReg(REG_ACCEL_CONFIG2, (uint8_t)(cfg::IMU_DLPF_CFG & 0x07));
+	if (!writeReg(REG_SMPLRT_DIV, 0x00)) {
+		_ready = false;
+		return false;
+	}
+	if (!writeReg(REG_CONFIG, (uint8_t)(cfg::IMU_DLPF_CFG & 0x07))) {
+		_ready = false;
+		return false;
+	}
+	if (!writeReg(REG_GYRO_CONFIG,
+				  (uint8_t)((cfg::IMU_GYRO_FS_SEL & 0x03) << 3))) {
+		_ready = false;
+		return false;
+	}
+	if (!writeReg(REG_ACCEL_CONFIG,
+				  (uint8_t)((cfg::IMU_ACCEL_FS_SEL & 0x03) << 3))) {
+		_ready = false;
+		return false;
+	}
+	if (!writeReg(REG_ACCEL_CONFIG2, (uint8_t)(cfg::IMU_DLPF_CFG & 0x07))) {
+		_ready = false;
+		return false;
+	}
 
 	_ready = true;
 	return true;

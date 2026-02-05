@@ -137,7 +137,7 @@ MPU-6000 datasheet (2013-08-19) のレジスタ手順を踏襲。
 
 推定器:
 
-```
+```text
 a_long = ax - ax_bias
 v_est = clamp(v_est + a_long*dt, 0, v_cmd_max)
 ```
@@ -154,7 +154,7 @@ v_est = clamp(v_est + a_long*dt, 0, v_cmd_max)
 
 ### 6.1 停止距離モデル
 
-```
+```text
 d_need = v * t_latency + v^2 / (2*a_brake)
 d_allow = d_meas - d_margin
 v_max = solve(d_allow >= d_need)
@@ -209,7 +209,7 @@ RCレベルで IMU から減速度が「見える」時間スケールと、
 
 ### 8.1 LiDAR遅延コスト
 
-```
+```text
 t_lidar_age ≈ 0〜100ms + 処理時間
 d_age = v * t_lidar_age
 ```
@@ -218,7 +218,7 @@ d_age = v * t_lidar_age
 
 ### 8.2 サーボ追従遅延コスト
 
-```
+```text
 t_steer = |Δdeg| / 428.6(deg/s)
 t_steer *= k_load (1.3〜1.8)
 d_steer_delay = v * t_steer

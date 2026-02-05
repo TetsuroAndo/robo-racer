@@ -145,10 +145,12 @@ static void sendImuStatus_(uint32_t now_ms) {
 					  : 0xFFFFu;
 
 	ImuStatusPayload p{};
-	wr16((uint8_t *)&p.a_long_mm_s2_le,
-		 (uint16_t)(int16_t)lroundf(st.a_long_mm_s2));
-	wr16((uint8_t *)&p.v_est_mm_s_le,
-		 (uint16_t)(int16_t)lroundf(st.v_est_mm_s));
+	const int a_long =
+		mc::clamp< int >((int)lroundf(st.a_long_mm_s2), -32768, 32767);
+	const int v_est =
+		mc::clamp< int >((int)lroundf(st.v_est_mm_s), -32768, 32767);
+	wr16((uint8_t *)&p.a_long_mm_s2_le, (uint16_t)(int16_t)a_long);
+	wr16((uint8_t *)&p.v_est_mm_s_le, (uint16_t)(int16_t)v_est);
 	wr16((uint8_t *)&p.a_brake_cap_mm_s2_le,
 		 (uint16_t)mc::clamp< int >((int)lroundf(st.a_brake_cap_mm_s2), 0,
 									0xFFFF));
