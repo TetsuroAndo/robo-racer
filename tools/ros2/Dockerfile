@@ -1,8 +1,9 @@
-FROM osrf/ros:humble-desktop
+FROM ros:humble-ros-base
 
 SHELL ["/bin/bash", "-c"]
 
 RUN apt-get update && apt-get install -y \
+    ros-humble-rviz2 \
     ros-humble-slam-toolbox \
     ros-humble-nav2-map-server \
     ros-humble-rosbag2 \

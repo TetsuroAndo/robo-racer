@@ -8,6 +8,7 @@
 - ROS2: Humble
 - Docker/compose を利用
 - リポジトリを `/ws` にマウント
+- RPi は **64bit OS (arm64)** が必須（32bit だと ROS2 Docker が動かない）
 
 ## 1) Docker イメージのビルド
 ```
