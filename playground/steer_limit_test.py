@@ -13,6 +13,7 @@ import select
 import socket
 import stat
 import struct
+import subprocess
 import sys
 import termios
 import time
@@ -32,21 +33,44 @@ TYPE_STATUS = 0x11
 def try_reset_esp32() -> bool:
     if os.environ.get("STEER_TEST_SKIP_RESET") == "1":
         return False
+    pulse_reset = None
     try:
-        from rpi.reset.esp32_reset import pulse_reset
+        from rpi.reset.esp32_reset import pulse_reset  # type: ignore
     except ModuleNotFoundError:
         try:
-            from reset.esp32_reset import pulse_reset
+            from reset.esp32_reset import pulse_reset  # type: ignore
         except ModuleNotFoundError:
-            print("ESP32 reset skipped: reset module not found.")
-            return False
+            pulse_reset = None
 
     if not os.path.exists("/dev/gpiochip0"):
         print("ESP32 reset skipped: /dev/gpiochip0 not found.")
         return False
 
     try:
-        pulse_reset()
+        if pulse_reset is not None:
+            pulse_reset()
+        else:
+            script_candidates = [
+                os.path.join("playground", "reset_signal", "rpi_reset_esp32.py"),
+                os.path.join("tools", "rpi_reset_esp32.py"),
+            ]
+            script = next(
+                (p for p in script_candidates if os.path.exists(p)),
+                None,
+            )
+            if not script:
+                print("ESP32 reset skipped: reset module not found.")
+                return False
+            res = subprocess.run(
+                [sys.executable, script],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if res.returncode != 0:
+                msg = res.stderr.strip() or res.stdout.strip() or "unknown error"
+                print(f"ESP32 reset skipped: {msg}")
+                return False
     except Exception as exc:
         print(f"ESP32 reset skipped: {exc}")
         return False
@@ -264,6 +288,7 @@ def main() -> int:
     ap.add_argument("--drive-every-ms", type=int, default=50)
     ap.add_argument("--ttl-ms", type=int, default=200)
     ap.add_argument("--direction", choices=["positive", "negative", "both"], default="both")
+    ap.add_argument("--side", choices=["left", "right", "both"], default=None)
     ap.add_argument("--speed-mm-s", type=int, default=0)
     args = ap.parse_args()
 
@@ -282,11 +307,19 @@ def main() -> int:
     seq = 1
     last_status: StatusFrame | None = None
     last_target_cdeg = 0
+    last_print = 0.0
 
     send_mode(sock, seq, auto=True)
     seq += 1
 
-    angles = build_angles(max_cdeg, args.step_cdeg, args.direction)
+    if args.side is not None:
+        # left=positive, right=negative (per MANUAL dpad mapping in firmware)
+        side_map = {"left": "positive", "right": "negative", "both": "both"}
+        direction = side_map[args.side]
+    else:
+        direction = args.direction
+
+    angles = build_angles(max_cdeg, args.step_cdeg, direction)
     if not angles:
         raise SystemExit("no angles to test")
 
@@ -294,7 +327,7 @@ def main() -> int:
     print("Manual stop: press 's' (safe stop), 'k' (kill). Quit: press 'q'.")
     print(
         f"Sweep: max={format_cdeg(max_cdeg)}, step={format_cdeg(args.step_cdeg)}, "
-        f"dwell={args.dwell_ms}ms, direction={args.direction}"
+        f"dwell={args.dwell_ms}ms, direction={direction}"
     )
 
     stop_reason = ""
@@ -307,6 +340,7 @@ def main() -> int:
                 last_target_cdeg = target_cdeg
                 next_drive = 0.0
                 end_time = time.time() + (args.dwell_ms / 1000.0)
+                print(f"Target: {format_cdeg(target_cdeg)}")
                 while time.time() < end_time:
                     now = time.time()
                     if now >= next_drive:
@@ -334,6 +368,15 @@ def main() -> int:
                             status = decode_status(dec[3])
                             if status is not None:
                                 last_status = status
+                    if last_status is not None and (now - last_print) >= 0.2:
+                        last_print = now
+                        print(
+                            "Status: "
+                            f"steer={format_cdeg(last_status.steer_cdeg)} "
+                            f"auto={last_status.auto_active} "
+                            f"faults=0x{last_status.faults:04x} "
+                            f"age_ms={last_status.age_ms}"
+                        )
                         else:
                             key = sys.stdin.read(1)
                             if key in ("s", "q", "k"):
