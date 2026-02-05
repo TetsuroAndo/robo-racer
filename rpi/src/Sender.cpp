@@ -21,19 +21,19 @@ uint32_t now_ms() {
 }
 
 int16_t clamp_speed_input(int speed) {
-	if (speed > cfg::SPEED_INPUT_LIMIT) {
-		speed = cfg::SPEED_INPUT_LIMIT;
-	} else if (speed < -cfg::SPEED_INPUT_LIMIT) {
-		speed = -cfg::SPEED_INPUT_LIMIT;
+	if (speed > mc_config::SPEED_INPUT_LIMIT) {
+		speed = mc_config::SPEED_INPUT_LIMIT;
+	} else if (speed < -mc_config::SPEED_INPUT_LIMIT) {
+		speed = -mc_config::SPEED_INPUT_LIMIT;
 	}
 	return static_cast< int16_t >(speed);
 }
 
 int16_t clamp_cdeg(int32_t cdeg) {
-	if (cdeg > cfg::STEER_CDEG_MAX) {
-		cdeg = cfg::STEER_CDEG_MAX;
-	} else if (cdeg < -cfg::STEER_CDEG_MAX) {
-		cdeg = -cfg::STEER_CDEG_MAX;
+	if (cdeg > mc_config::STEER_ANGLE_MAX_CDEG) {
+		cdeg = mc_config::STEER_ANGLE_MAX_CDEG;
+	} else if (cdeg < -mc_config::STEER_ANGLE_MAX_CDEG) {
+		cdeg = -mc_config::STEER_ANGLE_MAX_CDEG;
 	}
 	return static_cast< int16_t >(cdeg);
 }
@@ -68,10 +68,12 @@ void Sender::send(int speed, int angle) {
 
 	mc::proto::DrivePayload payload{};
 	payload.steer_cdeg =
-		clamp_cdeg(static_cast< int32_t >(angle) * cfg::STEER_CDEG_SCALE);
+		clamp_cdeg(static_cast< int32_t >(angle) *
+				   static_cast< int32_t >(mc_config::STEER_CDEG_SCALE));
 	const int16_t speed_input = clamp_speed_input(speed);
-	const int32_t speed_mm_s =
-		(int32_t)speed_input * cfg::SPEED_MM_S_MAX / cfg::SPEED_INPUT_LIMIT;
+	const int32_t speed_mm_s = (int32_t)speed_input *
+							   mc_config::SPEED_MAX_MM_S /
+							   mc_config::SPEED_INPUT_LIMIT;
 	payload.speed_mm_s = static_cast< int16_t >(speed_mm_s);
 	payload.ttl_ms_le = mc::proto::to_le16(cfg::AUTO_TTL_MS);
 	payload.dist_mm_le = mc::proto::to_le16(0);

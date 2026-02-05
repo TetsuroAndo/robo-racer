@@ -2,7 +2,11 @@
 
 #include <stdint.h>
 
+#if defined(__has_include)
+#if __has_include("mc_config/vehicle_limits.h")
 #include "mc_config/vehicle_limits.h"
+#endif
+#endif
 
 namespace cfg {
 // clang-format off
@@ -82,9 +86,7 @@ static constexpr int DRIVE_CURVE_AREA_DEG      = 70;
 static constexpr int FULL_CIRCLE_DEG           = 360;
 
 // その他
-static constexpr int DRIVE_SPEED_MAX           = 255;
 static constexpr int DRIVE_AVE_DEG_NUM         = 1;
-static constexpr int DRIVE_SPEED_MAX_MM_S      = 5000; // 5m/s
 
 //------------------------------------------------------------------------------
 // IMU (MPU-6500)
@@ -121,7 +123,7 @@ static constexpr int IMU_ZUPT_A_LONG_MM_S2       = 200;  // 0.2 m/s^2
 static constexpr float IMU_ZUPT_GZ_DPS           = 5.0f;
 static constexpr int IMU_ZUPT_SPEED_MM_S         = 100;
 static constexpr float IMU_V_EST_LEAK_PER_S      = 0.2f;
-static constexpr int IMU_V_EST_MAX_MM_S          = DRIVE_SPEED_MAX_MM_S;
+static constexpr int IMU_V_EST_MAX_MM_S          = mc_config::SPEED_MAX_MM_S;
 static constexpr uint32_t IMU_GRAVITY_TAU_MS     = 500;
 static constexpr int IMU_ACCEL_NORM_MAX_DEV_MM_S2 = 5000;
 static constexpr int IMU_BRAKE_INIT_MM_S2        = 12000;
@@ -168,12 +170,7 @@ static constexpr int STEER_PULSE_CENTER_US     =
 	(STEER_PULSE_MIN_US + STEER_PULSE_MAX_US) / 2;
 
 // 角度マッピング（物理可動域に合わせて±25deg）
-static constexpr float STEER_ANGLE_MIN_DEG     = mc_config::kSteerAngleMinDeg;
-static constexpr float STEER_ANGLE_MAX_DEG     = mc_config::kSteerAngleMaxDeg;
-static constexpr int STEER_ANGLE_MIN_CDEG      = mc_config::kSteerAngleMinCdeg;
-static constexpr int STEER_ANGLE_MAX_CDEG      = mc_config::kSteerAngleMaxCdeg;
 static constexpr int STEER_ANGLE_CENTER_DEG    = 90;
-static constexpr float STEER_CDEG_SCALE        = mc_config::kSteerCdegScale;
 
 //------------------------------------------------------------------------------
 // モータドライバ（IBT-2）とPWMランプ設定

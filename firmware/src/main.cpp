@@ -280,11 +280,11 @@ static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 		return 0;
 	}
 
-	const float steer_abs =
-		std::min((float)std::abs(steer_cdeg), (float)cfg::STEER_ANGLE_MAX_CDEG);
+	const float steer_abs = std::min((float)std::abs(steer_cdeg),
+									 (float)mc_config::STEER_ANGLE_MAX_CDEG);
 	const float steer_ratio =
-		(cfg::STEER_ANGLE_MAX_CDEG > 0)
-			? (steer_abs / (float)cfg::STEER_ANGLE_MAX_CDEG)
+		(mc_config::STEER_ANGLE_MAX_CDEG > 0)
+			? (steer_abs / (float)mc_config::STEER_ANGLE_MAX_CDEG)
 			: 0.0f;
 	const float relax = (float)cfg::TSD20_MARGIN_RELAX_MM * steer_ratio;
 	float base_margin = (float)cfg::TSD20_MARGIN_MM - relax;
@@ -333,7 +333,7 @@ static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 	if (v_max < 0.0f)
 		v_max = 0.0f;
 
-	const float v_cap = std::min(v_max, (float)cfg::DRIVE_SPEED_MAX_MM_S);
+	const float v_cap = std::min(v_max, (float)mc_config::SPEED_MAX_MM_S);
 	g_tsd_diag_d_allow = d_allow;
 	g_tsd_diag_margin_eff = margin_eff;
 	g_tsd_diag_margin_pred = margin_pred;
@@ -473,7 +473,7 @@ static int16_t applyAbsBrake_(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
 		}
 	}
 
-	const int max_mm_s = cfg::DRIVE_SPEED_MAX_MM_S;
+	const int max_mm_s = mc_config::SPEED_MAX_MM_S;
 	int reverse_mm_s = cfg::ABS_REVERSE_MM_S;
 	if (reverse_mm_s > max_mm_s)
 		reverse_mm_s = max_mm_s;
@@ -553,7 +553,7 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 			int back = st.lt;
 			int v = forward - back;
 			int16_t speed_mm_s = (int16_t)mc::clamp< int >(
-				v * 2, -cfg::DRIVE_SPEED_MAX_MM_S, cfg::DRIVE_SPEED_MAX_MM_S);
+				v * 2, -mc_config::SPEED_MAX_MM_S, mc_config::SPEED_MAX_MM_S);
 
 			int16_t steer = 0;
 			if (st.dpad & DPAD_LEFT)

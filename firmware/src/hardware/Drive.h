@@ -36,7 +36,7 @@ private:
 
 	uint32_t _lastUpdateMs = 0;
 
-	static constexpr int MAX_SPEED_MM_S = cfg::DRIVE_SPEED_MAX_MM_S;
+	static constexpr int MAX_SPEED_MM_S = mc_config::SPEED_MAX_MM_S;
 	bool _brake_mode = false;
 	int speedMmSToPwm_(int16_t mm_s) const;
 	float steerCdegToDeg_(int16_t cdeg) const;

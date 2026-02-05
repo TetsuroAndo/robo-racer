@@ -26,16 +26,16 @@ void Steer::writePulseUs_(int us) {
 // angle -> STEER_ANGLE_MIN_DEG ~ STEER_ANGLE_MAX_DEG
 void Steer::setAngle(float angle) {
 	// 符号はそのまま: 正が右, 負が左
-	if (cfg::STEER_ANGLE_MAX_DEG < angle) {
-		angle = cfg::STEER_ANGLE_MAX_DEG;
-	} else if (angle < cfg::STEER_ANGLE_MIN_DEG) {
-		angle = cfg::STEER_ANGLE_MIN_DEG;
+	if (mc_config::STEER_ANGLE_MAX_DEG < angle) {
+		angle = mc_config::STEER_ANGLE_MAX_DEG;
+	} else if (angle < mc_config::STEER_ANGLE_MIN_DEG) {
+		angle = mc_config::STEER_ANGLE_MIN_DEG;
 	}
 
 	const float min_angle =
-		cfg::STEER_ANGLE_CENTER_DEG + cfg::STEER_ANGLE_MIN_DEG;
+		cfg::STEER_ANGLE_CENTER_DEG + mc_config::STEER_ANGLE_MIN_DEG;
 	const float max_angle =
-		cfg::STEER_ANGLE_CENTER_DEG + cfg::STEER_ANGLE_MAX_DEG;
+		cfg::STEER_ANGLE_CENTER_DEG + mc_config::STEER_ANGLE_MAX_DEG;
 	const float angle_abs = angle + cfg::STEER_ANGLE_CENTER_DEG;
 	float t = (angle_abs - min_angle) / (max_angle - min_angle);
 	if (t < 0.0f)
@@ -47,5 +47,5 @@ void Steer::setAngle(float angle) {
 	writePulseUs_(us);
 }
 void Steer::center() { setAngle(0.0f); }
-void Steer::left() { setAngle(cfg::STEER_ANGLE_MIN_DEG); }
-void Steer::right() { setAngle(cfg::STEER_ANGLE_MAX_DEG); }
+void Steer::left() { setAngle(mc_config::STEER_ANGLE_MIN_DEG); }
+void Steer::right() { setAngle(mc_config::STEER_ANGLE_MAX_DEG); }

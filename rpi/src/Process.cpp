@@ -27,7 +27,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 						 const MotionState *motion) const {
 	const uint64_t t0_us = mc::core::Time::us();
 	static constexpr float kRadToDeg = 57.2957795f;
-	const float max_steer = (float)cfg::STEER_ANGLE_MAX_DEG;
+	const float max_steer = (float)mc_config::STEER_ANGLE_MAX_DEG;
 	float yaw_bias = 0.0f;
 	if (motion && motion->valid && motion->age_ms <= cfg::FTG_IMU_MAX_AGE_MS &&
 		cfg::FTG_YAW_BIAS_DEG > 0.0f && cfg::FTG_YAW_BIAS_REF_DPS > 0.0f) {
@@ -212,9 +212,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		if (d_mm <= cfg::FTG_NEAR_OBSTACLE_MM)
 			continue;
 		const float a_norm =
-			std::fabs((float)angle) / (float)cfg::STEER_ANGLE_MAX_DEG;
+			std::fabs((float)angle) / (float)mc_config::STEER_ANGLE_MAX_DEG;
 		const float d_norm = std::fabs((float)angle - clamped_last) /
-							 (float)cfg::STEER_ANGLE_MAX_DEG;
+							 (float)mc_config::STEER_ANGLE_MAX_DEG;
 		const float w_delta = jerk_weight(d_mm);
 		const float j =
 			cfg::FTG_COST_W_OBS * obs_cost(d_mm) +
@@ -240,10 +240,10 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 
 	const bool blocked = !(z > 0.0f);
 	float target_angle_f = blocked ? 0.0f : (angle_sum / z);
-	if (target_angle_f > cfg::STEER_ANGLE_MAX_DEG)
-		target_angle_f = (float)cfg::STEER_ANGLE_MAX_DEG;
-	else if (target_angle_f < -cfg::STEER_ANGLE_MAX_DEG)
-		target_angle_f = (float)-cfg::STEER_ANGLE_MAX_DEG;
+	if (target_angle_f > mc_config::STEER_ANGLE_MAX_DEG)
+		target_angle_f = (float)mc_config::STEER_ANGLE_MAX_DEG;
+	else if (target_angle_f < -mc_config::STEER_ANGLE_MAX_DEG)
+		target_angle_f = (float)-mc_config::STEER_ANGLE_MAX_DEG;
 
 	const float max_delta = cfg::FTG_STEER_SLEW_DEG_PER_S * dt_s;
 	float applied_angle_f = target_angle_f;
@@ -254,10 +254,10 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		applied_angle_f = clamped_last - max_delta;
 
 	int out_angle = static_cast< int >(std::lround(applied_angle_f));
-	if (out_angle > cfg::STEER_ANGLE_MAX_DEG)
-		out_angle = cfg::STEER_ANGLE_MAX_DEG;
-	else if (out_angle < -cfg::STEER_ANGLE_MAX_DEG)
-		out_angle = -cfg::STEER_ANGLE_MAX_DEG;
+	if (out_angle > mc_config::STEER_ANGLE_MAX_DEG)
+		out_angle = mc_config::STEER_ANGLE_MAX_DEG;
+	else if (out_angle < -mc_config::STEER_ANGLE_MAX_DEG)
+		out_angle = -mc_config::STEER_ANGLE_MAX_DEG;
 
 	int corridor_min_mm = 0;
 	if (blocked) {
@@ -315,7 +315,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 
 		const float steer_ratio =
 			std::min(1.0f, std::fabs((float)out_angle) /
-							   (float)cfg::STEER_ANGLE_MAX_DEG);
+							   (float)mc_config::STEER_ANGLE_MAX_DEG);
 		static constexpr float kPiOver2 = 1.57079632679f;
 		const float v_steer =
 			v_min + (v_max - v_min) * std::cos(steer_ratio * kPiOver2);
@@ -336,15 +336,15 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 							   ? std::sqrt(2.0f * a_brake_use * (float)d_cap_mm)
 							   : 0.0f;
 		int v_cap_input = 0;
-		if (cfg::SPEED_MM_S_MAX > 0) {
-			v_cap_input =
-				(int)std::lround(v_cap_mm_s * (float)cfg::SPEED_INPUT_LIMIT /
-								 (float)cfg::SPEED_MM_S_MAX);
+		if (mc_config::SPEED_MAX_MM_S > 0) {
+			v_cap_input = (int)std::lround(v_cap_mm_s *
+										   (float)mc_config::SPEED_INPUT_LIMIT /
+										   (float)mc_config::SPEED_MAX_MM_S);
 		}
 		if (v_cap_input < 0)
 			v_cap_input = 0;
-		if (v_cap_input > cfg::SPEED_INPUT_LIMIT)
-			v_cap_input = cfg::SPEED_INPUT_LIMIT;
+		if (v_cap_input > mc_config::SPEED_INPUT_LIMIT)
+			v_cap_input = mc_config::SPEED_INPUT_LIMIT;
 		if (v_cap_input < out_speed)
 			out_speed = v_cap_input;
 	}
@@ -372,9 +372,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			if (d_mm <= 0)
 				continue;
 			const float a_norm =
-				std::fabs((float)angle) / (float)cfg::STEER_ANGLE_MAX_DEG;
+				std::fabs((float)angle) / (float)mc_config::STEER_ANGLE_MAX_DEG;
 			const float d_norm = std::fabs((float)angle - clamped_last) /
-								 (float)cfg::STEER_ANGLE_MAX_DEG;
+								 (float)mc_config::STEER_ANGLE_MAX_DEG;
 			const float w_delta = jerk_weight(d_mm);
 			const float j =
 				cfg::FTG_COST_W_OBS * obs_cost(d_mm) +
@@ -458,7 +458,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		sample.raw_steer_deg = target_angle_f;
 		sample.curve_ratio = 1.0f;
 		sample.speed_factor = (out_speed > 0) ? 1.0f : 0.0f;
-		sample.steer_clamp_deg = cfg::STEER_ANGLE_MAX_DEG;
+		sample.steer_clamp_deg = mc_config::STEER_ANGLE_MAX_DEG;
 		sample.override_kind = override_kind;
 		sample.override_detail = override_detail;
 		sample.th_stop_mm = cfg::FTG_NEAR_OBSTACLE_MM;

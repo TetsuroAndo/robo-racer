@@ -39,8 +39,8 @@ int Drive::speedMmSToPwm_(int16_t mm_s) const {
 
 float Drive::steerCdegToDeg_(int16_t cdeg) const {
 	float deg = (float)cdeg / 100.0f;
-	return mc::clamp< float >(deg, cfg::STEER_ANGLE_MIN_DEG,
-							  cfg::STEER_ANGLE_MAX_DEG);
+	return mc::clamp< float >(deg, mc_config::STEER_ANGLE_MIN_DEG,
+							  mc_config::STEER_ANGLE_MAX_DEG);
 }
 
 void Drive::tick(uint32_t now_ms, float dt_s, bool killed) {
