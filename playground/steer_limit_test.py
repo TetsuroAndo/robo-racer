@@ -293,7 +293,7 @@ def main() -> int:
     ap.add_argument("--alt-pos-deg", type=float, default=None)
     ap.add_argument("--alt-neg-deg", type=float, default=None)
     ap.add_argument("--alternate-count", type=int, default=0)
-    ap.add_argument("--status-every-ms", type=int, default=200)
+    ap.add_argument("--status-every-ms", type=int, default=0)
     ap.add_argument("--speed-mm-s", type=int, default=0)
     args = ap.parse_args()
 
@@ -371,6 +371,8 @@ def main() -> int:
     stop_angle_cdeg = 0
 
     status_every_s = max(args.status_every_ms, 0) / 1000.0
+    if status_every_s > 0:
+        print(f"Status output enabled: every {args.status_every_ms} ms")
     with raw_terminal():
         try:
             for target_cdeg in angles:
@@ -425,13 +427,7 @@ def main() -> int:
                         and (now - last_print) >= status_every_s
                     ):
                         last_print = now
-                        print(
-                            "Status: "
-                            f"steer={format_cdeg(last_status.steer_cdeg)} "
-                            f"auto={last_status.auto_active} "
-                            f"faults=0x{last_status.faults:04x} "
-                            f"age_ms={last_status.age_ms}"
-                        )
+                        print(f"cdeg: {last_status.steer_cdeg}")
         except KeyboardInterrupt:
             pass
         finally:
