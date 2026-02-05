@@ -57,6 +57,38 @@ static uint32_t g_abs_cycle_ms = 0;
 static float g_abs_duty = 0.0f;
 static float g_abs_i = 0.0f;
 static uint32_t g_abs_hold_until_ms = 0;
+static float g_last_dt_s = 0.0f;
+
+static constexpr uint8_t TSD_DIAG_DISABLED = 0;
+static constexpr uint8_t TSD_DIAG_NONPOSITIVE = 1;
+static constexpr uint8_t TSD_DIAG_MANUAL_SKIP = 2;
+static constexpr uint8_t TSD_DIAG_NOT_READY = 3;
+static constexpr uint8_t TSD_DIAG_INVALID = 4;
+static constexpr uint8_t TSD_DIAG_MARGIN = 5;
+static constexpr uint8_t TSD_DIAG_CLAMP = 6;
+static constexpr uint8_t TSD_DIAG_OK = 7;
+
+static float g_tsd_diag_d_allow = 0.0f;
+static float g_tsd_diag_a_cap = 0.0f;
+static float g_tsd_diag_tau = 0.0f;
+static float g_tsd_diag_v_max = 0.0f;
+static float g_tsd_diag_v_cap = 0.0f;
+static bool g_tsd_diag_clamped = false;
+static uint8_t g_tsd_diag_reason = TSD_DIAG_DISABLED;
+
+static constexpr uint8_t ABS_DIAG_DISABLED = 0;
+static constexpr uint8_t ABS_DIAG_NO_IMU = 1;
+static constexpr uint8_t ABS_DIAG_NOT_CALIB = 2;
+static constexpr uint8_t ABS_DIAG_REVERSE = 3;
+static constexpr uint8_t ABS_DIAG_INACTIVE = 4;
+static constexpr uint8_t ABS_DIAG_ACTIVE = 5;
+
+static float g_abs_diag_v_cmd = 0.0f;
+static float g_abs_diag_v_est = 0.0f;
+static float g_abs_diag_a_target = 0.0f;
+static float g_abs_diag_a_cap = 0.0f;
+static float g_abs_diag_decel = 0.0f;
+static uint8_t g_abs_diag_reason = ABS_DIAG_DISABLED;
 
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
@@ -198,23 +230,41 @@ static void handleRx_(uint32_t now_ms) {
 
 static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 									float a_brake_cap_mm_s2) {
+	g_tsd_diag_reason = TSD_DIAG_DISABLED;
+	g_tsd_diag_clamped = false;
+	g_tsd_diag_d_allow = 0.0f;
+	g_tsd_diag_a_cap = 0.0f;
+	g_tsd_diag_tau = 0.0f;
+	g_tsd_diag_v_max = 0.0f;
+	g_tsd_diag_v_cap = 0.0f;
+
 	if (!cfg::TSD20_ENABLE)
 		return speed_mm_s;
-	if (speed_mm_s <= 0)
+
+	if (speed_mm_s <= 0) {
+		g_tsd_diag_reason = TSD_DIAG_NONPOSITIVE;
 		return speed_mm_s;
-	if (!cfg::TSD20_CLAMP_IN_MANUAL && mode != mc::Mode::AUTO)
+	}
+	if (!cfg::TSD20_CLAMP_IN_MANUAL && mode != mc::Mode::AUTO) {
+		g_tsd_diag_reason = TSD_DIAG_MANUAL_SKIP;
 		return speed_mm_s;
-	if (cfg::TSD20_REQUIRE_OK && !g_tsd_ready)
+	}
+	if (cfg::TSD20_REQUIRE_OK && !g_tsd_ready) {
+		g_tsd_diag_reason = TSD_DIAG_NOT_READY;
 		return 0;
+	}
 
 	if (!g_tsd_valid) {
+		g_tsd_diag_reason = TSD_DIAG_INVALID;
 		if (g_tsd_fail_count >= cfg::TSD20_MAX_FAILS)
 			return 0;
 		return speed_mm_s;
 	}
 
-	if (g_tsd_mm <= cfg::TSD20_MARGIN_MM)
+	if (g_tsd_mm <= cfg::TSD20_MARGIN_MM) {
+		g_tsd_diag_reason = TSD_DIAG_MARGIN;
 		return 0;
+	}
 
 	const float a_min = (float)cfg::IMU_BRAKE_MIN_MM_S2;
 	const float a_max = (float)cfg::IMU_BRAKE_MAX_MM_S2;
@@ -235,6 +285,13 @@ static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 		v_max = 0.0f;
 
 	const float v_cap = std::min(v_max, (float)cfg::DRIVE_SPEED_MAX_MM_S);
+	g_tsd_diag_d_allow = d_allow;
+	g_tsd_diag_a_cap = a;
+	g_tsd_diag_tau = tau;
+	g_tsd_diag_v_max = v_max;
+	g_tsd_diag_v_cap = v_cap;
+	g_tsd_diag_clamped = ((float)speed_mm_s > v_cap);
+	g_tsd_diag_reason = g_tsd_diag_clamped ? TSD_DIAG_CLAMP : TSD_DIAG_OK;
 	if ((float)speed_mm_s > v_cap)
 		return (int16_t)std::lround(v_cap);
 	return speed_mm_s;
@@ -250,29 +307,41 @@ static void resetAbs_(uint32_t now_ms) {
 
 static int16_t applyAbsBrake_(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
 							  bool allow_abs) {
+	g_abs_diag_reason = ABS_DIAG_DISABLED;
+	g_abs_diag_v_cmd = (float)speed_mm_s;
+	g_abs_diag_v_est = 0.0f;
+	g_abs_diag_a_target = 0.0f;
+	g_abs_diag_a_cap = 0.0f;
+	g_abs_diag_decel = 0.0f;
+
 	if (!cfg::ABS_ENABLE || !allow_abs) {
 		resetAbs_(now_ms);
 		return speed_mm_s;
 	}
 
 	if (!g_imu_valid) {
+		g_abs_diag_reason = ABS_DIAG_NO_IMU;
 		resetAbs_(now_ms);
 		return speed_mm_s;
 	}
 
 	const ImuEstimate &st = imu_est.state();
 	if (!st.calibrated) {
+		g_abs_diag_reason = ABS_DIAG_NOT_CALIB;
 		resetAbs_(now_ms);
 		return speed_mm_s;
 	}
 
 	if (speed_mm_s < 0) {
+		g_abs_diag_reason = ABS_DIAG_REVERSE;
 		resetAbs_(now_ms);
 		return speed_mm_s;
 	}
 
 	const float v_cmd = std::max(0.0f, (float)speed_mm_s);
 	const float v_est = std::max(0.0f, st.v_est_mm_s);
+	g_abs_diag_v_cmd = v_cmd;
+	g_abs_diag_v_est = v_est;
 	const float margin = (float)cfg::ABS_SPEED_MARGIN_MM_S;
 	const bool want_brake = (v_est > (v_cmd + margin));
 
@@ -284,6 +353,7 @@ static int16_t applyAbsBrake_(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
 					   (now_ms <= g_abs_hold_until_ms));
 
 	if (!active) {
+		g_abs_diag_reason = ABS_DIAG_INACTIVE;
 		resetAbs_(now_ms);
 		return speed_mm_s;
 	}
@@ -317,6 +387,10 @@ static int16_t applyAbsBrake_(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
 
 	const float decel = std::max(0.0f, -st.a_long_mm_s2);
 	const float e = a_target - decel;
+	g_abs_diag_a_target = a_target;
+	g_abs_diag_a_cap = a_cap;
+	g_abs_diag_decel = decel;
+	g_abs_diag_reason = ABS_DIAG_ACTIVE;
 	g_abs_i += e * cfg::ABS_DUTY_KI * dt_s;
 	float duty = g_abs_duty + cfg::ABS_DUTY_KP * e + g_abs_i;
 
@@ -544,6 +618,7 @@ void loop() {
 	if (dt_s > 0.05f)
 		dt_s = 0.05f;
 	last_us = now_us;
+	g_last_dt_s = dt_s;
 
 	uint32_t now_ms = (uint32_t)millis();
 
@@ -602,6 +677,25 @@ void loop() {
 					  (double)st.a_long_mm_s2, (double)st.a_long_lpf_mm_s2,
 					  (double)st.a_long_fusion_mm_s2, (double)st.v_est_mm_s,
 					  (double)st.a_brake_cap_mm_s2);
+		}
+		if (cfg::TSD20_ENABLE) {
+			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
+					  "reason=%u clamp=%d d_allow=%.0f a_cap=%.0f tau=%.3f "
+					  "v_max=%.1f v_cap=%.1f",
+					  (unsigned)g_tsd_diag_reason, (int)g_tsd_diag_clamped,
+					  (double)g_tsd_diag_d_allow, (double)g_tsd_diag_a_cap,
+					  (double)g_tsd_diag_tau, (double)g_tsd_diag_v_max,
+					  (double)g_tsd_diag_v_cap);
+		}
+		if (cfg::ABS_ENABLE) {
+			alog.logf(mc::LogLevel::INFO, "abs",
+					  "reason=%u active=%d duty=%.2f v_cmd=%.1f v_est=%.1f "
+					  "a_tgt=%.0f a_cap=%.0f decel=%.0f dt=%.3f",
+					  (unsigned)g_abs_diag_reason, (int)g_abs_active,
+					  (double)g_abs_duty, (double)g_abs_diag_v_cmd,
+					  (double)g_abs_diag_v_est, (double)g_abs_diag_a_target,
+					  (double)g_abs_diag_a_cap, (double)g_abs_diag_decel,
+					  (double)g_last_dt_s);
 		}
 	}
 
