@@ -316,8 +316,7 @@ def main() -> int:
     ap.add_argument("--direction", choices=["positive", "negative", "both"], default="both")
     ap.add_argument("--side", choices=["left", "right", "both"], default=None)
     ap.add_argument("--loop", type=float, nargs="+", default=None)
-    ap.add_argument("--loop-count", dest="alternate_count", type=int, default=0)
-    ap.add_argument("--alternate-count", type=int, default=0)
+    ap.add_argument("--loop-count", type=int, default=0)
     ap.add_argument("--status-every-ms", type=int, default=200)
     ap.add_argument("--speed-mm-s", type=int, default=0)
     args = ap.parse_args()
@@ -360,12 +359,12 @@ def main() -> int:
             raise SystemExit("loop angles must be within ±max-deg")
 
         def angle_iter():
-            if args.alternate_count <= 0:
+            if args.loop_count <= 0:
                 while True:
                     for v in loop_cdegs:
                         yield v
             else:
-                for _ in range(args.alternate_count):
+                for _ in range(args.loop_count):
                     for v in loop_cdegs:
                         yield v
 
@@ -388,7 +387,7 @@ def main() -> int:
         print(
             "Loop: "
             f"{', '.join(format_cdeg(v) for v in loop_cdegs)}, "
-            f"dwell={args.dwell_ms}ms, count={args.alternate_count or 'infinite'}"
+            f"dwell={args.dwell_ms}ms, count={args.loop_count or 'infinite'}"
         )
     else:
         print(
