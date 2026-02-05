@@ -371,15 +371,12 @@ def main() -> int:
     stop_angle_cdeg = 0
 
     status_every_s = max(args.status_every_ms, 0) / 1000.0
-    if status_every_s > 0:
-        print(f"Status output enabled: every {args.status_every_ms} ms")
     with raw_terminal():
         try:
             for target_cdeg in angles:
                 last_target_cdeg = target_cdeg
                 next_drive = 0.0
                 end_time = time.time() + (args.dwell_ms / 1000.0)
-                print(f"Target: {format_cdeg(target_cdeg)}")
                 while time.time() < end_time:
                     now = time.time()
                     if now >= next_drive:
