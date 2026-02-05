@@ -405,19 +405,6 @@ def main() -> int:
                             status = decode_status(dec[3])
                             if status is not None:
                                 last_status = status
-                    if (
-                        last_status is not None
-                        and status_every_s > 0
-                        and (now - last_print) >= status_every_s
-                    ):
-                        last_print = now
-                        print(
-                            "Status: "
-                            f"steer={format_cdeg(last_status.steer_cdeg)} "
-                            f"auto={last_status.auto_active} "
-                            f"faults=0x{last_status.faults:04x} "
-                            f"age_ms={last_status.age_ms}"
-                        )
                         else:
                             key = sys.stdin.read(1)
                             if key in ("s", "q", "k"):
@@ -432,6 +419,19 @@ def main() -> int:
                                     stop_action = "safe"
                                 stop_angle_cdeg = target_cdeg
                                 raise KeyboardInterrupt
+                    if (
+                        last_status is not None
+                        and status_every_s > 0
+                        and (now - last_print) >= status_every_s
+                    ):
+                        last_print = now
+                        print(
+                            "Status: "
+                            f"steer={format_cdeg(last_status.steer_cdeg)} "
+                            f"auto={last_status.auto_active} "
+                            f"faults=0x{last_status.faults:04x} "
+                            f"age_ms={last_status.age_ms}"
+                        )
         except KeyboardInterrupt:
             pass
         finally:
