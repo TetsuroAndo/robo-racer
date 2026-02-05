@@ -29,6 +29,33 @@ TYPE_MODE = 0x03
 TYPE_STATUS = 0x11
 
 
+def try_reset_esp32() -> bool:
+    if os.environ.get("STEER_TEST_SKIP_RESET") == "1":
+        return False
+    try:
+        from rpi.reset.esp32_reset import pulse_reset
+    except ModuleNotFoundError:
+        try:
+            from reset.esp32_reset import pulse_reset
+        except ModuleNotFoundError:
+            print("ESP32 reset skipped: reset module not found.")
+            return False
+
+    if not os.path.exists("/dev/gpiochip0"):
+        print("ESP32 reset skipped: /dev/gpiochip0 not found.")
+        return False
+
+    try:
+        pulse_reset()
+    except Exception as exc:
+        print(f"ESP32 reset skipped: {exc}")
+        return False
+
+    time.sleep(0.4)
+    print("ESP32 reset pulsed.")
+    return True
+
+
 def default_sock() -> str:
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
     candidates = []
@@ -247,6 +274,7 @@ def main() -> int:
         raise SystemExit("max-deg must be > 0")
 
     check_tmp_socket_dir_safe(args.sock)
+    try_reset_esp32()
 
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     sock.connect(args.sock)
