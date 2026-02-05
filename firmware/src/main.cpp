@@ -122,7 +122,8 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 			int forward = st.rt;
 			int back = st.lt;
 			int v = forward - back;
-			int16_t speed_mm_s = (int16_t)mc::clamp< int >(v * 2, -2000, 2000);
+			int16_t speed_mm_s = (int16_t)mc::clamp< int >(
+				v * 2, -cfg::DRIVE_SPEED_MAX_MM_S, cfg::DRIVE_SPEED_MAX_MM_S);
 
 			int16_t steer = 0;
 			if (st.dpad & DPAD_LEFT)

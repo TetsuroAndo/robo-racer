@@ -1,6 +1,7 @@
 #pragma once
 #include "Engine.h"
 #include "Steer.h"
+#include "../config/Config.h"
 #include <Arduino.h>
 
 class Drive {
@@ -34,7 +35,7 @@ private:
 
 	uint32_t _lastUpdateMs = 0;
 
-	static constexpr int MAX_SPEED_MM_S = 2000;
+	static constexpr int MAX_SPEED_MM_S = cfg::DRIVE_SPEED_MAX_MM_S;
 	int speedMmSToPwm_(int16_t mm_s) const;
 	float steerCdegToDeg_(int16_t cdeg) const;
 };

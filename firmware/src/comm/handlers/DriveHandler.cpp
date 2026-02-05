@@ -1,4 +1,5 @@
 #include "../../../lib/common/Math.h"
+#include "../../config/Config.h"
 #include "../../log/AsyncLogger.h"
 #include "../registry.h"
 #include <mc/proto/Ack.hpp>
@@ -31,7 +32,8 @@ public:
 		uint16_t dist_mm = rdu16(f.payload + 6);
 
 		steer_cdeg = (int16_t)mc::clamp< int >(steer_cdeg, -3000, 3000);
-		speed_mm_s = (int16_t)mc::clamp< int >(speed_mm_s, -5000, 5000);
+		speed_mm_s = (int16_t)mc::clamp< int >(
+			speed_mm_s, -cfg::DRIVE_SPEED_MAX_MM_S, cfg::DRIVE_SPEED_MAX_MM_S);
 		if (ttl_ms < 10)
 			ttl_ms = 10;
 		if (ttl_ms > 2000)

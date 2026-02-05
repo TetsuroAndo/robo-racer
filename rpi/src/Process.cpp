@@ -229,9 +229,18 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 
 	int out_speed = 0;
 	if (!blocked) {
+		int d_speed_mm = corridor_min_mm;
+		const int out_idx = out_angle - cfg::FTG_ANGLE_MIN_DEG;
+		if (out_idx >= 0 && out_idx < cfg::FTG_BIN_COUNT) {
+			const int smoothed_mm =
+				static_cast< int >(std::lround(smoothed[(size_t)out_idx]));
+			if (smoothed_mm > 0)
+				d_speed_mm = smoothed_mm;
+		}
+
 		const float v_min = (float)cfg::FTG_SPEED_MIN;
 		const float v_max = (float)cfg::FTG_SPEED_MAX;
-		const float r_m = std::max(0.0f, corridor_min_mm / 1000.0f);
+		const float r_m = std::max(0.0f, d_speed_mm / 1000.0f);
 		float v_dist = v_min;
 		if (r_m <= cfg::FTG_SPEED_R_SAFE_M) {
 			v_dist = v_min;
@@ -255,6 +264,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		const int speed =
 			(int)std::lround(std::max(v_min, std::min(v_max, v_final)));
 		out_speed = speed;
+		if (warn) {
+			out_speed = std::min(out_speed, cfg::FTG_SPEED_WARN_CAP);
+		}
 	}
 
 	if (telemetry_) {

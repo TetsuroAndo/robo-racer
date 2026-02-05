@@ -42,6 +42,7 @@ static constexpr int FULL_CIRCLE_DEG           = 360;
 // その他
 static constexpr int DRIVE_SPEED_MAX           = 255;
 static constexpr int DRIVE_AVE_DEG_NUM         = 1;
+static constexpr int DRIVE_SPEED_MAX_MM_S      = 13889; // 50km/h
 
 //------------------------------------------------------------------------------
 // ステアサーボ設定（DS3218想定）

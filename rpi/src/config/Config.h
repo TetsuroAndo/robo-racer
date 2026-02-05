@@ -34,9 +34,9 @@ static constexpr uint8_t ACK_MAX_RETRY           = 3;
 static constexpr uint32_t STATUS_DEAD_MS         = 300;
 
 // 送信値のスケール/上限（ESP32側の単位に合わせる）
-// speed: RPi内部は旧PWM相当(-255..255) → ESP32はmm/s(±2000想定)
+// speed: RPi内部は旧PWM相当(-255..255) → ESP32はmm/s
 static constexpr int SPEED_INPUT_LIMIT           = 255;
-static constexpr int SPEED_MM_S_MAX              = 2000;
+static constexpr int SPEED_MM_S_MAX              = 13889; // 50km/h
 // steer: degree → centi-degree
 static constexpr int STEER_CDEG_SCALE            = 100;
 static constexpr int STEER_CDEG_MAX              = 3000;
@@ -83,8 +83,8 @@ static constexpr int FTG_NEAR_OBSTACLE_MM      = 100;  // 10cm以内でブロッ
 static constexpr int FTG_WARN_OBSTACLE_MM      = 200;  // テレメトリ警告用
 
 // 速度（距離・ステア連動）
-static constexpr int FTG_SPEED_MIN             = 20;
-static constexpr int FTG_SPEED_MAX             = 80;
+static constexpr int FTG_SPEED_MIN             = 14;
+static constexpr int FTG_SPEED_MAX             = 255;
 // v_dist の指数飽和パラメータ（m）
 static constexpr float FTG_SPEED_R_SAFE_M      = 0.30f; // 30cm以下は最小速度
 static constexpr float FTG_SPEED_R_MAX_M       = 1.00f; // 100cm以上は最大速度
@@ -99,6 +99,7 @@ static constexpr float FTG_COST_W_TURN           = 0.2f;
 static constexpr float FTG_COST_W_DELTA          = 0.6f;
 static constexpr float FTG_COST_BETA             = 4.0f;  // soft-argminの鋭さ
 static constexpr float FTG_STEER_SLEW_DEG_PER_S  = 120.0f;
+static constexpr int FTG_SPEED_WARN_CAP          = 39;    // warn時の速度上限(入力スケール)
 
 // 物理上限
 static constexpr int STEER_ANGLE_MAX_DEG       = 30;   // サーボの物理的上限
