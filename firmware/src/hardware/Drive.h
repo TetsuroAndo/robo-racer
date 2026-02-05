@@ -8,10 +8,10 @@ class Drive {
 public:
 	void begin();
 
-	void setTargetMmS(int16_t speed_mm_s);
-	void setTargetSteerCdeg(int16_t steer_cdeg);
-	void setTtlMs(uint16_t ttl_ms);
-	void setDistMm(uint16_t dist_mm);
+	void setTargetMmS(int16_t speed_mm_s, uint32_t now_ms);
+	void setTargetSteerCdeg(int16_t steer_cdeg, uint32_t now_ms);
+	void setTtlMs(uint16_t ttl_ms, uint32_t now_ms);
+	void setDistMm(uint16_t dist_mm, uint32_t now_ms);
 
 	void tick(uint32_t now_ms, float dt_s, bool killed);
 	void setBrakeMode(bool enabled);

@@ -567,20 +567,20 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 			speed_mm_s = applyAbsBrake_(now_ms, dt_s, speed_mm_s, abs_allowed);
 			g_last_cmd_speed_mm_s = speed_mm_s;
 			drive.setBrakeMode(g_abs_active);
-			drive.setTargetMmS(speed_mm_s);
-			drive.setTargetSteerCdeg(steer);
-			drive.setTtlMs(100);
-			drive.setDistMm(0);
+			drive.setTargetMmS(speed_mm_s, now_ms);
+			drive.setTargetSteerCdeg(steer, now_ms);
+			drive.setTtlMs(100, now_ms);
+			drive.setDistMm(0, now_ms);
 		} else {
 			// AUTO_ACTIVE=false のときは UART setpoint を適用しない
 			const int16_t speed_mm_s =
 				applyAbsBrake_(now_ms, dt_s, 0, abs_allowed);
 			g_last_cmd_speed_mm_s = speed_mm_s;
 			drive.setBrakeMode(g_abs_active);
-			drive.setTargetMmS(speed_mm_s);
-			drive.setTargetSteerCdeg(0);
-			drive.setTtlMs(100);
-			drive.setDistMm(0);
+			drive.setTargetMmS(speed_mm_s, now_ms);
+			drive.setTargetSteerCdeg(0, now_ms);
+			drive.setTtlMs(100, now_ms);
+			drive.setDistMm(0, now_ms);
 		}
 	} else {
 		if (cmd_fresh) {
@@ -590,19 +590,19 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 			speed_mm_s = applyAbsBrake_(now_ms, dt_s, speed_mm_s, abs_allowed);
 			g_last_cmd_speed_mm_s = speed_mm_s;
 			drive.setBrakeMode(g_abs_active);
-			drive.setTargetMmS(speed_mm_s);
-			drive.setTargetSteerCdeg(g_state.target_steer_cdeg);
-			drive.setTtlMs(g_state.target_ttl_ms);
-			drive.setDistMm(g_state.target_dist_mm);
+			drive.setTargetMmS(speed_mm_s, now_ms);
+			drive.setTargetSteerCdeg(g_state.target_steer_cdeg, now_ms);
+			drive.setTtlMs(g_state.target_ttl_ms, now_ms);
+			drive.setDistMm(g_state.target_dist_mm, now_ms);
 		} else {
 			const int16_t speed_mm_s =
 				applyAbsBrake_(now_ms, dt_s, 0, abs_allowed);
 			g_last_cmd_speed_mm_s = speed_mm_s;
 			drive.setBrakeMode(g_abs_active);
-			drive.setTargetMmS(speed_mm_s);
-			drive.setTargetSteerCdeg(0);
-			drive.setTtlMs(100);
-			drive.setDistMm(0);
+			drive.setTargetMmS(speed_mm_s, now_ms);
+			drive.setTargetSteerCdeg(0, now_ms);
+			drive.setTtlMs(100, now_ms);
+			drive.setDistMm(0, now_ms);
 		}
 	}
 
@@ -632,17 +632,6 @@ void setup() {
 	alog.logf(mc::LogLevel::INFO, "boot", "ESP32 up baud=%d",
 			  (int)cfg::SERIAL_BAUD);
 
-	if (cfg::IMU_ENABLE) {
-		g_imu_ready = imu.begin(imu_wire);
-		if (g_imu_ready) {
-			imu_est.reset(millis());
-			alog.logf(mc::LogLevel::INFO, "imu", "init ok id=0x%02X",
-					  (unsigned)imu.id());
-		} else {
-			alog.logf(mc::LogLevel::WARN, "imu", "init failed");
-		}
-	}
-
 	g_tsd_ready = tsd20.begin(tsd_uart);
 	if (g_tsd_ready) {
 		(void)tsd20.setLaser(true);
@@ -652,6 +641,17 @@ void setup() {
 				  (int)tsd20.freqAck(), (int)tsd20.iicAck());
 	} else {
 		alog.logf(mc::LogLevel::WARN, "tsd20", "init failed");
+	}
+
+	if (cfg::IMU_ENABLE) {
+		g_imu_ready = imu.begin(imu_wire);
+		if (g_imu_ready) {
+			imu_est.reset(millis());
+			alog.logf(mc::LogLevel::INFO, "imu", "init ok id=0x%02X",
+					  (unsigned)imu.id());
+		} else {
+			alog.logf(mc::LogLevel::WARN, "imu", "init failed");
+		}
 	}
 
 	uint32_t now = millis();
