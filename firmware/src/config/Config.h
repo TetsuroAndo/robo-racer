@@ -94,6 +94,10 @@ static constexpr uint8_t IMU_DLPF_CFG           = 3;    // 44Hz
 static constexpr uint8_t IMU_GYRO_FS_SEL        = 3;    // ±2000 dps
 static constexpr uint8_t IMU_ACCEL_FS_SEL       = 2;    // ±8g
 static constexpr uint32_t IMU_READ_INTERVAL_MS  = 5;    // 200Hz
+static constexpr bool IMU_USE_FUSION            = true;
+static constexpr float IMU_FUSION_GAIN          = 0.5f;
+static constexpr float IMU_FUSION_ACC_REJ_DEG   = 10.0f;
+static constexpr float IMU_FUSION_RECOVER_S     = 0.0f;
 // Axis map: 0=ax, 1=ay, 2=az (sensor -> vehicle frame)
 static constexpr int IMU_AXIS_MAP_X             = 0;
 static constexpr int IMU_AXIS_MAP_Y             = 1;

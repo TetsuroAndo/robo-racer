@@ -591,12 +591,14 @@ void loop() {
 				g_imu_last_ms ? (uint32_t)(now_ms - g_imu_last_ms) : 0xFFFFu;
 			alog.logf(mc::LogLevel::INFO, "imu",
 					  "ready=%d valid=%d calib=%d age=%ums ax=%d ay=%d az=%d "
-					  "gx=%d gy=%d gz=%d a_long=%.1f v_est=%.1f a_brake=%.0f",
+					  "gx=%d gy=%d gz=%d a_long=%.1f a_lpf=%.1f a_fusion=%.1f "
+					  "v_est=%.1f a_brake=%.0f",
 					  (int)g_imu_ready, (int)g_imu_valid, (int)st.calibrated,
 					  (unsigned)age, (int)g_imu_sample.ax, (int)g_imu_sample.ay,
 					  (int)g_imu_sample.az, (int)g_imu_sample.gx,
 					  (int)g_imu_sample.gy, (int)g_imu_sample.gz,
-					  (double)st.a_long_mm_s2, (double)st.v_est_mm_s,
+					  (double)st.a_long_mm_s2, (double)st.a_long_lpf_mm_s2,
+					  (double)st.a_long_fusion_mm_s2, (double)st.v_est_mm_s,
 					  (double)st.a_brake_cap_mm_s2);
 		}
 	}

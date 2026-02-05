@@ -1,11 +1,14 @@
 #pragma once
 
 #include "Mpu6500.h"
+#include <Fusion.h>
 #include <stdint.h>
 
 struct ImuEstimate {
 	bool calibrated = false;
 	float a_long_mm_s2 = 0.0f;
+	float a_long_lpf_mm_s2 = 0.0f;
+	float a_long_fusion_mm_s2 = 0.0f;
 	float gz_dps = 0.0f;
 	float v_est_mm_s = 0.0f;
 	float a_brake_cap_mm_s2 = 0.0f;
@@ -25,6 +28,7 @@ private:
 	void updateBias_(const ImuSample &s, uint32_t now_ms);
 	float accelScaleMmS2PerLsb_() const;
 	float gyroScaleDpsPerLsb_() const;
+	float gyroRangeDps_() const;
 
 	ImuEstimate _st{};
 	bool _calib_started = false;
@@ -49,4 +53,7 @@ private:
 	float _g_est_y = 0.0f;
 	float _g_est_z = 0.0f;
 	bool _gravity_init = false;
+
+	FusionAhrs _fusion{};
+	bool _fusion_init = false;
 };
