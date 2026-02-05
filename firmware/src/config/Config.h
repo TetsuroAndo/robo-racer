@@ -60,8 +60,11 @@ static constexpr int STEER_PULSE_MAX_US        = 1800;
 static constexpr int STEER_PULSE_CENTER_US     =
 	(STEER_PULSE_MIN_US + STEER_PULSE_MAX_US) / 2;
 
-// 角度マッピング
-static constexpr int STEER_ANGLE_RANGE_DEG     = 30;
+// 角度マッピング（物理可動域に合わせて非対称）
+static constexpr float STEER_ANGLE_MIN_DEG     = -24.0f;
+static constexpr float STEER_ANGLE_MAX_DEG     = 19.0f;
+static constexpr int STEER_ANGLE_MIN_CDEG      = -2400;
+static constexpr int STEER_ANGLE_MAX_CDEG      = 1900;
 static constexpr int STEER_ANGLE_CENTER_DEG    = 90;
 static constexpr float STEER_CDEG_SCALE        = 100.0f;
 
@@ -95,7 +98,7 @@ static constexpr int   MANUAL_SPEED_MAX  = 180;
 static constexpr int   MANUAL_SPEED_STEP = 6;
 
 // 操舵
-static constexpr float MANUAL_STEER_DEG  = 20.0f;
+static constexpr float MANUAL_STEER_DEG  = 19.0f;
 
 //------------------------------------------------------------------------------
 // 通信/テレメトリ
