@@ -4,6 +4,7 @@
   "description": "Wrapper for xioTechnologies/Fusion submodule",
   "keywords": ["imu", "ahrs", "fusion"],
   "build": {
-    "srcDir": "src"
+    "srcDir": "src",
+    "includeDir": "include"
   }
 }
