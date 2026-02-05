@@ -284,7 +284,7 @@ static void test_drive_clamp() {
 	t.ctx.log = nullptr;
 
 	uint8_t payload[8] = {};
-	// steer=5000 (clamp to 3000), speed=-9999 (clamp to -5000),
+	// steer=5000 (clamp to 2500), speed=-9999 (clamp to -5000),
 	// ttl=1 (clamp to 10), dist=0
 	payload[0] = 0x88;
 	payload[1] = 0x13; // 5000
@@ -301,11 +301,11 @@ static void test_drive_clamp() {
 	assert(h != nullptr);
 	h->onFrame(f, t.ctx, 1000);
 
-	std::cout << "\tEXPECT steer=3000 speed=-5000 ttl=10\n";
+	std::cout << "\tEXPECT steer=2500 speed=-5000 ttl=10\n";
 	std::cout << "\tACTUAL steer=" << t.st.target_steer_cdeg
 			  << " speed=" << t.st.target_speed_mm_s
 			  << " ttl=" << t.st.target_ttl_ms << "\n";
-	assert(t.st.target_steer_cdeg == 3000);
+	assert(t.st.target_steer_cdeg == 2500);
 	assert(t.st.target_speed_mm_s == -5000);
 	assert(t.st.target_ttl_ms == 10);
 }
