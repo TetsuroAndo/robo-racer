@@ -1,5 +1,6 @@
 #include "comm/UartTx.h"
 #include "comm/registry.h"
+#include "config/Config.h"
 #include <mc/proto/Proto.hpp>
 
 #include "log/AsyncLogger.h"
@@ -284,12 +285,16 @@ static void test_drive_clamp() {
 	t.ctx.log = nullptr;
 
 	uint8_t payload[8] = {};
-	// steer=5000 (clamp to 3000), speed=-9999 (clamp to -5000),
+	// steer=5000 (clamp to max), speed=-20000 (clamp to -max),
 	// ttl=1 (clamp to 10), dist=0
-	payload[0] = 0x88;
-	payload[1] = 0x13; // 5000
-	payload[2] = 0xF1;
-	payload[3] = 0xD8; // -9999
+	const int16_t steer = 5000;
+	const int16_t speed = (int16_t)-20000;
+	const uint16_t steer_u = (uint16_t)steer;
+	const uint16_t speed_u = (uint16_t)speed;
+	payload[0] = (uint8_t)(steer_u & 0xFF);
+	payload[1] = (uint8_t)(steer_u >> 8);
+	payload[2] = (uint8_t)(speed_u & 0xFF);
+	payload[3] = (uint8_t)(speed_u >> 8);
 	payload[4] = 0x01;
 	payload[5] = 0x00; // ttl=1
 	payload[6] = 0;
@@ -301,12 +306,13 @@ static void test_drive_clamp() {
 	assert(h != nullptr);
 	h->onFrame(f, t.ctx, 1000);
 
-	std::cout << "\tEXPECT steer=3000 speed=-5000 ttl=10\n";
+	std::cout << "\tEXPECT steer=" << cfg::STEER_ANGLE_MAX_CDEG
+			  << " speed=" << -cfg::DRIVE_SPEED_MAX_MM_S << " ttl=10\n";
 	std::cout << "\tACTUAL steer=" << t.st.target_steer_cdeg
 			  << " speed=" << t.st.target_speed_mm_s
 			  << " ttl=" << t.st.target_ttl_ms << "\n";
-	assert(t.st.target_steer_cdeg == 3000);
-	assert(t.st.target_speed_mm_s == -5000);
+	assert(t.st.target_steer_cdeg == cfg::STEER_ANGLE_MAX_CDEG);
+	assert(t.st.target_speed_mm_s == -cfg::DRIVE_SPEED_MAX_MM_S);
 	assert(t.st.target_ttl_ms == 10);
 }
 

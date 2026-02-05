@@ -103,12 +103,32 @@ public:
 	void shutdownUi();
 
 private:
+	enum class EventCategory : uint8_t {
+		Ctrl = 0,
+		Sens = 1,
+		Map = 2,
+		Loc = 3,
+		Plan = 4,
+		Override = 5,
+		Count = 6,
+	};
+	struct EventState {
+		bool valid = false;
+		Severity severity = Severity::Safe;
+		uint64_t ts_us = 0;
+		uint32_t count = 0;
+		std::string label;
+	};
+
 	void emitJson_(const TelemetrySample &s);
 	void emitOverrideEvent_(const TelemetrySample &s);
 	void emitUi_(const TelemetrySample &s);
 	void refreshMetrics_();
 	void metricsLoop_();
-	void pushEvent_(std::string e);
+	void pushEvent_(EventCategory category,
+					Severity severity,
+					uint64_t ts_us,
+					std::string label);
 
 	struct MetricsCache {
 		bool valid = false;
@@ -146,7 +166,8 @@ private:
 	std::vector< float > spark_best_;
 	std::vector< float > spark_speed_;
 	std::vector< float > spark_dist_;
-	std::vector< std::string > events_;
+	std::array< EventState, static_cast< size_t >(EventCategory::Count) >
+		event_state_{};
 	bool has_last_delta_ = false;
 	float last_delta_ = 0.0f;
 	Severity last_loc_sev_ = Severity::Safe;
@@ -164,6 +185,7 @@ inline void TelemetryEmitter::updateStatus(uint8_t auto_active,
 										   int16_t speed_mm_s,
 										   int16_t steer_cdeg,
 										   uint16_t age_ms) {
+	std::lock_guard< std::mutex > lk(metrics_mtx_);
 	status_.valid = true;
 	status_.auto_active = auto_active;
 	status_.faults = faults;

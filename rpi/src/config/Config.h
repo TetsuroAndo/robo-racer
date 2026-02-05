@@ -34,12 +34,12 @@ static constexpr uint8_t ACK_MAX_RETRY           = 3;
 static constexpr uint32_t STATUS_DEAD_MS         = 300;
 
 // 送信値のスケール/上限（ESP32側の単位に合わせる）
-// speed: RPi内部は旧PWM相当(-255..255) → ESP32はmm/s(±2000想定)
+// speed: RPi内部は旧PWM相当(-255..255) → ESP32はmm/s
 static constexpr int SPEED_INPUT_LIMIT           = 255;
-static constexpr int SPEED_MM_S_MAX              = 2000;
+static constexpr int SPEED_MM_S_MAX              = 13889; // 50km/h
 // steer: degree → centi-degree
 static constexpr int STEER_CDEG_SCALE            = 100;
-static constexpr int STEER_CDEG_MAX              = 3000;
+static constexpr int STEER_CDEG_MAX              = 2500;
 
 // 受信バッファ
 static constexpr size_t UART_READ_BUF_SIZE       = 256;
@@ -61,37 +61,56 @@ static constexpr float LIDAR_ANGLE_FULL_DEG      = 360.0f;
 static constexpr unsigned int LIDAR_DIST_MIN_MM  = 5;
 
 //------------------------------------------------------------------------------
-// Process（簡易戦略）
+// FTG（最遠ビン + 通過幅チェック）
 //------------------------------------------------------------------------------
 
-// 角度範囲（操舵判定と減速判定を分離）
-static constexpr float PROCESS_HANDLE_ANGLE_MIN_DEG = -90.0f; // ハンドリング評価
-static constexpr float PROCESS_HANDLE_ANGLE_MAX_DEG = 90.0f;
-static constexpr float PROCESS_SLOW_ANGLE_MIN_DEG   = -70.0f; // 減速評価
-static constexpr float PROCESS_SLOW_ANGLE_MAX_DEG   = 70.0f;
+// 角度範囲（1degビン）
+static constexpr int FTG_ANGLE_MIN_DEG         = -90;
+static constexpr int FTG_ANGLE_MAX_DEG         = 90;
+static constexpr int FTG_BIN_COUNT             =
+	FTG_ANGLE_MAX_DEG - FTG_ANGLE_MIN_DEG + 1;
 
-// 出力スケール
-static constexpr int PROCESS_SPEED_DIV           = 50;
-static constexpr int PROCESS_MAX_SPEED           = 100;  // Raspberry Pi内部での最大速度
-static constexpr float PROCESS_MIN_ANGLE_SIGN    = -1.0f;
+// 平滑化（Moving Average）
+static constexpr int FTG_SMOOTH_RADIUS_BINS    = 2;   // 3〜5binの中央=2
 
-// ステアリングゲイン（浅めの角度を補正: 1.0 = 補正なし、> 1.0 で角度を強める）
-static constexpr float PROCESS_STEER_GAIN        = 1.2f;
+// 車幅/マージン（メートル）
+static constexpr float FTG_CAR_WIDTH_M         = 0.20f; // 20cm
+static constexpr float FTG_MARGIN_M            = 0.03f; // 必要なら調整
+static constexpr float FTG_CORRIDOR_LOOKAHEAD_M = 0.60f;
 
-// 障害物距離による速度制限
-static constexpr int PROCESS_MIN_DIST_SAFE_MM    = 400;   // 安全距離: これ以上なら通常速度
-static constexpr int PROCESS_MIN_DIST_STOP_MM    = 150;   // 停止距離: これ以下なら停止
-static constexpr float PROCESS_MIN_DIST_SPEED_FACTOR = 0.5f; // 減速係数: 0.5 = 50% 速度
+// 障害物判定
+static constexpr int FTG_NEAR_OBSTACLE_MM      = 100;  // 10cm以内でブロック
+static constexpr int FTG_WARN_OBSTACLE_MM      = 200;  // テレメトリ警告用
 
-// 急カーブによる速度制限
-static constexpr int STEER_ANGLE_MAX_DEG         = 30;    // サーボの物理的上限
-static constexpr float STEER_CURVE_SPEED_FACTOR  = 0.7f;  // 曲率係数: 計算角度/上限 の比率で速度を調整
+// 速度（距離・ステア連動）
+static constexpr int FTG_SPEED_MIN             = 14;
+static constexpr int FTG_SPEED_MAX             = 255;
+// v_dist の指数飽和パラメータ（m）
+static constexpr float FTG_SPEED_R_SAFE_M      = 0.30f; // 30cm以下は最小速度
+static constexpr float FTG_SPEED_R_MAX_M       = 1.00f; // 100cm以上は最大速度
+static constexpr float FTG_SPEED_K_M           = 0.10f; // 立ち上がり（最速）
+//数字が大きいほど加速度は下がる
 
-// 前回ステアリング角度を考慮した障害物評価
-static constexpr float PROCESS_STEER_WINDOW_HALF_DEG = 25.0f;  // 前回ステアリング角度の±25度を評価範囲とする
+// コスト関数（目的関数）
+static constexpr int FTG_COST_SAFE_MM            = 500;   // ここから回避を開始
+static constexpr int FTG_JERK_RELAX_MM           = 300;   // 近距離でジャーク抑制を緩める
+static constexpr float FTG_COST_W_OBS            = 8.0f;
+static constexpr float FTG_COST_W_TURN           = 0.2f;
+static constexpr float FTG_COST_W_DELTA          = 0.6f;
+static constexpr float FTG_COST_W_STEER_TIME     = 0.4f;
+static constexpr float FTG_COST_BETA             = 4.0f;  // soft-argminの鋭さ
+static constexpr float FTG_STEER_SLEW_DEG_PER_S  = 120.0f;
+static constexpr int FTG_SPEED_WARN_CAP          = 39;    // warn時の速度上限(入力スケール)
+static constexpr uint16_t FTG_IMU_MAX_AGE_MS     = 200;
+static constexpr float FTG_YAW_BIAS_DEG          = 0.0f;
+static constexpr float FTG_YAW_BIAS_REF_DPS      = 90.0f;
+static constexpr float FTG_STEER_TIME_REF_S      = 0.10f;
+static constexpr float FTG_SERVO_TIME_60DEG_S    = 0.14f; // DS3218 6.8V
+static constexpr float FTG_SERVO_DEG_PER_S       = 60.0f / FTG_SERVO_TIME_60DEG_S;
+static constexpr float FTG_SERVO_LOAD_SCALE      = 1.5f;
 
-// ステアリング方向への優先度: 現在の方向に近い角度を優先（0.0=優先度なし、1.0=最大優先度）
-static constexpr float PROCESS_DIRECTION_WEIGHT = 0.5f;  // 現在方向との角度差を考慮する程度
+// 物理上限
+static constexpr int STEER_ANGLE_MAX_DEG       = 30;   // サーボの物理的上限
 
 //------------------------------------------------------------------------------
 // Telemetry（観測/可視化）

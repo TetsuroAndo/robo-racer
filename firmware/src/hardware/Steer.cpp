@@ -23,26 +23,29 @@ void Steer::writePulseUs_(int us) {
 	ledcWrite(cfg::STEER_CHANNEL, duty);
 }
 
-// angle -> -ANGLE_RANGE ~ ANGLE_RANGE
+// angle -> STEER_ANGLE_MIN_DEG ~ STEER_ANGLE_MAX_DEG
 void Steer::setAngle(float angle) {
 	// 符号はそのまま: 正が右, 負が左
-	if (cfg::STEER_ANGLE_RANGE_DEG < angle) {
-		angle = cfg::STEER_ANGLE_RANGE_DEG;
-	} else if (angle < -cfg::STEER_ANGLE_RANGE_DEG) {
-		angle = -cfg::STEER_ANGLE_RANGE_DEG;
+	if (cfg::STEER_ANGLE_MAX_DEG < angle) {
+		angle = cfg::STEER_ANGLE_MAX_DEG;
+	} else if (angle < cfg::STEER_ANGLE_MIN_DEG) {
+		angle = cfg::STEER_ANGLE_MIN_DEG;
 	}
 
-	angle += cfg::STEER_ANGLE_CENTER_DEG;
-	int us =
-		map(angle, cfg::STEER_ANGLE_CENTER_DEG - cfg::STEER_ANGLE_RANGE_DEG,
-			cfg::STEER_ANGLE_CENTER_DEG + cfg::STEER_ANGLE_RANGE_DEG,
-			cfg::STEER_PULSE_MIN_US, cfg::STEER_PULSE_MAX_US);
+	const float min_angle =
+		cfg::STEER_ANGLE_CENTER_DEG + cfg::STEER_ANGLE_MIN_DEG;
+	const float max_angle =
+		cfg::STEER_ANGLE_CENTER_DEG + cfg::STEER_ANGLE_MAX_DEG;
+	const float angle_abs = angle + cfg::STEER_ANGLE_CENTER_DEG;
+	float t = (angle_abs - min_angle) / (max_angle - min_angle);
+	if (t < 0.0f)
+		t = 0.0f;
+	if (t > 1.0f)
+		t = 1.0f;
+	const int us = (int)lerp((float)cfg::STEER_PULSE_MIN_US,
+							 (float)cfg::STEER_PULSE_MAX_US, t);
 	writePulseUs_(us);
 }
-void Steer::center() { setAngle(cfg::STEER_ANGLE_CENTER_DEG); }
-void Steer::left() {
-	setAngle(cfg::STEER_ANGLE_CENTER_DEG + cfg::STEER_ANGLE_RANGE_DEG);
-}
-void Steer::right() {
-	setAngle(cfg::STEER_ANGLE_CENTER_DEG - cfg::STEER_ANGLE_RANGE_DEG);
-}
+void Steer::center() { setAngle(0.0f); }
+void Steer::left() { setAngle(cfg::STEER_ANGLE_MAX_DEG); }
+void Steer::right() { setAngle(cfg::STEER_ANGLE_MIN_DEG); }

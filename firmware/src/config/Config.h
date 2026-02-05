@@ -23,6 +23,41 @@ static constexpr int SERIAL_TX_PIN             = 17;
 static constexpr uint32_t SERIAL_BAUD          = 921600;
 
 //------------------------------------------------------------------------------
+// TSD20 (1D LiDAR)
+//------------------------------------------------------------------------------
+
+// I2C pins
+static constexpr int TSD20_SDA_PIN             = 32;
+static constexpr int TSD20_SCL_PIN             = 33;
+
+// I2C settings
+static constexpr uint32_t TSD20_I2C_HZ         = 400000;
+static constexpr uint8_t TSD20_I2C_ADDR        = 0x52;
+
+// UART "Change IIC" settings
+static constexpr uint32_t TSD20_UART_BAUD_PRIMARY  = 460800;
+static constexpr uint32_t TSD20_UART_BAUD_FALLBACK = 115200;
+
+// Wiring fallback
+static constexpr bool TSD20_ALLOW_PIN_SWAP     = true;
+
+// Read/processing
+static constexpr bool TSD20_ENABLE              = true;
+static constexpr uint32_t TSD20_READ_INTERVAL_MS = 10;
+static constexpr uint32_t TSD20_INIT_RETRY_MS     = 2000;
+static constexpr uint8_t TSD20_MAX_FAILS         = 5;
+static constexpr bool TSD20_REQUIRE_OK           = true;
+static constexpr bool TSD20_CLAMP_IN_MANUAL      = false;
+static constexpr bool TSD20_SET_FREQ_ON_BOOT     = true;
+static constexpr uint16_t TSD20_TARGET_HZ        = 100;
+static constexpr uint16_t TSD20_MARGIN_MM        = 150;
+static constexpr uint16_t TSD20_LATENCY_MS       = 80;
+
+// Distance clamp (tune to your course)
+static constexpr uint16_t TSD20_STOP_DISTANCE_MM    = 400;
+static constexpr uint16_t TSD20_SLOWDOWN_DISTANCE_MM = 800;
+
+//------------------------------------------------------------------------------
 // 自動モードのハートビート監視タイムアウト
 //------------------------------------------------------------------------------
 static constexpr uint32_t HEARTBEAT_TIMEOUT_MS = 200;
@@ -42,6 +77,67 @@ static constexpr int FULL_CIRCLE_DEG           = 360;
 // その他
 static constexpr int DRIVE_SPEED_MAX           = 255;
 static constexpr int DRIVE_AVE_DEG_NUM         = 1;
+static constexpr int DRIVE_SPEED_MAX_MM_S      = 13889; // 50km/h
+
+//------------------------------------------------------------------------------
+// IMU (MPU-6500)
+//------------------------------------------------------------------------------
+
+static constexpr bool IMU_ENABLE                = true;
+static constexpr int IMU_SDA_PIN                = 21;
+static constexpr int IMU_SCL_PIN                = 22;
+static constexpr uint32_t IMU_I2C_HZ            = 400000;
+static constexpr uint8_t IMU_I2C_ADDR           = 0x68;
+static constexpr uint8_t IMU_WHO_AM_I_0         = 0x70; // MPU-6500
+static constexpr uint8_t IMU_WHO_AM_I_1         = 0x68; // MPU-6050互換
+static constexpr uint8_t IMU_DLPF_CFG           = 3;    // 44Hz
+static constexpr uint8_t IMU_GYRO_FS_SEL        = 3;    // ±2000 dps
+static constexpr uint8_t IMU_ACCEL_FS_SEL       = 2;    // ±8g
+static constexpr uint32_t IMU_READ_INTERVAL_MS  = 5;    // 200Hz
+// Axis map: 0=ax, 1=ay, 2=az (sensor -> vehicle frame)
+static constexpr int IMU_AXIS_MAP_X             = 0;
+static constexpr int IMU_AXIS_MAP_Y             = 1;
+static constexpr int IMU_AXIS_MAP_Z             = 2;
+static constexpr int IMU_AXIS_SIGN_X            = 1;
+static constexpr int IMU_AXIS_SIGN_Y            = 1;
+static constexpr int IMU_AXIS_SIGN_Z            = 1;
+static constexpr uint32_t IMU_CALIBRATION_MS    = 1500;
+static constexpr uint32_t IMU_CALIB_MIN_SAMPLES = 200;
+static constexpr float IMU_CALIB_GYRO_DPS       = 2.0f;
+static constexpr int IMU_CALIB_ACCEL_DEV_MM_S2  = 1500;
+static constexpr uint32_t IMU_ZUPT_HOLD_MS       = 200;
+static constexpr int IMU_ZUPT_A_LONG_MM_S2       = 200;  // 0.2 m/s^2
+static constexpr float IMU_ZUPT_GZ_DPS           = 5.0f;
+static constexpr int IMU_ZUPT_SPEED_MM_S         = 100;
+static constexpr float IMU_V_EST_LEAK_PER_S      = 0.2f;
+static constexpr int IMU_V_EST_MAX_MM_S          = DRIVE_SPEED_MAX_MM_S;
+static constexpr uint32_t IMU_GRAVITY_TAU_MS     = 500;
+static constexpr int IMU_ACCEL_NORM_MAX_DEV_MM_S2 = 5000;
+static constexpr int IMU_BRAKE_INIT_MM_S2        = 4000;
+static constexpr int IMU_BRAKE_MIN_MM_S2         = 1500;
+static constexpr int IMU_BRAKE_MAX_MM_S2         = 12000;
+static constexpr float IMU_BRAKE_ALPHA_UP        = 0.02f;
+static constexpr float IMU_BRAKE_ALPHA_DOWN      = 0.2f;
+static constexpr int IMU_BRAKE_DETECT_MM_S2      = 800;
+static constexpr int IMU_BRAKE_CMD_DELTA_MM_S    = 200;
+
+//------------------------------------------------------------------------------
+// ABS reverse brake
+//------------------------------------------------------------------------------
+
+static constexpr bool ABS_ENABLE                = true;
+static constexpr bool ABS_ENABLE_IN_MANUAL      = false;
+static constexpr uint32_t ABS_PERIOD_MS          = 20;
+static constexpr uint8_t ABS_DUTY_MIN            = 20;
+static constexpr uint8_t ABS_DUTY_MAX            = 80;
+static constexpr float ABS_DUTY_KP               = 0.02f;
+static constexpr float ABS_DUTY_KI               = 0.01f;
+static constexpr float ABS_A_TARGET_SCALE        = 1.0f;
+static constexpr uint16_t ABS_BRAKE_HOLD_MS      = 200;
+static constexpr int ABS_REVERSE_MM_S           = 1200;
+static constexpr int ABS_SPEED_MARGIN_MM_S      = 150;
+static constexpr int ENGINE_RATE_DOWN_BRAKE      = 4000;
+static constexpr uint16_t ABS_REVERSE_DISABLE_MARGIN_MM = 150;
 
 //------------------------------------------------------------------------------
 // ステアサーボ設定（DS3218想定）
@@ -56,12 +152,15 @@ static constexpr int STEER_PWM_PERIOD_US       = 1000000 / STEER_PWM_FREQ_HZ;
 
 // パルス幅
 static constexpr int STEER_PULSE_MIN_US        = 1200;
-static constexpr int STEER_PULSE_MAX_US        = 1800;
+static constexpr int STEER_PULSE_MAX_US        = 1750;
 static constexpr int STEER_PULSE_CENTER_US     =
 	(STEER_PULSE_MIN_US + STEER_PULSE_MAX_US) / 2;
 
-// 角度マッピング
-static constexpr int STEER_ANGLE_RANGE_DEG     = 30;
+// 角度マッピング（物理可動域に合わせて±25deg）
+static constexpr float STEER_ANGLE_MIN_DEG     = -25.0f;
+static constexpr float STEER_ANGLE_MAX_DEG     = 25.0f;
+static constexpr int STEER_ANGLE_MIN_CDEG      = -2500;
+static constexpr int STEER_ANGLE_MAX_CDEG      = 2500;
 static constexpr int STEER_ANGLE_CENTER_DEG    = 90;
 static constexpr float STEER_CDEG_SCALE        = 100.0f;
 
@@ -85,6 +184,7 @@ static constexpr int ENGINE_PWM_RES_BITS       = 8;
 static constexpr int ENGINE_SPEED_STEP         = 4;
 static constexpr int ENGINE_RAMP_DELAY_MS      = 10;
 static constexpr int ENGINE_SPEED_LIMIT        = 255;
+static constexpr uint32_t ENGINE_DEADTIME_US   = 800;
 
 //------------------------------------------------------------------------------
 // 手動操作の上限（ゲームパッド）
@@ -95,7 +195,7 @@ static constexpr int   MANUAL_SPEED_MAX  = 180;
 static constexpr int   MANUAL_SPEED_STEP = 6;
 
 // 操舵
-static constexpr float MANUAL_STEER_DEG  = 20.0f;
+static constexpr float MANUAL_STEER_DEG  = 25.0f;
 
 //------------------------------------------------------------------------------
 // 通信/テレメトリ
