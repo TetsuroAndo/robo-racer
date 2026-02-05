@@ -5,6 +5,8 @@
 - ターミナルでリアルタイムに状況把握できる最小UIを提供する
 
 ## 状態一覧
+- [完了] path_obst_mm の未設定値(<=0)を距離警告判定から除外
+- [完了] 速度算出で smoothed 距離を corridor_min の上限として適用
 - [完了] `Process` のテレメトリログ（best/min/path/cmd/override）の追加
 - [完了] ASCIIコンパス + top-3 + override表示の追加
 - [完了] JSONL 形式の telemetry/event 出力の追加

@@ -431,7 +431,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	}
 
 	int path_mm = s.path_obst_mm;
-	if (path_mm < 0 || path_mm >= (std::numeric_limits< int >::max() / 2)) {
+	if (path_mm <= 0 || path_mm >= (std::numeric_limits< int >::max() / 2)) {
 		path_mm = cfg::TELEMETRY_DIST_BAR_MAX_MM;
 	}
 	if (path_mm > cfg::TELEMETRY_DIST_BAR_MAX_MM)
@@ -479,10 +479,12 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	}
 
 	Severity dist_sev = Severity::Safe;
-	if (s.path_obst_mm <= cfg::FTG_NEAR_OBSTACLE_MM) {
-		dist_sev = Severity::Crit;
-	} else if (s.path_obst_mm < cfg::FTG_WARN_OBSTACLE_MM) {
-		dist_sev = Severity::Warn;
+	if (s.path_obst_mm > 0) {
+		if (s.path_obst_mm <= cfg::FTG_NEAR_OBSTACLE_MM) {
+			dist_sev = Severity::Crit;
+		} else if (s.path_obst_mm < cfg::FTG_WARN_OBSTACLE_MM) {
+			dist_sev = Severity::Warn;
+		}
 	}
 
 	Severity map_sev = Severity::Safe;

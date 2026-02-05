@@ -111,7 +111,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			n = 0;
 		if (n > max_n)
 			n = max_n;
-		int min_mm = std::numeric_limits< int32_t >::max();
+		int min_mm = std::numeric_limits< int >::max();
 		for (int a = angle - n; a <= angle + n; ++a) {
 			if (a < cfg::FTG_ANGLE_MIN_DEG || a > cfg::FTG_ANGLE_MAX_DEG)
 				continue;
@@ -120,7 +120,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			if (raw > 0 && raw < min_mm)
 				min_mm = raw;
 		}
-		if (min_mm != std::numeric_limits< int32_t >::max())
+		if (min_mm != std::numeric_limits< int >::max())
 			corridor_min[(size_t)idx] = min_mm;
 	}
 
@@ -258,8 +258,12 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		if (out_idx >= 0 && out_idx < cfg::FTG_BIN_COUNT) {
 			const int smoothed_mm =
 				static_cast< int >(std::lround(smoothed[(size_t)out_idx]));
-			if (smoothed_mm > 0)
-				d_speed_mm = smoothed_mm;
+			if (smoothed_mm > 0) {
+				if (d_speed_mm > 0)
+					d_speed_mm = std::min(d_speed_mm, smoothed_mm);
+				else
+					d_speed_mm = smoothed_mm;
+			}
 		}
 
 		const float v_min = (float)cfg::FTG_SPEED_MIN;
