@@ -1,6 +1,7 @@
 #include "config/Config.h"
 #include "control/ControllerInput.h"
 #include "hardware/Drive.h"
+#include "hardware/Tsd20.h"
 #include <Arduino.h>
 
 #include "../lib/common/Math.h"
@@ -10,23 +11,30 @@
 #include "log/AsyncLogger.h"
 #include <mc/proto/Proto.hpp>
 
-static constexpr int SERIAL_RXD = 16;
-static constexpr int SERIAL_TXD = 17;
-static constexpr int DEFAULT_ESP_BAUD = 921600;
-
 static mc::ControlState g_state;
 static mc::Context g_ctx;
 
 static Drive drive;
+static Tsd20 tsd20;
 static ControllerInput pad;
 static mc::AsyncLogger alog;
 static mc::UartTx uart_tx;
+
+static HardwareSerial tsd_uart(1);
 
 static mc::proto::PacketReader reader;
 
 static mc::PeriodicTimer statusTimer(50);
 static mc::PeriodicTimer logTimer(200);
+static mc::PeriodicTimer tsdTimer(cfg::TSD20_READ_INTERVAL_MS);
+static mc::PeriodicTimer tsdInitTimer(cfg::TSD20_INIT_RETRY_MS);
 static uint16_t status_seq = 0;
+
+static bool g_tsd_ready = false;
+static bool g_tsd_valid = false;
+static uint16_t g_tsd_mm = 0;
+static uint8_t g_tsd_fail_count = 0;
+static bool g_tsd_fail_logged = false;
 
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
@@ -112,6 +120,86 @@ static void handleRx_(uint32_t now_ms) {
 	}
 }
 
+static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode) {
+	if (!cfg::TSD20_ENABLE)
+		return speed_mm_s;
+	if (speed_mm_s <= 0)
+		return speed_mm_s;
+	if (!cfg::TSD20_CLAMP_IN_MANUAL && mode != mc::Mode::AUTO)
+		return speed_mm_s;
+	if (cfg::TSD20_REQUIRE_OK && !g_tsd_ready)
+		return 0;
+
+	if (!g_tsd_valid) {
+		if (g_tsd_fail_count >= cfg::TSD20_MAX_FAILS)
+			return 0;
+		return speed_mm_s;
+	}
+
+	const uint16_t stop_mm = cfg::TSD20_STOP_DISTANCE_MM;
+	const uint16_t slow_mm = cfg::TSD20_SLOWDOWN_DISTANCE_MM;
+	if (stop_mm == 0 || slow_mm == 0 || slow_mm <= stop_mm)
+		return speed_mm_s;
+	if (g_tsd_mm <= stop_mm)
+		return 0;
+	if (g_tsd_mm >= slow_mm)
+		return speed_mm_s;
+
+	const float k = (float)(g_tsd_mm - stop_mm) / (float)(slow_mm - stop_mm);
+	int16_t clamped = (int16_t)((float)speed_mm_s * k);
+	if (clamped < 0)
+		clamped = 0;
+	return clamped;
+}
+
+static void updateTsd20_(uint32_t now_ms) {
+	if (!cfg::TSD20_ENABLE)
+		return;
+
+	if (!g_tsd_ready && tsdInitTimer.due(now_ms)) {
+		g_tsd_ready = tsd20.begin(tsd_uart);
+		if (g_tsd_ready) {
+			(void)tsd20.setLaser(true);
+			g_tsd_fail_count = 0;
+			g_tsd_fail_logged = false;
+			alog.logf(mc::LogLevel::INFO, "tsd20",
+					  "init ok id=0x%02X swapped=%d", (unsigned)tsd20.id(),
+					  (int)tsd20.swapped());
+		} else {
+			alog.logf(mc::LogLevel::WARN, "tsd20", "init retry failed");
+		}
+	}
+
+	if (!tsdTimer.due(now_ms))
+		return;
+
+	if (!g_tsd_ready) {
+		g_tsd_valid = false;
+		g_tsd_mm = 0;
+		return;
+	}
+
+	uint16_t mm = 0;
+	if (tsd20.readDistanceMm(mm)) {
+		g_tsd_mm = mm;
+		g_tsd_valid = true;
+		g_tsd_fail_count = 0;
+		g_tsd_fail_logged = false;
+	} else {
+		if (g_tsd_fail_count < 0xFF)
+			g_tsd_fail_count++;
+		if (g_tsd_fail_count >= cfg::TSD20_MAX_FAILS) {
+			g_tsd_valid = false;
+			g_tsd_mm = 0;
+			if (!g_tsd_fail_logged) {
+				alog.logf(mc::LogLevel::WARN, "tsd20", "read failed (fails=%u)",
+						  (unsigned)g_tsd_fail_count);
+				g_tsd_fail_logged = true;
+			}
+		}
+	}
+}
+
 static void applyTargets_(uint32_t now_ms, float dt_s) {
 	const bool cmd_fresh =
 		(g_state.cmd_expire_ms != 0) && (now_ms <= g_state.cmd_expire_ms);
@@ -124,6 +212,7 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 			int v = forward - back;
 			int16_t speed_mm_s = (int16_t)mc::clamp< int >(
 				v * 2, -cfg::DRIVE_SPEED_MAX_MM_S, cfg::DRIVE_SPEED_MAX_MM_S);
+			speed_mm_s = clampSpeedWithTsd20_(speed_mm_s, g_state.mode);
 
 			int16_t steer = 0;
 			if (st.dpad & DPAD_LEFT)
@@ -144,7 +233,9 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 		}
 	} else {
 		if (cmd_fresh) {
-			drive.setTargetMmS(g_state.target_speed_mm_s);
+			int16_t speed_mm_s =
+				clampSpeedWithTsd20_(g_state.target_speed_mm_s, g_state.mode);
+			drive.setTargetMmS(speed_mm_s);
 			drive.setTargetSteerCdeg(g_state.target_steer_cdeg);
 			drive.setTtlMs(g_state.target_ttl_ms);
 			drive.setDistMm(g_state.target_dist_mm);
@@ -163,7 +254,8 @@ void setup() {
 	Serial.begin(115200);
 	delay(200);
 
-	Serial2.begin(DEFAULT_ESP_BAUD, SERIAL_8N1, SERIAL_RXD, SERIAL_TXD);
+	Serial2.begin(cfg::SERIAL_BAUD, SERIAL_8N1, cfg::SERIAL_RX_PIN,
+				  cfg::SERIAL_TX_PIN);
 	Serial2.setRxBufferSize(4096);
 	Serial2.setTxBufferSize(4096);
 
@@ -178,11 +270,23 @@ void setup() {
 	uart_tx.begin(Serial2);
 	alog.begin(uart_tx);
 	alog.setMinLevel(mc::LogLevel::INFO);
-	alog.logf(mc::LogLevel::INFO, "boot", "ESP32 up baud=%d", DEFAULT_ESP_BAUD);
+	alog.logf(mc::LogLevel::INFO, "boot", "ESP32 up baud=%d",
+			  (int)cfg::SERIAL_BAUD);
+
+	g_tsd_ready = tsd20.begin(tsd_uart);
+	if (g_tsd_ready) {
+		(void)tsd20.setLaser(true);
+		alog.logf(mc::LogLevel::INFO, "tsd20", "init ok id=0x%02X swapped=%d",
+				  (unsigned)tsd20.id(), (int)tsd20.swapped());
+	} else {
+		alog.logf(mc::LogLevel::WARN, "tsd20", "init failed");
+	}
 
 	uint32_t now = millis();
 	statusTimer.reset(now);
 	logTimer.reset(now);
+	tsdTimer.reset(now);
+	tsdInitTimer.reset(now);
 }
 
 void loop() {
@@ -198,6 +302,7 @@ void loop() {
 	uint32_t now_ms = (uint32_t)millis();
 
 	handleRx_(now_ms);
+	updateTsd20_(now_ms);
 	applyTargets_(now_ms, dt_s);
 
 	if (statusTimer.due(now_ms)) {
@@ -213,6 +318,12 @@ void loop() {
 				  mode, (int)g_state.killed, (int)drive.appliedSpeedMmS(),
 				  (int)drive.appliedSteerCdeg(), (unsigned)drive.ttlMs(),
 				  (unsigned)drive.distMm(), (unsigned)alog.dropped());
+		if (cfg::TSD20_ENABLE) {
+			alog.logf(mc::LogLevel::INFO, "tsd20",
+					  "ready=%d valid=%d mm=%u fails=%u", (int)g_tsd_ready,
+					  (int)g_tsd_valid, (unsigned)g_tsd_mm,
+					  (unsigned)g_tsd_fail_count);
+		}
 	}
 
 	delay(1);
