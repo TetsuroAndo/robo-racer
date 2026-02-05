@@ -84,7 +84,7 @@ static constexpr int FULL_CIRCLE_DEG           = 360;
 // その他
 static constexpr int DRIVE_SPEED_MAX           = 255;
 static constexpr int DRIVE_AVE_DEG_NUM         = 1;
-static constexpr int DRIVE_SPEED_MAX_MM_S      = 13889; // 50km/h
+static constexpr int DRIVE_SPEED_MAX_MM_S      = 5000; // 5m/s
 
 //------------------------------------------------------------------------------
 // IMU (MPU-6500)
@@ -124,8 +124,8 @@ static constexpr float IMU_V_EST_LEAK_PER_S      = 0.2f;
 static constexpr int IMU_V_EST_MAX_MM_S          = DRIVE_SPEED_MAX_MM_S;
 static constexpr uint32_t IMU_GRAVITY_TAU_MS     = 500;
 static constexpr int IMU_ACCEL_NORM_MAX_DEV_MM_S2 = 5000;
-static constexpr int IMU_BRAKE_INIT_MM_S2        = 8000;
-static constexpr int IMU_BRAKE_MIN_MM_S2         = 1500;
+static constexpr int IMU_BRAKE_INIT_MM_S2        = 12000;
+static constexpr int IMU_BRAKE_MIN_MM_S2         = 8000;
 static constexpr int IMU_BRAKE_MAX_MM_S2         = 12000;
 static constexpr float IMU_BRAKE_ALPHA_UP        = 0.02f;
 static constexpr float IMU_BRAKE_ALPHA_DOWN      = 0.2f;
