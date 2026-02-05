@@ -279,6 +279,32 @@ def format_cdeg(cdeg: int) -> str:
     return f"{cdeg / 100.0:.2f}deg ({cdeg} cdeg)"
 
 
+def ensure_auto(sock: socket.socket, seq: int, timeout_s: float = 2.0) -> tuple[int, StatusFrame | None]:
+    end = time.time() + timeout_s
+    next_send = 0.0
+    last_status: StatusFrame | None = None
+    while time.time() < end:
+        now = time.time()
+        if now >= next_send:
+            send_mode(sock, seq, auto=True)
+            seq = (seq + 1) & 0xFFFF
+            next_send = now + 0.2
+        r, _, _ = select.select([sock], [], [], 0.1)
+        if not r:
+            continue
+        data = sock.recv(4096)
+        dec = decode_packet(data)
+        if not dec or dec[0] != TYPE_STATUS:
+            continue
+        status = decode_status(dec[3])
+        if status is None:
+            continue
+        last_status = status
+        if status.auto_active == 1:
+            return seq, last_status
+    return seq, last_status
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sock", default=default_sock())
@@ -293,7 +319,7 @@ def main() -> int:
     ap.add_argument("--alt-pos-deg", type=float, default=None)
     ap.add_argument("--alt-neg-deg", type=float, default=None)
     ap.add_argument("--alternate-count", type=int, default=0)
-    ap.add_argument("--status-every-ms", type=int, default=0)
+    ap.add_argument("--status-every-ms", type=int, default=200)
     ap.add_argument("--speed-mm-s", type=int, default=0)
     args = ap.parse_args()
 
@@ -314,8 +340,11 @@ def main() -> int:
     last_target_cdeg = 0
     last_print = 0.0
 
-    send_mode(sock, seq, auto=True)
-    seq += 1
+    seq, last_status = ensure_auto(sock, seq)
+    if last_status is not None and last_status.auto_active != 1:
+        print("AUTO mode is not active. Run 'mode --mode auto' or check other processes.")
+        send_mode(sock, seq, auto=False)
+        return 1
 
     if args.alternate:
         pos_deg = args.alt_pos_deg if args.alt_pos_deg is not None else args.max_deg
