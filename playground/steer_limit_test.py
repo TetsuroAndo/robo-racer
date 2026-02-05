@@ -289,6 +289,11 @@ def main() -> int:
     ap.add_argument("--ttl-ms", type=int, default=200)
     ap.add_argument("--direction", choices=["positive", "negative", "both"], default="both")
     ap.add_argument("--side", choices=["left", "right", "both"], default=None)
+    ap.add_argument("--alternate", action="store_true")
+    ap.add_argument("--alt-pos-deg", type=float, default=None)
+    ap.add_argument("--alt-neg-deg", type=float, default=None)
+    ap.add_argument("--alternate-count", type=int, default=0)
+    ap.add_argument("--status-every-ms", type=int, default=200)
     ap.add_argument("--speed-mm-s", type=int, default=0)
     args = ap.parse_args()
 
@@ -312,28 +317,60 @@ def main() -> int:
     send_mode(sock, seq, auto=True)
     seq += 1
 
-    if args.side is not None:
-        # left=positive, right=negative (per MANUAL dpad mapping in firmware)
-        side_map = {"left": "positive", "right": "negative", "both": "both"}
-        direction = side_map[args.side]
-    else:
-        direction = args.direction
+    if args.alternate:
+        pos_deg = args.alt_pos_deg if args.alt_pos_deg is not None else args.max_deg
+        neg_deg = args.alt_neg_deg if args.alt_neg_deg is not None else -args.max_deg
+        pos_cdeg = int(round(pos_deg * 100.0))
+        neg_cdeg = int(round(neg_deg * 100.0))
+        if pos_cdeg <= 0:
+            raise SystemExit("alt-pos-deg must be > 0 for alternate mode")
+        if neg_cdeg >= 0:
+            raise SystemExit("alt-neg-deg must be < 0 for alternate mode")
+        if abs(pos_cdeg) > max_cdeg or abs(neg_cdeg) > max_cdeg:
+            raise SystemExit("alternate angles must be within ±max-deg")
 
-    angles = build_angles(max_cdeg, args.step_cdeg, direction)
+        def angle_iter():
+            if args.alternate_count <= 0:
+                while True:
+                    yield pos_cdeg
+                    yield neg_cdeg
+            else:
+                for _ in range(args.alternate_count):
+                    yield pos_cdeg
+                    yield neg_cdeg
+
+        angles = angle_iter()
+        direction = "alternate"
+    else:
+        if args.side is not None:
+            # left=positive, right=negative (per MANUAL dpad mapping in firmware)
+            side_map = {"left": "positive", "right": "negative", "both": "both"}
+            direction = side_map[args.side]
+        else:
+            direction = args.direction
+        angles = build_angles(max_cdeg, args.step_cdeg, direction)
     if not angles:
         raise SystemExit("no angles to test")
 
     print("Steer limit test started.")
     print("Manual stop: press 's' (safe stop), 'k' (kill). Quit: press 'q'.")
-    print(
-        f"Sweep: max={format_cdeg(max_cdeg)}, step={format_cdeg(args.step_cdeg)}, "
-        f"dwell={args.dwell_ms}ms, direction={direction}"
-    )
+    if direction == "alternate":
+        print(
+            "Alternate: "
+            f"+{format_cdeg(pos_cdeg)} / {format_cdeg(neg_cdeg)}, "
+            f"dwell={args.dwell_ms}ms, count={args.alternate_count or 'infinite'}"
+        )
+    else:
+        print(
+            f"Sweep: max={format_cdeg(max_cdeg)}, step={format_cdeg(args.step_cdeg)}, "
+            f"dwell={args.dwell_ms}ms, direction={direction}"
+        )
 
     stop_reason = ""
     stop_action = "safe"
     stop_angle_cdeg = 0
 
+    status_every_s = max(args.status_every_ms, 0) / 1000.0
     with raw_terminal():
         try:
             for target_cdeg in angles:
@@ -368,7 +405,11 @@ def main() -> int:
                             status = decode_status(dec[3])
                             if status is not None:
                                 last_status = status
-                    if last_status is not None and (now - last_print) >= 0.2:
+                    if (
+                        last_status is not None
+                        and status_every_s > 0
+                        and (now - last_print) >= status_every_s
+                    ):
                         last_print = now
                         print(
                             "Status: "
