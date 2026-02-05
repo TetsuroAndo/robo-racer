@@ -94,16 +94,25 @@ static constexpr uint8_t IMU_DLPF_CFG           = 3;    // 44Hz
 static constexpr uint8_t IMU_GYRO_FS_SEL        = 3;    // ±2000 dps
 static constexpr uint8_t IMU_ACCEL_FS_SEL       = 2;    // ±8g
 static constexpr uint32_t IMU_READ_INTERVAL_MS  = 5;    // 200Hz
+// Axis map: 0=ax, 1=ay, 2=az (sensor -> vehicle frame)
+static constexpr int IMU_AXIS_MAP_X             = 0;
+static constexpr int IMU_AXIS_MAP_Y             = 1;
+static constexpr int IMU_AXIS_MAP_Z             = 2;
 static constexpr int IMU_AXIS_SIGN_X            = 1;
 static constexpr int IMU_AXIS_SIGN_Y            = 1;
 static constexpr int IMU_AXIS_SIGN_Z            = 1;
 static constexpr uint32_t IMU_CALIBRATION_MS    = 1500;
+static constexpr uint32_t IMU_CALIB_MIN_SAMPLES = 200;
+static constexpr float IMU_CALIB_GYRO_DPS       = 2.0f;
+static constexpr int IMU_CALIB_ACCEL_DEV_MM_S2  = 1500;
 static constexpr uint32_t IMU_ZUPT_HOLD_MS       = 200;
 static constexpr int IMU_ZUPT_A_LONG_MM_S2       = 200;  // 0.2 m/s^2
 static constexpr float IMU_ZUPT_GZ_DPS           = 5.0f;
 static constexpr int IMU_ZUPT_SPEED_MM_S         = 100;
 static constexpr float IMU_V_EST_LEAK_PER_S      = 0.2f;
 static constexpr int IMU_V_EST_MAX_MM_S          = DRIVE_SPEED_MAX_MM_S;
+static constexpr uint32_t IMU_GRAVITY_TAU_MS     = 500;
+static constexpr int IMU_ACCEL_NORM_MAX_DEV_MM_S2 = 5000;
 static constexpr int IMU_BRAKE_INIT_MM_S2        = 4000;
 static constexpr int IMU_BRAKE_MIN_MM_S2         = 1500;
 static constexpr int IMU_BRAKE_MAX_MM_S2         = 12000;
@@ -125,9 +134,10 @@ static constexpr float ABS_DUTY_KP               = 0.02f;
 static constexpr float ABS_DUTY_KI               = 0.01f;
 static constexpr float ABS_A_TARGET_SCALE        = 1.0f;
 static constexpr uint16_t ABS_BRAKE_HOLD_MS      = 200;
-static constexpr int ABS_REVERSE_MM_S           = 3000;
+static constexpr int ABS_REVERSE_MM_S           = 1200;
 static constexpr int ABS_SPEED_MARGIN_MM_S      = 150;
 static constexpr int ENGINE_RATE_DOWN_BRAKE      = 4000;
+static constexpr uint16_t ABS_REVERSE_DISABLE_MARGIN_MM = 150;
 
 //------------------------------------------------------------------------------
 // ステアサーボ設定（DS3218想定）
@@ -174,6 +184,7 @@ static constexpr int ENGINE_PWM_RES_BITS       = 8;
 static constexpr int ENGINE_SPEED_STEP         = 4;
 static constexpr int ENGINE_RAMP_DELAY_MS      = 10;
 static constexpr int ENGINE_SPEED_LIMIT        = 255;
+static constexpr uint32_t ENGINE_DEADTIME_US   = 800;
 
 //------------------------------------------------------------------------------
 // 手動操作の上限（ゲームパッド）

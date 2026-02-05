@@ -44,18 +44,43 @@ void Engine::setRateLimits(float rate_up, float rate_down) {
 }
 
 void Engine::control(float dt_s) {
+	const uint32_t now_us = micros();
+	if (_dead_until_us != 0 && (int32_t)(now_us - _dead_until_us) < 0) {
+		if (_cur != 0) {
+			_cur = 0;
+			outputSpeed(0);
+		}
+		return;
+	}
+	if (_dead_until_us != 0)
+		_dead_until_us = 0;
+
 	float y = _lim.update((float)_tgt, dt_s);
 	int next = (int)lroundf(y);
 	next = constrain(next, -cfg::ENGINE_SPEED_LIMIT, cfg::ENGINE_SPEED_LIMIT);
+
+	const int next_dir = (next > 0) ? 1 : (next < 0 ? -1 : 0);
+	if (_last_dir != 0 && next_dir != 0 && next_dir != _last_dir) {
+		_dead_until_us = now_us + cfg::ENGINE_DEADTIME_US;
+		_cur = 0;
+		_last_dir = 0;
+		outputSpeed(0);
+		return;
+	}
+
 	if (next != _cur) {
 		_cur = next;
 		outputSpeed(_cur);
+		if (next_dir != 0)
+			_last_dir = next_dir;
 	}
 }
 
 void Engine::stop() {
 	_tgt = 0;
 	_cur = 0;
+	_last_dir = 0;
+	_dead_until_us = 0;
 	_lim.reset(0.0f);
 	applyPWM(0, 0);
 }

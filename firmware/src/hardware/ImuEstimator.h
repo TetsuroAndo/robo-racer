@@ -32,13 +32,21 @@ private:
 	int64_t _sum_ax = 0;
 	int64_t _sum_ay = 0;
 	int64_t _sum_az = 0;
+	int64_t _sum_gx = 0;
+	int64_t _sum_gy = 0;
 	int64_t _sum_gz = 0;
 	uint32_t _sum_n = 0;
 
 	int32_t _bias_ax = 0;
 	int32_t _bias_ay = 0;
 	int32_t _bias_az = 0;
+	int32_t _bias_gx = 0;
+	int32_t _bias_gy = 0;
 	int32_t _bias_gz = 0;
 
 	uint32_t _zupt_ms = 0;
+	float _g_est_x = 0.0f;
+	float _g_est_y = 0.0f;
+	float _g_est_z = 0.0f;
+	bool _gravity_init = false;
 };

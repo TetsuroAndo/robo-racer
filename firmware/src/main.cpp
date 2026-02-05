@@ -43,11 +43,14 @@ static bool g_tsd_valid = false;
 static uint16_t g_tsd_mm = 0;
 static uint8_t g_tsd_fail_count = 0;
 static bool g_tsd_fail_logged = false;
+static uint32_t g_tsd_last_read_ms = 0;
+static uint16_t g_tsd_period_ms = 0;
 
 static bool g_imu_ready = false;
 static bool g_imu_valid = false;
 static uint32_t g_imu_last_ms = 0;
 static ImuSample g_imu_sample{};
+static int16_t g_last_cmd_speed_mm_s = 0;
 
 static bool g_abs_active = false;
 static uint32_t g_abs_cycle_ms = 0;
@@ -334,6 +337,14 @@ static int16_t applyAbsBrake_(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
 	const uint32_t duty_ms = (uint32_t)lroundf((float)period * duty);
 	const bool reverse_on = (phase < duty_ms);
 
+	if (cfg::TSD20_ENABLE && g_tsd_valid) {
+		const uint16_t limit = (uint16_t)(cfg::TSD20_MARGIN_MM +
+										  cfg::ABS_REVERSE_DISABLE_MARGIN_MM);
+		if (g_tsd_mm <= limit) {
+			return 0;
+		}
+	}
+
 	const int max_mm_s = cfg::DRIVE_SPEED_MAX_MM_S;
 	int reverse_mm_s = cfg::ABS_REVERSE_MM_S;
 	if (reverse_mm_s > max_mm_s)
@@ -368,6 +379,8 @@ static void updateTsd20_(uint32_t now_ms) {
 	if (!g_tsd_ready) {
 		g_tsd_valid = false;
 		g_tsd_mm = 0;
+		g_tsd_last_read_ms = 0;
+		g_tsd_period_ms = 0;
 		return;
 	}
 
@@ -377,6 +390,11 @@ static void updateTsd20_(uint32_t now_ms) {
 		g_tsd_valid = true;
 		g_tsd_fail_count = 0;
 		g_tsd_fail_logged = false;
+		if (g_tsd_last_read_ms != 0) {
+			const uint32_t dt = now_ms - g_tsd_last_read_ms;
+			g_tsd_period_ms = (uint16_t)mc::clamp< uint32_t >(dt, 0u, 0xFFFFu);
+		}
+		g_tsd_last_read_ms = now_ms;
 	} else {
 		if (g_tsd_fail_count < 0xFF)
 			g_tsd_fail_count++;
@@ -418,6 +436,7 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 				steer = -1500;
 
 			speed_mm_s = applyAbsBrake_(now_ms, dt_s, speed_mm_s, abs_allowed);
+			g_last_cmd_speed_mm_s = speed_mm_s;
 			drive.setBrakeMode(g_abs_active);
 			drive.setTargetMmS(speed_mm_s);
 			drive.setTargetSteerCdeg(steer);
@@ -427,6 +446,7 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 			// AUTO_ACTIVE=false のときは UART setpoint を適用しない
 			const int16_t speed_mm_s =
 				applyAbsBrake_(now_ms, dt_s, 0, abs_allowed);
+			g_last_cmd_speed_mm_s = speed_mm_s;
 			drive.setBrakeMode(g_abs_active);
 			drive.setTargetMmS(speed_mm_s);
 			drive.setTargetSteerCdeg(0);
@@ -439,6 +459,7 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 				clampSpeedWithTsd20_(g_state.target_speed_mm_s, g_state.mode,
 									 imu_est.state().a_brake_cap_mm_s2);
 			speed_mm_s = applyAbsBrake_(now_ms, dt_s, speed_mm_s, abs_allowed);
+			g_last_cmd_speed_mm_s = speed_mm_s;
 			drive.setBrakeMode(g_abs_active);
 			drive.setTargetMmS(speed_mm_s);
 			drive.setTargetSteerCdeg(g_state.target_steer_cdeg);
@@ -447,6 +468,7 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 		} else {
 			const int16_t speed_mm_s =
 				applyAbsBrake_(now_ms, dt_s, 0, abs_allowed);
+			g_last_cmd_speed_mm_s = speed_mm_s;
 			drive.setBrakeMode(g_abs_active);
 			drive.setTargetMmS(speed_mm_s);
 			drive.setTargetSteerCdeg(0);
@@ -494,19 +516,11 @@ void setup() {
 
 	g_tsd_ready = tsd20.begin(tsd_uart);
 	if (g_tsd_ready) {
-		if (cfg::TSD20_SET_FREQ_ON_BOOT) {
-			const bool freq_ok =
-				tsd20.setFrequencyHz(tsd_uart, cfg::TSD20_TARGET_HZ);
-			if (freq_ok) {
-				alog.logf(mc::LogLevel::INFO, "tsd20", "freq set %uHz",
-						  (unsigned)cfg::TSD20_TARGET_HZ);
-			} else {
-				alog.logf(mc::LogLevel::WARN, "tsd20", "freq set failed");
-			}
-		}
 		(void)tsd20.setLaser(true);
-		alog.logf(mc::LogLevel::INFO, "tsd20", "init ok id=0x%02X swapped=%d",
-				  (unsigned)tsd20.id(), (int)tsd20.swapped());
+		alog.logf(mc::LogLevel::INFO, "tsd20",
+				  "init ok id=0x%02X swapped=%d freq_ack=%d iic_ack=%d",
+				  (unsigned)tsd20.id(), (int)tsd20.swapped(),
+				  (int)tsd20.freqAck(), (int)tsd20.iicAck());
 	} else {
 		alog.logf(mc::LogLevel::WARN, "tsd20", "init failed");
 	}
@@ -541,7 +555,7 @@ void loop() {
 			g_imu_valid = true;
 			g_imu_last_ms = now_ms;
 			imu_est.update(sample, now_ms, drive.appliedSpeedMmS(),
-						   g_state.target_speed_mm_s);
+						   g_last_cmd_speed_mm_s);
 		} else {
 			g_imu_valid = false;
 		}
@@ -565,9 +579,11 @@ void loop() {
 				  (unsigned)drive.distMm(), (unsigned)alog.dropped());
 		if (cfg::TSD20_ENABLE) {
 			alog.logf(mc::LogLevel::INFO, "tsd20",
-					  "ready=%d valid=%d mm=%u fails=%u", (int)g_tsd_ready,
-					  (int)g_tsd_valid, (unsigned)g_tsd_mm,
-					  (unsigned)g_tsd_fail_count);
+					  "ready=%d valid=%d mm=%u fails=%u period=%ums "
+					  "ack(freq=%d iic=%d)",
+					  (int)g_tsd_ready, (int)g_tsd_valid, (unsigned)g_tsd_mm,
+					  (unsigned)g_tsd_fail_count, (unsigned)g_tsd_period_ms,
+					  (int)tsd20.freqAck(), (int)tsd20.iicAck());
 		}
 		if (cfg::IMU_ENABLE) {
 			const ImuEstimate &st = imu_est.state();
