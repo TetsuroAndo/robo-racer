@@ -76,6 +76,32 @@ static constexpr int DRIVE_AVE_DEG_NUM         = 1;
 static constexpr int DRIVE_SPEED_MAX_MM_S      = 13889; // 50km/h
 
 //------------------------------------------------------------------------------
+// IMU (MPU-6500)
+//------------------------------------------------------------------------------
+
+static constexpr bool IMU_ENABLE                = true;
+static constexpr int IMU_SDA_PIN                = 21;
+static constexpr int IMU_SCL_PIN                = 22;
+static constexpr uint32_t IMU_I2C_HZ            = 400000;
+static constexpr uint8_t IMU_I2C_ADDR           = 0x68;
+static constexpr uint8_t IMU_WHO_AM_I_0         = 0x70; // MPU-6500
+static constexpr uint8_t IMU_WHO_AM_I_1         = 0x68; // MPU-6050互換
+static constexpr uint8_t IMU_DLPF_CFG           = 3;    // 44Hz
+static constexpr uint8_t IMU_GYRO_FS_SEL        = 3;    // ±2000 dps
+static constexpr uint8_t IMU_ACCEL_FS_SEL       = 2;    // ±8g
+static constexpr uint32_t IMU_READ_INTERVAL_MS  = 5;    // 200Hz
+static constexpr int IMU_AXIS_SIGN_X            = 1;
+static constexpr int IMU_AXIS_SIGN_Y            = 1;
+static constexpr int IMU_AXIS_SIGN_Z            = 1;
+static constexpr uint32_t IMU_CALIBRATION_MS    = 1500;
+static constexpr uint32_t IMU_ZUPT_HOLD_MS       = 200;
+static constexpr int IMU_ZUPT_A_LONG_MM_S2       = 200;  // 0.2 m/s^2
+static constexpr float IMU_ZUPT_GZ_DPS           = 5.0f;
+static constexpr int IMU_ZUPT_SPEED_MM_S         = 100;
+static constexpr float IMU_V_EST_LEAK_PER_S      = 0.2f;
+static constexpr int IMU_V_EST_MAX_MM_S          = DRIVE_SPEED_MAX_MM_S;
+
+//------------------------------------------------------------------------------
 // ステアサーボ設定（DS3218想定）
 //------------------------------------------------------------------------------
 

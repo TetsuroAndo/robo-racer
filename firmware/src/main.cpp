@@ -1,6 +1,8 @@
 #include "config/Config.h"
 #include "control/ControllerInput.h"
 #include "hardware/Drive.h"
+#include "hardware/ImuEstimator.h"
+#include "hardware/Mpu6500.h"
 #include "hardware/Tsd20.h"
 #include <Arduino.h>
 
@@ -15,17 +17,21 @@ static mc::ControlState g_state;
 static mc::Context g_ctx;
 
 static Drive drive;
+static Mpu6500 imu;
+static ImuEstimator imu_est;
 static Tsd20 tsd20;
 static ControllerInput pad;
 static mc::AsyncLogger alog;
 static mc::UartTx uart_tx;
 
+static TwoWire imu_wire(1);
 static HardwareSerial tsd_uart(1);
 
 static mc::proto::PacketReader reader;
 
 static mc::PeriodicTimer statusTimer(50);
 static mc::PeriodicTimer logTimer(200);
+static mc::PeriodicTimer imuTimer(cfg::IMU_READ_INTERVAL_MS);
 static mc::PeriodicTimer tsdTimer(cfg::TSD20_READ_INTERVAL_MS);
 static mc::PeriodicTimer tsdInitTimer(cfg::TSD20_INIT_RETRY_MS);
 static uint16_t status_seq = 0;
@@ -35,6 +41,11 @@ static bool g_tsd_valid = false;
 static uint16_t g_tsd_mm = 0;
 static uint8_t g_tsd_fail_count = 0;
 static bool g_tsd_fail_logged = false;
+
+static bool g_imu_ready = false;
+static bool g_imu_valid = false;
+static uint32_t g_imu_last_ms = 0;
+static ImuSample g_imu_sample{};
 
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
@@ -273,6 +284,17 @@ void setup() {
 	alog.logf(mc::LogLevel::INFO, "boot", "ESP32 up baud=%d",
 			  (int)cfg::SERIAL_BAUD);
 
+	if (cfg::IMU_ENABLE) {
+		g_imu_ready = imu.begin(imu_wire);
+		if (g_imu_ready) {
+			imu_est.reset(millis());
+			alog.logf(mc::LogLevel::INFO, "imu", "init ok id=0x%02X",
+					  (unsigned)imu.id());
+		} else {
+			alog.logf(mc::LogLevel::WARN, "imu", "init failed");
+		}
+	}
+
 	g_tsd_ready = tsd20.begin(tsd_uart);
 	if (g_tsd_ready) {
 		(void)tsd20.setLaser(true);
@@ -285,6 +307,7 @@ void setup() {
 	uint32_t now = millis();
 	statusTimer.reset(now);
 	logTimer.reset(now);
+	imuTimer.reset(now);
 	tsdTimer.reset(now);
 	tsdInitTimer.reset(now);
 }
@@ -303,6 +326,19 @@ void loop() {
 
 	handleRx_(now_ms);
 	updateTsd20_(now_ms);
+
+	if (cfg::IMU_ENABLE && g_imu_ready && imuTimer.due(now_ms)) {
+		ImuSample sample{};
+		if (imu.readSample(sample)) {
+			g_imu_sample = sample;
+			g_imu_valid = true;
+			g_imu_last_ms = now_ms;
+			imu_est.update(sample, now_ms, drive.appliedSpeedMmS());
+		} else {
+			g_imu_valid = false;
+		}
+	}
+
 	applyTargets_(now_ms, dt_s);
 
 	if (statusTimer.due(now_ms)) {
@@ -323,6 +359,19 @@ void loop() {
 					  "ready=%d valid=%d mm=%u fails=%u", (int)g_tsd_ready,
 					  (int)g_tsd_valid, (unsigned)g_tsd_mm,
 					  (unsigned)g_tsd_fail_count);
+		}
+		if (cfg::IMU_ENABLE) {
+			const ImuEstimate &st = imu_est.state();
+			const uint32_t age =
+				g_imu_last_ms ? (uint32_t)(now_ms - g_imu_last_ms) : 0xFFFFu;
+			alog.logf(mc::LogLevel::INFO, "imu",
+					  "ready=%d valid=%d calib=%d age=%ums ax=%d ay=%d az=%d "
+					  "gx=%d gy=%d gz=%d a_long=%.1f v_est=%.1f",
+					  (int)g_imu_ready, (int)g_imu_valid, (int)st.calibrated,
+					  (unsigned)age, (int)g_imu_sample.ax, (int)g_imu_sample.ay,
+					  (int)g_imu_sample.az, (int)g_imu_sample.gx,
+					  (int)g_imu_sample.gy, (int)g_imu_sample.gz,
+					  (double)st.a_long_mm_s2, (double)st.v_est_mm_s);
 		}
 	}
 
