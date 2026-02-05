@@ -97,12 +97,17 @@ static constexpr int FTG_JERK_RELAX_MM           = 300;   // 近距離でジャ�
 static constexpr float FTG_COST_W_OBS            = 8.0f;
 static constexpr float FTG_COST_W_TURN           = 0.2f;
 static constexpr float FTG_COST_W_DELTA          = 0.6f;
+static constexpr float FTG_COST_W_STEER_TIME     = 0.4f;
 static constexpr float FTG_COST_BETA             = 4.0f;  // soft-argminの鋭さ
 static constexpr float FTG_STEER_SLEW_DEG_PER_S  = 120.0f;
 static constexpr int FTG_SPEED_WARN_CAP          = 39;    // warn時の速度上限(入力スケール)
 static constexpr uint16_t FTG_IMU_MAX_AGE_MS     = 200;
 static constexpr float FTG_YAW_BIAS_DEG          = 0.0f;
 static constexpr float FTG_YAW_BIAS_REF_DPS      = 90.0f;
+static constexpr float FTG_STEER_TIME_REF_S      = 0.10f;
+static constexpr float FTG_SERVO_TIME_60DEG_S    = 0.14f; // DS3218 6.8V
+static constexpr float FTG_SERVO_DEG_PER_S       = 60.0f / FTG_SERVO_TIME_60DEG_S;
+static constexpr float FTG_SERVO_LOAD_SCALE      = 1.5f;
 
 // 物理上限
 static constexpr int STEER_ANGLE_MAX_DEG       = 30;   // サーボの物理的上限

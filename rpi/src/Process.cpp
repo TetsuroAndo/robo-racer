@@ -155,6 +155,17 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		}
 		return w;
 	};
+	auto steer_time_cost = [&](float angle_deg) -> float {
+		if (cfg::FTG_SERVO_DEG_PER_S <= 0.0f)
+			return 0.0f;
+		float t =
+			std::fabs(angle_deg - clamped_last) / cfg::FTG_SERVO_DEG_PER_S;
+		t *= cfg::FTG_SERVO_LOAD_SCALE;
+		const float ref = cfg::FTG_STEER_TIME_REF_S;
+		if (ref > 0.0f)
+			t /= ref;
+		return t * t;
+	};
 	for (int angle = cfg::FTG_ANGLE_MIN_DEG; angle <= cfg::FTG_ANGLE_MAX_DEG;
 		 ++angle) {
 		const int idx = angle - cfg::FTG_ANGLE_MIN_DEG;
@@ -173,9 +184,11 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		const float d_norm = std::fabs((float)angle - clamped_last) /
 							 (float)cfg::STEER_ANGLE_MAX_DEG;
 		const float w_delta = jerk_weight(d_mm);
-		const float j = cfg::FTG_COST_W_OBS * obs_cost(d_mm) +
-						cfg::FTG_COST_W_TURN * (a_norm * a_norm) +
-						w_delta * (d_norm * d_norm);
+		const float j =
+			cfg::FTG_COST_W_OBS * obs_cost(d_mm) +
+			cfg::FTG_COST_W_TURN * (a_norm * a_norm) +
+			w_delta * (d_norm * d_norm) +
+			cfg::FTG_COST_W_STEER_TIME * steer_time_cost((float)angle);
 		if (j < best_j) {
 			best_j = j;
 			best_angle = angle;
@@ -307,9 +320,11 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			const float d_norm = std::fabs((float)angle - clamped_last) /
 								 (float)cfg::STEER_ANGLE_MAX_DEG;
 			const float w_delta = jerk_weight(d_mm);
-			const float j = cfg::FTG_COST_W_OBS * obs_cost(d_mm) +
-							cfg::FTG_COST_W_TURN * (a_norm * a_norm) +
-							w_delta * (d_norm * d_norm);
+			const float j =
+				cfg::FTG_COST_W_OBS * obs_cost(d_mm) +
+				cfg::FTG_COST_W_TURN * (a_norm * a_norm) +
+				w_delta * (d_norm * d_norm) +
+				cfg::FTG_COST_W_STEER_TIME * steer_time_cost((float)angle);
 			const float score = 1.0f / (1.0f + j);
 			if (score > max_score)
 				max_score = score;
