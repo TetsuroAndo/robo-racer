@@ -44,6 +44,8 @@ PIO_DIR				:= $(ROOT)/.pio
 PIO_ENV				?= esp32dev
 PIO_BUILD_DIR		:= $(PIO_DIR)/build/$(PIO_ENV)
 PIO_BUILD_SRC_DIR	:= $(PIO_BUILD_DIR)/src
+FIRMWARE_BIN		:= $(PIO_BUILD_DIR)/firmware.bin
+UPLOAD_STAMP		:= $(PIO_BUILD_DIR)/.last_upload
 
 FIRMWARE_DIR		:= $(ROOT)/firmware
 FIRMWARE_SRC_DIR	:= $(FIRMWARE_DIR)/src
@@ -106,7 +108,10 @@ PIO_RUN			:= $(PIO) run -j $(shell nproc)
 .PHONY: all
 
 all: pio rpi
-	@if [ "$(IS_RPI)" = "1" ]; then $(MAKE) upload; fi
+	@if [ "$(IS_RPI)" = "1" ] && [ -f "$(FIRMWARE_BIN)" ]; then \
+		python3 -c 'import os,sys; fw,st=sys.argv[1],sys.argv[2]; fw_m=os.path.getmtime(fw) if os.path.exists(fw) else 0; st_m=os.path.getmtime(st) if os.path.exists(st) else 0; sys.exit(0 if fw_m>st_m else 1)' "$(FIRMWARE_BIN)" "$(UPLOAD_STAMP)" \
+		&& $(MAKE) upload || true; \
+	fi
 
 # === RPi build ===
 .PHONY: rpi c-rpi
@@ -124,6 +129,8 @@ pio:
 	$(PIO_RUN) $(PIO_ARG_ENV)
 upload:
 	$(PIO_RUN) $(PIO_ARG_UPLOAD)
+	@mkdir -p "$(PIO_BUILD_DIR)"
+	@touch "$(UPLOAD_STAMP)"
 monitor:
 	$(PIO) device monitor
 
