@@ -100,6 +100,9 @@ static constexpr float FTG_COST_W_DELTA          = 0.6f;
 static constexpr float FTG_COST_BETA             = 4.0f;  // soft-argminの鋭さ
 static constexpr float FTG_STEER_SLEW_DEG_PER_S  = 120.0f;
 static constexpr int FTG_SPEED_WARN_CAP          = 39;    // warn時の速度上限(入力スケール)
+static constexpr uint16_t FTG_IMU_MAX_AGE_MS     = 200;
+static constexpr float FTG_YAW_BIAS_DEG          = 0.0f;
+static constexpr float FTG_YAW_BIAS_REF_DPS      = 90.0f;
 
 // 物理上限
 static constexpr int STEER_ANGLE_MAX_DEG       = 30;   // サーボの物理的上限

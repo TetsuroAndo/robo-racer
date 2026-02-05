@@ -23,12 +23,23 @@ Process::~Process() {}
 
 ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 						 float lastSteerAngle, uint64_t tick, uint64_t scan_id,
-						 const std::string &run_id) const {
+						 const std::string &run_id,
+						 const MotionState *motion) const {
 	const uint64_t t0_us = mc::core::Time::us();
 	static constexpr float kRadToDeg = 57.2957795f;
 	const float max_steer = (float)cfg::STEER_ANGLE_MAX_DEG;
+	float yaw_bias = 0.0f;
+	if (motion && motion->valid && motion->age_ms <= cfg::FTG_IMU_MAX_AGE_MS &&
+		cfg::FTG_YAW_BIAS_DEG > 0.0f && cfg::FTG_YAW_BIAS_REF_DPS > 0.0f) {
+		float norm = motion->yaw_dps / cfg::FTG_YAW_BIAS_REF_DPS;
+		if (norm > 1.0f)
+			norm = 1.0f;
+		else if (norm < -1.0f)
+			norm = -1.0f;
+		yaw_bias = cfg::FTG_YAW_BIAS_DEG * norm;
+	}
 	const float clamped_last =
-		std::max(-max_steer, std::min(max_steer, lastSteerAngle));
+		std::max(-max_steer, std::min(max_steer, lastSteerAngle + yaw_bias));
 	float dt_s = 0.1f;
 	if (last_proc_ts_us_ > 0 && t0_us > last_proc_ts_us_) {
 		dt_s = (float)(t0_us - last_proc_ts_us_) / 1000000.0f;
@@ -384,7 +395,12 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		sample.scan_age_ms = std::nullopt;
 		const uint64_t t1_us = mc::core::Time::us();
 		sample.planner_latency_ms = (uint32_t)((t1_us - t0_us) / 1000);
-		sample.control_latency_ms = std::nullopt;
+		if (motion && motion->valid &&
+			motion->age_ms <= cfg::FTG_IMU_MAX_AGE_MS) {
+			sample.control_latency_ms = motion->age_ms;
+		} else {
+			sample.control_latency_ms = std::nullopt;
+		}
 		sample.ttl_ms = cfg::AUTO_TTL_MS;
 		sample.lidar_points = lidarData.size();
 		sample.lidar_expected = cfg::FTG_BIN_COUNT;

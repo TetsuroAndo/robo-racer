@@ -36,6 +36,7 @@ static mc::PeriodicTimer imuTimer(cfg::IMU_READ_INTERVAL_MS);
 static mc::PeriodicTimer tsdTimer(cfg::TSD20_READ_INTERVAL_MS);
 static mc::PeriodicTimer tsdInitTimer(cfg::TSD20_INIT_RETRY_MS);
 static uint16_t status_seq = 0;
+static uint16_t imu_seq = 0;
 
 static bool g_tsd_ready = false;
 static bool g_tsd_valid = false;
@@ -67,6 +68,16 @@ struct StatusPayload {
 	int16_t speed_mm_s_le;
 	int16_t steer_cdeg_le;
 	uint16_t age_ms_le;
+};
+
+struct ImuStatusPayload {
+	int16_t a_long_mm_s2_le;
+	int16_t v_est_mm_s_le;
+	uint16_t a_brake_cap_mm_s2_le;
+	int16_t yaw_dps_x10_le;
+	uint16_t age_ms_le;
+	uint8_t flags;
+	uint8_t reserved;
 };
 #pragma pack(pop)
 
@@ -114,6 +125,48 @@ static void sendStatus_(uint32_t now_ms) {
 	size_t out_len = 0;
 	mc::proto::PacketWriter::build(out, sizeof(out), out_len,
 								   mc::proto::Type::STATUS, 0, status_seq++,
+								   (const uint8_t *)&p, (uint16_t)sizeof(p));
+	if (g_ctx.tx) {
+		g_ctx.tx->enqueue(out, (uint16_t)out_len);
+	}
+}
+
+static void sendImuStatus_(uint32_t now_ms) {
+	if (!cfg::IMU_ENABLE)
+		return;
+
+	const ImuEstimate &st = imu_est.state();
+	const uint16_t age_ms =
+		g_imu_last_ms ? (uint16_t)mc::clamp< uint32_t >(now_ms - g_imu_last_ms,
+														0u, 0xFFFFu)
+					  : 0xFFFFu;
+
+	ImuStatusPayload p{};
+	wr16((uint8_t *)&p.a_long_mm_s2_le,
+		 (uint16_t)(int16_t)lroundf(st.a_long_mm_s2));
+	wr16((uint8_t *)&p.v_est_mm_s_le,
+		 (uint16_t)(int16_t)lroundf(st.v_est_mm_s));
+	wr16((uint8_t *)&p.a_brake_cap_mm_s2_le,
+		 (uint16_t)mc::clamp< int >((int)lroundf(st.a_brake_cap_mm_s2), 0,
+									0xFFFF));
+	const int yaw_x10 = (int)lroundf(st.gz_dps * 10.0f);
+	wr16((uint8_t *)&p.yaw_dps_x10_le,
+		 (uint16_t)(int16_t)mc::clamp< int >(yaw_x10, -32768, 32767));
+	wr16((uint8_t *)&p.age_ms_le, age_ms);
+	uint8_t flags = 0;
+	if (g_imu_valid)
+		flags |= 1u << 0;
+	if (st.calibrated)
+		flags |= 1u << 1;
+	if (g_abs_active)
+		flags |= 1u << 2;
+	p.flags = flags;
+	p.reserved = 0;
+
+	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
+	size_t out_len = 0;
+	mc::proto::PacketWriter::build(out, sizeof(out), out_len,
+								   mc::proto::Type::IMU_STATUS, 0, imu_seq++,
 								   (const uint8_t *)&p, (uint16_t)sizeof(p));
 	if (g_ctx.tx) {
 		g_ctx.tx->enqueue(out, (uint16_t)out_len);
@@ -498,6 +551,7 @@ void loop() {
 
 	if (statusTimer.due(now_ms)) {
 		sendStatus_(now_ms);
+		sendImuStatus_(now_ms);
 	}
 
 	if (logTimer.due(now_ms)) {

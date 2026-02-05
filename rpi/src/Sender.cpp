@@ -1,6 +1,7 @@
 #include "Sender.h"
 #include "Telemetry.h"
 #include "mc/core/Log.hpp"
+#include "mc/core/Time.hpp"
 
 #include <array>
 #include <cerrno>
@@ -48,6 +49,14 @@ Sender::~Sender() {
 	if (auto_enabled_) {
 		sendAutoMode(false);
 	}
+}
+
+bool Sender::motion(MotionState &out) const {
+	if (!has_motion_) {
+		return false;
+	}
+	out = motion_;
+	return true;
 }
 
 void Sender::send(int speed, int angle) {
@@ -160,6 +169,11 @@ void Sender::handleFrame(const mc::proto::Frame &frame) {
 		mc::proto::StatusPayload payload{};
 		memcpy(&payload, frame.payload, sizeof(payload));
 		handleStatus(payload);
+	} else if (frame.type() == (uint8_t)mc::proto::Type::IMU_STATUS &&
+			   frame.payload_len == sizeof(mc::proto::ImuStatusPayload)) {
+		mc::proto::ImuStatusPayload payload{};
+		memcpy(&payload, frame.payload, sizeof(payload));
+		handleImuStatus(payload);
 	} else if (frame.type() == (uint8_t)mc::proto::Type::ACK &&
 			   frame.payload_len == 0) {
 		const uint16_t seq = frame.seq();
@@ -197,6 +211,26 @@ void Sender::handleStatus(const mc::proto::StatusPayload &payload) {
 	if (telemetry_) {
 		telemetry_->updateStatus(auto_active, faults, speed, steer, age_ms);
 	}
+}
+
+void Sender::handleImuStatus(const mc::proto::ImuStatusPayload &payload) {
+	MotionState st{};
+	st.valid = (payload.flags & (1u << 0)) != 0;
+	st.calibrated = (payload.flags & (1u << 1)) != 0;
+	st.abs_active = (payload.flags & (1u << 2)) != 0;
+	st.a_long_mm_s2 =
+		(int16_t)mc::proto::from_le16((uint16_t)payload.a_long_mm_s2_le);
+	st.v_est_mm_s =
+		(int16_t)mc::proto::from_le16((uint16_t)payload.v_est_mm_s_le);
+	st.a_brake_cap_mm_s2 =
+		(uint16_t)mc::proto::from_le16(payload.a_brake_cap_mm_s2_le);
+	const int16_t yaw_x10 =
+		(int16_t)mc::proto::from_le16((uint16_t)payload.yaw_dps_x10_le);
+	st.yaw_dps = (float)yaw_x10 * 0.1f;
+	st.age_ms = mc::proto::from_le16(payload.age_ms_le);
+	st.ts_us = mc::core::Time::us();
+	motion_ = st;
+	has_motion_ = true;
 }
 
 void Sender::handleAck(uint16_t seq) {

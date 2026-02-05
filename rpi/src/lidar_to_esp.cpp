@@ -45,8 +45,12 @@ int run_lidar_to_esp(const char *lidar_dev, int lidar_baud,
 
 	while (!g_stop) {
 		const auto &res = lidarReceiver.receive();
-		const auto procResult =
-			process.proc(res, lastSteerAngle, tick, scan_id, run_id);
+		sender.poll();
+		MotionState motion{};
+		const MotionState *motion_ptr =
+			sender.motion(motion) ? &motion : nullptr;
+		const auto procResult = process.proc(res, lastSteerAngle, tick, scan_id,
+											 run_id, motion_ptr);
 		sender.send(procResult.speed, procResult.angle);
 		lastSteerAngle = procResult.angle;
 		++tick;
