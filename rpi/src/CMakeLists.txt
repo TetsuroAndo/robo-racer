@@ -13,6 +13,7 @@ target_include_directories(${ROBO_RACER_NAME} PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/../lib/mc_core/include
   ${CMAKE_CURRENT_SOURCE_DIR}/../../shared/proto/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../shared/config/include
   ${CMAKE_CURRENT_SOURCE_DIR}/../../shared/proto
   ${CMAKE_CURRENT_SOURCE_DIR}/../lib/mc_ipc/include
 )

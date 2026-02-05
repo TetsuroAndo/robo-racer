@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+#include "mc_config/vehicle_limits.h"
+
 namespace cfg {
 // clang-format off
 
@@ -166,12 +168,12 @@ static constexpr int STEER_PULSE_CENTER_US     =
 	(STEER_PULSE_MIN_US + STEER_PULSE_MAX_US) / 2;
 
 // 角度マッピング（物理可動域に合わせて±25deg）
-static constexpr float STEER_ANGLE_MIN_DEG     = -25.0f;
-static constexpr float STEER_ANGLE_MAX_DEG     = 25.0f;
-static constexpr int STEER_ANGLE_MIN_CDEG      = -2500;
-static constexpr int STEER_ANGLE_MAX_CDEG      = 2500;
+static constexpr float STEER_ANGLE_MIN_DEG     = mc_config::kSteerAngleMinDeg;
+static constexpr float STEER_ANGLE_MAX_DEG     = mc_config::kSteerAngleMaxDeg;
+static constexpr int STEER_ANGLE_MIN_CDEG      = mc_config::kSteerAngleMinCdeg;
+static constexpr int STEER_ANGLE_MAX_CDEG      = mc_config::kSteerAngleMaxCdeg;
 static constexpr int STEER_ANGLE_CENTER_DEG    = 90;
-static constexpr float STEER_CDEG_SCALE        = 100.0f;
+static constexpr float STEER_CDEG_SCALE        = mc_config::kSteerCdegScale;
 
 //------------------------------------------------------------------------------
 // モータドライバ（IBT-2）とPWMランプ設定

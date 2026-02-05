@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <stdint.h>
 
+#include "mc_config/vehicle_limits.h"
+
 namespace cfg {
 // clang-format off
 
@@ -38,8 +40,9 @@ static constexpr uint32_t STATUS_DEAD_MS         = 300;
 static constexpr int SPEED_INPUT_LIMIT           = 255;
 static constexpr int SPEED_MM_S_MAX              = 13889; // 50km/h
 // steer: degree → centi-degree
-static constexpr int STEER_CDEG_SCALE            = 100;
-static constexpr int STEER_CDEG_MAX              = 2500;
+static constexpr int STEER_CDEG_SCALE            =
+	static_cast< int >(mc_config::kSteerCdegScale);
+static constexpr int STEER_CDEG_MAX              = mc_config::kSteerAngleMaxCdeg;
 
 // 受信バッファ
 static constexpr size_t UART_READ_BUF_SIZE       = 256;
@@ -119,7 +122,8 @@ static constexpr float FTG_SERVO_DEG_PER_S       = 60.0f / FTG_SERVO_TIME_60DEG_
 static constexpr float FTG_SERVO_LOAD_SCALE      = 1.5f;
 
 // 物理上限
-static constexpr int STEER_ANGLE_MAX_DEG       = 30;   // サーボの物理的上限
+static constexpr int STEER_ANGLE_MAX_DEG       =
+	static_cast< int >(mc_config::kSteerAngleMaxDeg);
 
 //------------------------------------------------------------------------------
 // Telemetry（観測/可視化）
