@@ -35,6 +35,11 @@ Make で取得→再生まで一括（RPi からコピーする場合）:
 make ros2-bag-play RPI_HOST=<rpi-host> RUN_ID=<run_id>
 ```
 
+RPi で headless 記録を使う場合:
+```
+ROS2_SERVICE=ros2-record make ros2-bag-record
+```
+
 ## topics プロファイル
 - `tools/ros2/topics/<profile>.txt` で管理
 - 例: `PROFILE=slam ./tools/ros2/scripts/bag_record.sh`

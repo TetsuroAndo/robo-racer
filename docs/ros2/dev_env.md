@@ -9,6 +9,7 @@
 - Docker/compose を利用
 - リポジトリを `/ws` にマウント
 - RPi は **64bit OS (arm64)** が必須（32bit だと ROS2 Docker が動かない）
+- RPi では **headless (record only)** を推奨（`ros2-record` サービス）
 
 ## 1) Docker イメージのビルド
 ```
@@ -18,6 +19,10 @@ docker compose -f tools/ros2/compose.yml build
 ## 2) シェルに入る
 ```
 docker compose -f tools/ros2/compose.yml run --rm ros2 bash
+```
+RPi で headless を使う場合:
+```
+ROS2_SERVICE=ros2-record make ros2-shell
 ```
 
 ## 3) RViz 起動（GUI）
@@ -87,6 +92,10 @@ make ros2-rviz
 ```
 `rpi/ros2_ws/src/mc_msgs` がメッセージ定義の雛形です。
 ビルド成果物は `rpi/ros2_ws/install`、colcon のビルドログは `rpi/ros2_ws/colcon_log` に出力されます。
+RPi で headless を使う場合は:
+```
+ROS2_SERVICE=ros2-record make ros2-build
+```
 
 **注意:** リポジトリ直下で `colcon build` を実行すると `./install/` や `./log/` が作られて混乱するため、
 ROS2 のビルドは必ず `make ros2-build` もしくは `./tools/ros2/scripts/ros2_build.sh` を使ってください。
@@ -103,6 +112,10 @@ ros2 run mc_demo_pub mc_demo_pub
 - record: `./tools/ros2/scripts/bag_record.sh`
 - session: `./tools/ros2/scripts/session_up.sh`（run_id 伝播を固定したい場合）
 - play: `./tools/ros2/scripts/bag_play.sh <bag_path> [rate]`
+RPi で headless を使う場合:
+```
+ROS2_SERVICE=ros2-record make ros2-bag-record
+```
 
 ## 7) RPi から bag をコピーして再生（推奨運用）
 RPi 側で bag を保存し、PC 側へコピーして再生する。

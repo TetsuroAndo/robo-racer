@@ -1,4 +1,5 @@
 OS			:= $(shell uname -s)
+ARCH		:= $(shell uname -m)
 USER		:= $(shell whoami)
 RM 			:= rm -rf
 
@@ -16,6 +17,16 @@ ROS2_GUI_ENV := DISPLAY=$(ROS2_DISPLAY) \
 	XDG_RUNTIME_DIR=$(ROS2_XDG_RUNTIME_DIR)
 else
 ROS2_GUI_ENV :=
+endif
+
+ifeq ($(OS), Linux)
+  ifeq ($(ARCH), aarch64)
+    ROS2_SERVICE ?= ros2-record
+  else
+    ROS2_SERVICE ?= ros2
+  endif
+else
+  ROS2_SERVICE ?= ros2
 endif
 
 # --- PATHS ---
@@ -159,14 +170,14 @@ ros2-up:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml up -d
 
 ros2-shell:
-	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 bash
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm $(ROS2_SERVICE) bash
 
 ros2-build:
-	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm $(ROS2_SERVICE) \
 		bash /ws/tools/ros2/scripts/ros2_build.sh
 
 ros2-build-clean:
-	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm $(ROS2_SERVICE) \
 		bash -lc "rm -rf /ws/rpi/ros2_ws/build /ws/rpi/ros2_ws/install /ws/rpi/ros2_ws/colcon_log && /ws/tools/ros2/scripts/ros2_build.sh"
 
 ros2-mc-bridge:
@@ -200,7 +211,7 @@ ros2-bag-record:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm \
 		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID -e NOTES -e RUN_NOTES \
 		-e WAIT_SEC -e REQUIRE_AT_LEAST_ONE \
-		ros2 \
+		$(ROS2_SERVICE) \
 		bash /ws/tools/ros2/scripts/bag_record.sh
 
 ros2-bag-play:
@@ -226,7 +237,7 @@ ros2-bag-play:
 			echo \"Error: BAG パラメータが未設定です。例: make ros2-bag-play BAG=/path/to/bag\"; \
 			exit 1; \
 		fi; \
-		docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		docker compose -f tools/ros2/compose.yml run --rm $(ROS2_SERVICE) \
 			bash /ws/tools/ros2/scripts/bag_play.sh \"$$BAG\""
 
 ros2-bag-fetch:
@@ -246,7 +257,7 @@ ros2-session-up:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm \
 		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID -e NOTES -e RUN_NOTES \
 		-e WAIT_SEC -e REQUIRE_AT_LEAST_ONE -e SESSION_CMD -e SESSION_WAIT_SEC \
-		ros2 \
+		$(ROS2_SERVICE) \
 		bash /ws/tools/ros2/scripts/session_up.sh
 
 test: $(PYTHON_LOCAL)
