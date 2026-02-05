@@ -54,7 +54,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		if (p.distance <= 0)
 			continue;
 		const int idx = angle - cfg::FTG_ANGLE_MIN_DEG;
-		if (p.distance > bins[(size_t)idx])
+		if (bins[(size_t)idx] == 0 || p.distance < bins[(size_t)idx])
 			bins[(size_t)idx] = p.distance;
 	}
 
@@ -87,7 +87,10 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		const float dist = smoothed[(size_t)idx];
 		if (dist <= 0.0f)
 			continue;
-		const float r_m = std::max(0.001f, dist / 1000.0f);
+		float r_m = std::max(0.001f, dist / 1000.0f);
+		if (cfg::FTG_CORRIDOR_LOOKAHEAD_M > 0.0f) {
+			r_m = std::min(r_m, cfg::FTG_CORRIDOR_LOOKAHEAD_M);
+		}
 		const float theta_req_rad =
 			2.0f *
 			std::atan((cfg::FTG_CAR_WIDTH_M * 0.5f + cfg::FTG_MARGIN_M) / r_m);
@@ -118,6 +121,29 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	bool has_data = false;
 	int min_corridor = std::numeric_limits< int32_t >::max();
 	int min_angle = 0;
+	auto obs_cost = [](int d_mm) -> float {
+		if (d_mm >= cfg::FTG_COST_SAFE_MM)
+			return 0.0f;
+		const float x = (float)(cfg::FTG_COST_SAFE_MM - d_mm) /
+						(float)cfg::FTG_COST_SAFE_MM;
+		return x * x;
+	};
+	auto jerk_weight = [](int d_mm) -> float {
+		float w = cfg::FTG_COST_W_DELTA;
+		if (cfg::FTG_JERK_RELAX_MM > cfg::FTG_NEAR_OBSTACLE_MM) {
+			if (d_mm < cfg::FTG_JERK_RELAX_MM) {
+				float s =
+					(float)(d_mm - cfg::FTG_NEAR_OBSTACLE_MM) /
+					(float)(cfg::FTG_JERK_RELAX_MM - cfg::FTG_NEAR_OBSTACLE_MM);
+				if (s < 0.0f)
+					s = 0.0f;
+				else if (s > 1.0f)
+					s = 1.0f;
+				w *= (s * s);
+			}
+		}
+		return w;
+	};
 	for (int angle = cfg::FTG_ANGLE_MIN_DEG; angle <= cfg::FTG_ANGLE_MAX_DEG;
 		 ++angle) {
 		const int idx = angle - cfg::FTG_ANGLE_MIN_DEG;
@@ -131,15 +157,14 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		}
 		if (d_mm <= cfg::FTG_NEAR_OBSTACLE_MM)
 			continue;
-		const float d = (float)std::max(d_mm, cfg::FTG_COST_DIST_MIN_MM);
-		const float obs_cost = 1.0f / (d * d);
 		const float a_norm =
 			std::fabs((float)angle) / (float)cfg::STEER_ANGLE_MAX_DEG;
 		const float d_norm = std::fabs((float)angle - clamped_last) /
 							 (float)cfg::STEER_ANGLE_MAX_DEG;
-		const float j = cfg::FTG_COST_W_OBS * obs_cost +
+		const float w_delta = jerk_weight(d_mm);
+		const float j = cfg::FTG_COST_W_OBS * obs_cost(d_mm) +
 						cfg::FTG_COST_W_TURN * (a_norm * a_norm) +
-						cfg::FTG_COST_W_DELTA * (d_norm * d_norm);
+						w_delta * (d_norm * d_norm);
 		if (j < best_j) {
 			best_j = j;
 			best_angle = angle;
@@ -254,15 +279,14 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			const int d_mm = corridor_min[(size_t)idx];
 			if (d_mm <= 0)
 				continue;
-			const float d = (float)std::max(d_mm, cfg::FTG_COST_DIST_MIN_MM);
-			const float obs_cost = 1.0f / (d * d);
 			const float a_norm =
 				std::fabs((float)angle) / (float)cfg::STEER_ANGLE_MAX_DEG;
 			const float d_norm = std::fabs((float)angle - clamped_last) /
 								 (float)cfg::STEER_ANGLE_MAX_DEG;
-			const float j = cfg::FTG_COST_W_OBS * obs_cost +
+			const float w_delta = jerk_weight(d_mm);
+			const float j = cfg::FTG_COST_W_OBS * obs_cost(d_mm) +
 							cfg::FTG_COST_W_TURN * (a_norm * a_norm) +
-							cfg::FTG_COST_W_DELTA * (d_norm * d_norm);
+							w_delta * (d_norm * d_norm);
 			const float score = 1.0f / (1.0f + j);
 			if (score > max_score)
 				max_score = score;

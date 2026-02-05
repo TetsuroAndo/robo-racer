@@ -75,7 +75,8 @@ static constexpr int FTG_SMOOTH_RADIUS_BINS    = 2;   // 3〜5binの中央=2
 
 // 車幅/マージン（メートル）
 static constexpr float FTG_CAR_WIDTH_M         = 0.20f; // 20cm
-static constexpr float FTG_MARGIN_M            = 0.00f; // 必要なら調整
+static constexpr float FTG_MARGIN_M            = 0.03f; // 必要なら調整
+static constexpr float FTG_CORRIDOR_LOOKAHEAD_M = 0.60f;
 
 // 障害物判定
 static constexpr int FTG_NEAR_OBSTACLE_MM      = 100;  // 10cm以内でブロック
@@ -91,11 +92,12 @@ static constexpr float FTG_SPEED_K_M           = 0.10f; // 立ち上がり（最
 //数字が大きいほど加速度は下がる
 
 // コスト関数（目的関数）
-static constexpr float FTG_COST_W_OBS            = 10000.0f;
+static constexpr int FTG_COST_SAFE_MM            = 500;   // ここから回避を開始
+static constexpr int FTG_JERK_RELAX_MM           = 300;   // 近距離でジャーク抑制を緩める
+static constexpr float FTG_COST_W_OBS            = 8.0f;
 static constexpr float FTG_COST_W_TURN           = 0.2f;
 static constexpr float FTG_COST_W_DELTA          = 0.6f;
-static constexpr float FTG_COST_BETA             = 8.0f;  // soft-argminの鋭さ
-static constexpr int FTG_COST_DIST_MIN_MM        = 50;    // 近距離の発散抑制
+static constexpr float FTG_COST_BETA             = 4.0f;  // soft-argminの鋭さ
 static constexpr float FTG_STEER_SLEW_DEG_PER_S  = 120.0f;
 
 // 物理上限
