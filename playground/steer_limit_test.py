@@ -315,9 +315,11 @@ def main() -> int:
     ap.add_argument("--ttl-ms", type=int, default=200)
     ap.add_argument("--direction", choices=["positive", "negative", "both"], default="both")
     ap.add_argument("--side", choices=["left", "right", "both"], default=None)
-    ap.add_argument("--alternate", action="store_true")
     ap.add_argument("--alt-pos-deg", type=float, default=None)
-    ap.add_argument("--alt-neg-deg", type=float, default=None)
+    ap.add_argument("--alt-neg-deg", type=float, action="append", default=None)
+    ap.add_argument("--loop", action="store_true")
+    ap.add_argument("-pos", "--pos", dest="loop_pos_deg", type=float, default=None)
+    ap.add_argument("-neg", "--neg", dest="loop_neg_deg", type=float, action="append", default=None)
     ap.add_argument("--alternate-count", type=int, default=0)
     ap.add_argument("--status-every-ms", type=int, default=200)
     ap.add_argument("--speed-mm-s", type=int, default=0)
@@ -346,30 +348,60 @@ def main() -> int:
         send_mode(sock, seq, auto=False)
         return 1
 
-    if args.alternate:
-        pos_deg = args.alt_pos_deg if args.alt_pos_deg is not None else args.max_deg
-        neg_deg = args.alt_neg_deg if args.alt_neg_deg is not None else -args.max_deg
+    use_loop = (
+        args.loop
+        or args.loop_pos_deg is not None
+        or args.loop_neg_deg is not None
+        or args.alt_pos_deg is not None
+        or args.alt_neg_deg is not None
+    )
+    if use_loop:
+        pos_deg = (
+            args.loop_pos_deg
+            if args.loop_pos_deg is not None
+            else args.alt_pos_deg
+            if args.alt_pos_deg is not None
+            else args.max_deg
+        )
+        neg_degs = (
+            args.loop_neg_deg
+            if args.loop_neg_deg is not None
+            else args.alt_neg_deg
+            if args.alt_neg_deg is not None
+            else [-args.max_deg]
+        )
+        if pos_deg < 0:
+            pos_deg = -pos_deg
+        normalized_neg_degs: list[float] = []
+        for nd in neg_degs:
+            if nd == 0:
+                raise SystemExit("neg angle must be non-zero for loop mode")
+            normalized_neg_degs.append(-abs(nd))
+
         pos_cdeg = int(round(pos_deg * 100.0))
-        neg_cdeg = int(round(neg_deg * 100.0))
+        neg_cdegs = [int(round(nd * 100.0)) for nd in normalized_neg_degs]
         if pos_cdeg <= 0:
-            raise SystemExit("alt-pos-deg must be > 0 for alternate mode")
-        if neg_cdeg >= 0:
-            raise SystemExit("alt-neg-deg must be < 0 for alternate mode")
-        if abs(pos_cdeg) > max_cdeg or abs(neg_cdeg) > max_cdeg:
-            raise SystemExit("alternate angles must be within ±max-deg")
+            raise SystemExit("pos angle must be > 0 for loop mode")
+        for neg_cdeg in neg_cdegs:
+            if neg_cdeg >= 0:
+                raise SystemExit("neg angle must be < 0 for loop mode")
+        if abs(pos_cdeg) > max_cdeg or any(abs(n) > max_cdeg for n in neg_cdegs):
+            raise SystemExit("loop angles must be within ±max-deg")
 
         def angle_iter():
             if args.alternate_count <= 0:
                 while True:
-                    yield pos_cdeg
-                    yield neg_cdeg
+                    for neg_cdeg in neg_cdegs:
+                        yield pos_cdeg
+                        yield neg_cdeg
             else:
                 for _ in range(args.alternate_count):
-                    yield pos_cdeg
-                    yield neg_cdeg
+                    for neg_cdeg in neg_cdegs:
+                        yield pos_cdeg
+                        yield neg_cdeg
 
         angles = angle_iter()
-        direction = "alternate"
+        direction = "loop"
     else:
         if args.side is not None:
             # left=positive, right=negative (per MANUAL dpad mapping in firmware)
@@ -383,10 +415,11 @@ def main() -> int:
 
     print("Steer limit test started.")
     print("Manual stop: press 's' (safe stop), 'k' (kill). Quit: press 'q'.")
-    if direction == "alternate":
+    if direction == "loop":
         print(
-            "Alternate: "
-            f"+{format_cdeg(pos_cdeg)} / {format_cdeg(neg_cdeg)}, "
+            "Loop: "
+            f"+{format_cdeg(pos_cdeg)} / "
+            f"{', '.join(format_cdeg(n) for n in neg_cdegs)}, "
             f"dwell={args.dwell_ms}ms, count={args.alternate_count or 'infinite'}"
         )
     else:
