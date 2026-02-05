@@ -50,8 +50,10 @@ static constexpr bool TSD20_REQUIRE_OK           = true;
 static constexpr bool TSD20_CLAMP_IN_MANUAL      = false;
 static constexpr bool TSD20_SET_FREQ_ON_BOOT     = true;
 static constexpr uint16_t TSD20_TARGET_HZ        = 100;
-static constexpr uint16_t TSD20_MARGIN_MM        = 150;
-static constexpr uint16_t TSD20_LATENCY_MS       = 80;
+static constexpr uint16_t TSD20_MARGIN_MM        = 120; // base stop margin
+static constexpr uint16_t TSD20_MARGIN_MIN_MM    = 80;  // min for v_cap calc
+static constexpr uint16_t TSD20_MARGIN_RELAX_MM  = 40;  // relax at full steer
+static constexpr uint16_t TSD20_LATENCY_MS       = 40;
 
 // Distance clamp (tune to your course)
 static constexpr uint16_t TSD20_STOP_DISTANCE_MM    = 400;
@@ -117,7 +119,7 @@ static constexpr float IMU_V_EST_LEAK_PER_S      = 0.2f;
 static constexpr int IMU_V_EST_MAX_MM_S          = DRIVE_SPEED_MAX_MM_S;
 static constexpr uint32_t IMU_GRAVITY_TAU_MS     = 500;
 static constexpr int IMU_ACCEL_NORM_MAX_DEV_MM_S2 = 5000;
-static constexpr int IMU_BRAKE_INIT_MM_S2        = 4000;
+static constexpr int IMU_BRAKE_INIT_MM_S2        = 8000;
 static constexpr int IMU_BRAKE_MIN_MM_S2         = 1500;
 static constexpr int IMU_BRAKE_MAX_MM_S2         = 12000;
 static constexpr float IMU_BRAKE_ALPHA_UP        = 0.02f;

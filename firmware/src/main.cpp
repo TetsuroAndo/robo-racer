@@ -69,6 +69,8 @@ static constexpr uint8_t TSD_DIAG_CLAMP = 6;
 static constexpr uint8_t TSD_DIAG_OK = 7;
 
 static float g_tsd_diag_d_allow = 0.0f;
+static float g_tsd_diag_margin_eff = 0.0f;
+static float g_tsd_diag_steer_ratio = 0.0f;
 static float g_tsd_diag_a_cap = 0.0f;
 static float g_tsd_diag_tau = 0.0f;
 static float g_tsd_diag_v_max = 0.0f;
@@ -229,10 +231,13 @@ static void handleRx_(uint32_t now_ms) {
 }
 
 static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
-									float a_brake_cap_mm_s2) {
+									float a_brake_cap_mm_s2,
+									int16_t steer_cdeg) {
 	g_tsd_diag_reason = TSD_DIAG_DISABLED;
 	g_tsd_diag_clamped = false;
 	g_tsd_diag_d_allow = 0.0f;
+	g_tsd_diag_margin_eff = 0.0f;
+	g_tsd_diag_steer_ratio = 0.0f;
 	g_tsd_diag_a_cap = 0.0f;
 	g_tsd_diag_tau = 0.0f;
 	g_tsd_diag_v_max = 0.0f;
@@ -266,6 +271,19 @@ static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 		return 0;
 	}
 
+	const float steer_abs =
+		std::min((float)std::abs(steer_cdeg), (float)cfg::STEER_ANGLE_MAX_CDEG);
+	const float steer_ratio =
+		(cfg::STEER_ANGLE_MAX_CDEG > 0)
+			? (steer_abs / (float)cfg::STEER_ANGLE_MAX_CDEG)
+			: 0.0f;
+	const float relax = (float)cfg::TSD20_MARGIN_RELAX_MM * steer_ratio;
+	float margin_eff = (float)cfg::TSD20_MARGIN_MM - relax;
+	if (margin_eff < (float)cfg::TSD20_MARGIN_MIN_MM)
+		margin_eff = (float)cfg::TSD20_MARGIN_MIN_MM;
+	if (margin_eff > (float)cfg::TSD20_MARGIN_MM)
+		margin_eff = (float)cfg::TSD20_MARGIN_MM;
+
 	const float a_min = (float)cfg::IMU_BRAKE_MIN_MM_S2;
 	const float a_max = (float)cfg::IMU_BRAKE_MAX_MM_S2;
 	float a = a_brake_cap_mm_s2;
@@ -276,7 +294,7 @@ static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 	else if (a > a_max)
 		a = a_max;
 
-	const float d_allow = (float)g_tsd_mm - (float)cfg::TSD20_MARGIN_MM;
+	const float d_allow = (float)g_tsd_mm - margin_eff;
 	const float tau = (float)cfg::TSD20_LATENCY_MS / 1000.0f;
 	const float term = a * tau;
 	const float disc = term * term + 2.0f * a * d_allow;
@@ -286,6 +304,8 @@ static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 
 	const float v_cap = std::min(v_max, (float)cfg::DRIVE_SPEED_MAX_MM_S);
 	g_tsd_diag_d_allow = d_allow;
+	g_tsd_diag_margin_eff = margin_eff;
+	g_tsd_diag_steer_ratio = steer_ratio;
 	g_tsd_diag_a_cap = a;
 	g_tsd_diag_tau = tau;
 	g_tsd_diag_v_max = v_max;
@@ -502,14 +522,15 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 			int v = forward - back;
 			int16_t speed_mm_s = (int16_t)mc::clamp< int >(
 				v * 2, -cfg::DRIVE_SPEED_MAX_MM_S, cfg::DRIVE_SPEED_MAX_MM_S);
-			speed_mm_s = clampSpeedWithTsd20_(
-				speed_mm_s, g_state.mode, imu_est.state().a_brake_cap_mm_s2);
 
 			int16_t steer = 0;
 			if (st.dpad & DPAD_LEFT)
 				steer = +1500;
 			if (st.dpad & DPAD_RIGHT)
 				steer = -1500;
+			speed_mm_s =
+				clampSpeedWithTsd20_(speed_mm_s, g_state.mode,
+									 imu_est.state().a_brake_cap_mm_s2, steer);
 
 			speed_mm_s = applyAbsBrake_(now_ms, dt_s, speed_mm_s, abs_allowed);
 			g_last_cmd_speed_mm_s = speed_mm_s;
@@ -531,9 +552,9 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 		}
 	} else {
 		if (cmd_fresh) {
-			int16_t speed_mm_s =
-				clampSpeedWithTsd20_(g_state.target_speed_mm_s, g_state.mode,
-									 imu_est.state().a_brake_cap_mm_s2);
+			int16_t speed_mm_s = clampSpeedWithTsd20_(
+				g_state.target_speed_mm_s, g_state.mode,
+				imu_est.state().a_brake_cap_mm_s2, g_state.target_steer_cdeg);
 			speed_mm_s = applyAbsBrake_(now_ms, dt_s, speed_mm_s, abs_allowed);
 			g_last_cmd_speed_mm_s = speed_mm_s;
 			drive.setBrakeMode(g_abs_active);
@@ -680,9 +701,11 @@ void loop() {
 		}
 		if (cfg::TSD20_ENABLE) {
 			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
-					  "reason=%u clamp=%d d_allow=%.0f a_cap=%.0f tau=%.3f "
-					  "v_max=%.1f v_cap=%.1f",
+					  "reason=%u clamp=%d margin=%.0f steer=%.2f d_allow=%.0f "
+					  "a_cap=%.0f tau=%.3f v_max=%.1f v_cap=%.1f",
 					  (unsigned)g_tsd_diag_reason, (int)g_tsd_diag_clamped,
+					  (double)g_tsd_diag_margin_eff,
+					  (double)g_tsd_diag_steer_ratio,
 					  (double)g_tsd_diag_d_allow, (double)g_tsd_diag_a_cap,
 					  (double)g_tsd_diag_tau, (double)g_tsd_diag_v_max,
 					  (double)g_tsd_diag_v_cap);
