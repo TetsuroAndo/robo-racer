@@ -222,11 +222,11 @@ activate: $(PYTHON_LOCAL)
 ros2-mapping:
 	@echo "🚀 Starting mapping..."
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
-		bash -c "source /opt/ros/humble/setup.bash; \
-		         cd /ws/rpi/ros2_ws; \
-		         colcon build; \
+		bash -lc "set -e; \
+		         source /opt/ros/humble/setup.bash; \
+		         /ws/tools/ros2/scripts/ros2_build.sh; \
 		         export AMENT_PREFIX_PATH=/ws/rpi/ros2_ws/install/race_manager:$$AMENT_PREFIX_PATH; \
-		         source install/setup.bash; \
+		         source /ws/rpi/ros2_ws/install/setup.bash; \
 		         ros2 launch race_manager mapping.launch.py"
 # ================================
 # Debugs
