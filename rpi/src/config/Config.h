@@ -85,6 +85,7 @@ static constexpr int FTG_PREDICT_MARGIN_MAX_MM = 500;
 static constexpr int FTG_PREDICT_BRAKE_MM_S2   = 6000;
 static constexpr int FTG_PREDICT_BRAKE_MIN_MM_S2 = 1500;
 static constexpr int FTG_PREDICT_BRAKE_MAX_MM_S2 = 12000;
+static constexpr int FTG_PREDICT_ACCEL_MAX_MM_S2 = 8000;
 
 // 障害物判定
 static constexpr int FTG_NEAR_OBSTACLE_MM      = 100;  // 10cm以内でブロック

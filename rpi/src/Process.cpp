@@ -50,11 +50,14 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	}
 	last_proc_ts_us_ = t0_us;
 	float pred_margin_mm = 0.0f;
+	float a_brake_use = 0.0f;
+	bool has_brake_cap = false;
 	if (cfg::FTG_PREDICT_ENABLE && motion && motion->valid &&
 		motion->calibrated && motion->age_ms <= cfg::FTG_IMU_MAX_AGE_MS) {
 		const float v_est = std::max(0.0f, (float)motion->v_est_mm_s);
 		const float a_long = (float)motion->a_long_mm_s2;
-		const float a_pos = std::max(0.0f, a_long);
+		const float a_pos = std::max(
+			0.0f, std::min(a_long, (float)cfg::FTG_PREDICT_ACCEL_MAX_MM_S2));
 		float a_brake = (float)motion->a_brake_cap_mm_s2;
 		if (a_brake <= 0.0f)
 			a_brake = (float)cfg::FTG_PREDICT_BRAKE_MM_S2;
@@ -62,11 +65,11 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			a_brake = (float)cfg::FTG_PREDICT_BRAKE_MIN_MM_S2;
 		else if (a_brake > (float)cfg::FTG_PREDICT_BRAKE_MAX_MM_S2)
 			a_brake = (float)cfg::FTG_PREDICT_BRAKE_MAX_MM_S2;
+		a_brake_use = a_brake;
+		has_brake_cap = true;
 		const float tau = (float)cfg::FTG_PREDICT_LATENCY_MS / 1000.0f;
 		const float d_react = v_est * tau + 0.5f * a_pos * tau * tau;
-		const float d_brake =
-			(a_brake > 0.0f) ? (v_est * v_est) / (2.0f * a_brake) : 0.0f;
-		pred_margin_mm = d_react + d_brake;
+		pred_margin_mm = d_react;
 		if (pred_margin_mm > (float)cfg::FTG_PREDICT_MARGIN_MAX_MM)
 			pred_margin_mm = (float)cfg::FTG_PREDICT_MARGIN_MAX_MM;
 	}
@@ -324,6 +327,26 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		if (warn) {
 			out_speed = std::min(out_speed, cfg::FTG_SPEED_WARN_CAP);
 		}
+	}
+	if (!blocked && out_speed > 0 && has_brake_cap && corridor_min_mm > 0) {
+		int d_cap_mm = corridor_min_mm - cfg::FTG_NEAR_OBSTACLE_MM;
+		if (d_cap_mm < 0)
+			d_cap_mm = 0;
+		float v_cap_mm_s = (a_brake_use > 0.0f)
+							   ? std::sqrt(2.0f * a_brake_use * (float)d_cap_mm)
+							   : 0.0f;
+		int v_cap_input = 0;
+		if (cfg::SPEED_MM_S_MAX > 0) {
+			v_cap_input =
+				(int)std::lround(v_cap_mm_s * (float)cfg::SPEED_INPUT_LIMIT /
+								 (float)cfg::SPEED_MM_S_MAX);
+		}
+		if (v_cap_input < 0)
+			v_cap_input = 0;
+		if (v_cap_input > cfg::SPEED_INPUT_LIMIT)
+			v_cap_input = cfg::SPEED_INPUT_LIMIT;
+		if (v_cap_input < out_speed)
+			out_speed = v_cap_input;
 	}
 
 	if (telemetry_) {

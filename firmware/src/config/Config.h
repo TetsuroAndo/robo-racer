@@ -56,6 +56,7 @@ static constexpr uint16_t TSD20_MARGIN_RELAX_MM  = 40;  // relax at full steer
 static constexpr uint16_t TSD20_LATENCY_MS       = 40;
 static constexpr bool TSD20_PREDICT_ENABLE       = true;
 static constexpr uint16_t TSD20_PREDICT_MARGIN_MAX_MM = 200;
+static constexpr int TSD20_PREDICT_ACCEL_MAX_MM_S2 = 8000;
 
 // Distance clamp (tune to your course)
 static constexpr uint16_t TSD20_STOP_DISTANCE_MM    = 400;
