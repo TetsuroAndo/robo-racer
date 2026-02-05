@@ -1,6 +1,7 @@
 #include "comm/UartTx.h"
 #include "comm/registry.h"
 #include "config/Config.h"
+#include "mc_config/vehicle_limits.h"
 #include <mc/proto/Proto.hpp>
 
 #include "log/AsyncLogger.h"
@@ -306,13 +307,13 @@ static void test_drive_clamp() {
 	assert(h != nullptr);
 	h->onFrame(f, t.ctx, 1000);
 
-	std::cout << "\tEXPECT steer=" << cfg::STEER_ANGLE_MAX_CDEG
-			  << " speed=" << -cfg::DRIVE_SPEED_MAX_MM_S << " ttl=10\n";
+	std::cout << "\tEXPECT steer=" << mc_config::STEER_ANGLE_MAX_CDEG
+			  << " speed=" << -mc_config::SPEED_MAX_MM_S << " ttl=10\n";
 	std::cout << "\tACTUAL steer=" << t.st.target_steer_cdeg
 			  << " speed=" << t.st.target_speed_mm_s
 			  << " ttl=" << t.st.target_ttl_ms << "\n";
-	assert(t.st.target_steer_cdeg == cfg::STEER_ANGLE_MAX_CDEG);
-	assert(t.st.target_speed_mm_s == -cfg::DRIVE_SPEED_MAX_MM_S);
+	assert(t.st.target_steer_cdeg == mc_config::STEER_ANGLE_MAX_CDEG);
+	assert(t.st.target_speed_mm_s == -mc_config::SPEED_MAX_MM_S);
 	assert(t.st.target_ttl_ms == 10);
 }
 

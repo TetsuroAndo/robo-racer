@@ -8,24 +8,24 @@ void Drive::begin() {
 	_lastUpdateMs = millis();
 }
 
-void Drive::setTargetMmS(int16_t speed_mm_s) {
+void Drive::setTargetMmS(int16_t speed_mm_s, uint32_t now_ms) {
 	_tgt_speed_mm_s = speed_mm_s;
-	_lastUpdateMs = millis();
+	_lastUpdateMs = now_ms;
 }
 
-void Drive::setTargetSteerCdeg(int16_t steer_cdeg) {
+void Drive::setTargetSteerCdeg(int16_t steer_cdeg, uint32_t now_ms) {
 	_tgt_steer_cdeg = steer_cdeg;
-	_lastUpdateMs = millis();
+	_lastUpdateMs = now_ms;
 }
 
-void Drive::setTtlMs(uint16_t ttl_ms) {
+void Drive::setTtlMs(uint16_t ttl_ms, uint32_t now_ms) {
 	_ttl_ms = ttl_ms;
-	_lastUpdateMs = millis();
+	_lastUpdateMs = now_ms;
 }
 
-void Drive::setDistMm(uint16_t dist_mm) {
+void Drive::setDistMm(uint16_t dist_mm, uint32_t now_ms) {
 	_dist_mm = dist_mm;
-	_lastUpdateMs = millis();
+	_lastUpdateMs = now_ms;
 }
 
 void Drive::setBrakeMode(bool enabled) { _brake_mode = enabled; }
