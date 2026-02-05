@@ -9,4 +9,7 @@ WS=/ws/rpi/ros2_ws
 mkdir -p "$WS/src"
 
 cd "$WS"
-colcon build --symlink-install --merge-install --install-base "$WS/install"
+colcon --log-base "$WS/colcon_log" build \
+  --symlink-install \
+  --merge-install \
+  --install-base "$WS/install"

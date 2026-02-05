@@ -159,7 +159,7 @@ ros2-build:
 
 ros2-build-clean:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
-		bash -lc "rm -rf /ws/rpi/ros2_ws/build /ws/rpi/ros2_ws/install /ws/rpi/ros2_ws/log && /ws/tools/ros2/scripts/ros2_build.sh"
+		bash -lc "rm -rf /ws/rpi/ros2_ws/build /ws/rpi/ros2_ws/install /ws/rpi/ros2_ws/colcon_log && /ws/tools/ros2/scripts/ros2_build.sh"
 
 ros2-mc-bridge:
 	@if [ -z "$(HOST)" ]; then \

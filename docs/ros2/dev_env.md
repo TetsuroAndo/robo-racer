@@ -85,6 +85,11 @@ make ros2-rviz
 ./tools/ros2/scripts/ros2_build.sh
 ```
 `rpi/ros2_ws/src/mc_msgs` がメッセージ定義の雛形です。
+ビルド成果物は `rpi/ros2_ws/install`、colcon のビルドログは `rpi/ros2_ws/colcon_log` に出力されます。
+
+**注意:** リポジトリ直下で `colcon build` を実行すると `./install/` や `./log/` が作られて混乱するため、
+ROS2 のビルドは必ず `make ros2-build` もしくは `./tools/ros2/scripts/ros2_build.sh` を使ってください。
+ランタイム成果物の `logs/`（`./logs/<run_id>/...`）とは別物です。
 
 ## 5) demo publisher（/scan）と static TF
 ```
