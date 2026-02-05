@@ -54,6 +54,8 @@ static constexpr uint16_t TSD20_MARGIN_MM        = 120; // base stop margin
 static constexpr uint16_t TSD20_MARGIN_MIN_MM    = 80;  // min for v_cap calc
 static constexpr uint16_t TSD20_MARGIN_RELAX_MM  = 40;  // relax at full steer
 static constexpr uint16_t TSD20_LATENCY_MS       = 40;
+static constexpr bool TSD20_PREDICT_ENABLE       = true;
+static constexpr uint16_t TSD20_PREDICT_MARGIN_MAX_MM = 200;
 
 // Distance clamp (tune to your course)
 static constexpr uint16_t TSD20_STOP_DISTANCE_MM    = 400;

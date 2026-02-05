@@ -49,6 +49,29 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			dt_s = 0.5f;
 	}
 	last_proc_ts_us_ = t0_us;
+	float pred_margin_mm = 0.0f;
+	if (cfg::FTG_PREDICT_ENABLE && motion && motion->valid &&
+		motion->calibrated && motion->age_ms <= cfg::FTG_IMU_MAX_AGE_MS) {
+		const float v_est = std::max(0.0f, (float)motion->v_est_mm_s);
+		const float a_long = (float)motion->a_long_mm_s2;
+		const float a_pos = std::max(0.0f, a_long);
+		float a_brake = (float)motion->a_brake_cap_mm_s2;
+		if (a_brake <= 0.0f)
+			a_brake = (float)cfg::FTG_PREDICT_BRAKE_MM_S2;
+		if (a_brake < (float)cfg::FTG_PREDICT_BRAKE_MIN_MM_S2)
+			a_brake = (float)cfg::FTG_PREDICT_BRAKE_MIN_MM_S2;
+		else if (a_brake > (float)cfg::FTG_PREDICT_BRAKE_MAX_MM_S2)
+			a_brake = (float)cfg::FTG_PREDICT_BRAKE_MAX_MM_S2;
+		const float tau = (float)cfg::FTG_PREDICT_LATENCY_MS / 1000.0f;
+		const float d_react = v_est * tau + 0.5f * a_pos * tau * tau;
+		const float d_brake =
+			(a_brake > 0.0f) ? (v_est * v_est) / (2.0f * a_brake) : 0.0f;
+		pred_margin_mm = d_react + d_brake;
+		if (pred_margin_mm > (float)cfg::FTG_PREDICT_MARGIN_MAX_MM)
+			pred_margin_mm = (float)cfg::FTG_PREDICT_MARGIN_MAX_MM;
+	}
+	const int pred_margin_i =
+		(pred_margin_mm > 0.0f) ? (int)std::lround(pred_margin_mm) : 0;
 	std::array< int32_t, cfg::FTG_BIN_COUNT > bins{};
 	std::array< float, cfg::FTG_BIN_COUNT > smoothed{};
 	std::array< int32_t, cfg::FTG_BIN_COUNT > corridor_min{};
@@ -62,11 +85,17 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		int angle = static_cast< int >(std::lround(p.angle));
 		if (angle < cfg::FTG_ANGLE_MIN_DEG || angle > cfg::FTG_ANGLE_MAX_DEG)
 			continue;
-		if (p.distance <= 0)
+		int dist = p.distance;
+		if (dist <= 0)
 			continue;
+		if (pred_margin_i > 0) {
+			dist -= pred_margin_i;
+			if (dist <= 0)
+				continue;
+		}
 		const int idx = angle - cfg::FTG_ANGLE_MIN_DEG;
-		if (bins[(size_t)idx] == 0 || p.distance < bins[(size_t)idx])
-			bins[(size_t)idx] = p.distance;
+		if (bins[(size_t)idx] == 0 || dist < bins[(size_t)idx])
+			bins[(size_t)idx] = dist;
 	}
 
 	for (int angle = cfg::FTG_ANGLE_MIN_DEG; angle <= cfg::FTG_ANGLE_MAX_DEG;

@@ -78,6 +78,14 @@ static constexpr float FTG_CAR_WIDTH_M         = 0.20f; // 20cm
 static constexpr float FTG_MARGIN_M            = 0.03f; // 必要なら調整
 static constexpr float FTG_CORRIDOR_LOOKAHEAD_M = 0.60f;
 
+// 予測マージン（IMUの速度/加速度で安全側へ補正）
+static constexpr bool FTG_PREDICT_ENABLE       = true;
+static constexpr uint16_t FTG_PREDICT_LATENCY_MS = 80;
+static constexpr int FTG_PREDICT_MARGIN_MAX_MM = 500;
+static constexpr int FTG_PREDICT_BRAKE_MM_S2   = 6000;
+static constexpr int FTG_PREDICT_BRAKE_MIN_MM_S2 = 1500;
+static constexpr int FTG_PREDICT_BRAKE_MAX_MM_S2 = 12000;
+
 // 障害物判定
 static constexpr int FTG_NEAR_OBSTACLE_MM      = 100;  // 10cm以内でブロック
 static constexpr int FTG_WARN_OBSTACLE_MM      = 200;  // テレメトリ警告用

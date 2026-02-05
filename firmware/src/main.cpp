@@ -5,6 +5,7 @@
 #include "hardware/Mpu6500.h"
 #include "hardware/Tsd20.h"
 #include <Arduino.h>
+#include <algorithm>
 #include <cmath>
 
 #include "../lib/common/Math.h"
@@ -70,8 +71,12 @@ static constexpr uint8_t TSD_DIAG_OK = 7;
 
 static float g_tsd_diag_d_allow = 0.0f;
 static float g_tsd_diag_margin_eff = 0.0f;
+static float g_tsd_diag_margin_pred = 0.0f;
 static float g_tsd_diag_steer_ratio = 0.0f;
 static float g_tsd_diag_a_cap = 0.0f;
+static float g_tsd_diag_d_need = 0.0f;
+static float g_tsd_diag_v_est = 0.0f;
+static float g_tsd_diag_a_long = 0.0f;
 static float g_tsd_diag_tau = 0.0f;
 static float g_tsd_diag_v_max = 0.0f;
 static float g_tsd_diag_v_cap = 0.0f;
@@ -237,8 +242,12 @@ static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 	g_tsd_diag_clamped = false;
 	g_tsd_diag_d_allow = 0.0f;
 	g_tsd_diag_margin_eff = 0.0f;
+	g_tsd_diag_margin_pred = 0.0f;
 	g_tsd_diag_steer_ratio = 0.0f;
 	g_tsd_diag_a_cap = 0.0f;
+	g_tsd_diag_d_need = 0.0f;
+	g_tsd_diag_v_est = 0.0f;
+	g_tsd_diag_a_long = 0.0f;
 	g_tsd_diag_tau = 0.0f;
 	g_tsd_diag_v_max = 0.0f;
 	g_tsd_diag_v_cap = 0.0f;
@@ -278,11 +287,11 @@ static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 			? (steer_abs / (float)cfg::STEER_ANGLE_MAX_CDEG)
 			: 0.0f;
 	const float relax = (float)cfg::TSD20_MARGIN_RELAX_MM * steer_ratio;
-	float margin_eff = (float)cfg::TSD20_MARGIN_MM - relax;
-	if (margin_eff < (float)cfg::TSD20_MARGIN_MIN_MM)
-		margin_eff = (float)cfg::TSD20_MARGIN_MIN_MM;
-	if (margin_eff > (float)cfg::TSD20_MARGIN_MM)
-		margin_eff = (float)cfg::TSD20_MARGIN_MM;
+	float base_margin = (float)cfg::TSD20_MARGIN_MM - relax;
+	if (base_margin < (float)cfg::TSD20_MARGIN_MIN_MM)
+		base_margin = (float)cfg::TSD20_MARGIN_MIN_MM;
+	if (base_margin > (float)cfg::TSD20_MARGIN_MM)
+		base_margin = (float)cfg::TSD20_MARGIN_MM;
 
 	const float a_min = (float)cfg::IMU_BRAKE_MIN_MM_S2;
 	const float a_max = (float)cfg::IMU_BRAKE_MAX_MM_S2;
@@ -294,8 +303,31 @@ static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 	else if (a > a_max)
 		a = a_max;
 
-	const float d_allow = (float)g_tsd_mm - margin_eff;
 	const float tau = (float)cfg::TSD20_LATENCY_MS / 1000.0f;
+	const float d_allow_base = (float)g_tsd_mm - base_margin;
+	float margin_pred = 0.0f;
+	if (cfg::TSD20_PREDICT_ENABLE && d_allow_base > 0.0f) {
+		const ImuEstimate &st = imu_est.state();
+		if (g_imu_valid && st.calibrated) {
+			const float v_est = std::max(0.0f, st.v_est_mm_s);
+			const float a_long = st.a_long_mm_s2;
+			const float a_pos = std::max(0.0f, a_long);
+			const float d_react = v_est * tau + 0.5f * a_pos * tau * tau;
+			const float d_brake =
+				(a > 0.0f) ? (v_est * v_est) / (2.0f * a) : 0.0f;
+			const float d_need = d_react + d_brake;
+			if (d_need > d_allow_base) {
+				margin_pred = d_need - d_allow_base;
+				if (margin_pred > (float)cfg::TSD20_PREDICT_MARGIN_MAX_MM)
+					margin_pred = (float)cfg::TSD20_PREDICT_MARGIN_MAX_MM;
+			}
+			g_tsd_diag_v_est = v_est;
+			g_tsd_diag_a_long = a_long;
+			g_tsd_diag_d_need = d_need;
+		}
+	}
+	const float margin_eff = base_margin + margin_pred;
+	const float d_allow = (float)g_tsd_mm - margin_eff;
 	const float term = a * tau;
 	const float disc = term * term + 2.0f * a * d_allow;
 	float v_max = (disc > 0.0f) ? (-term + std::sqrt(disc)) : 0.0f;
@@ -305,6 +337,7 @@ static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 	const float v_cap = std::min(v_max, (float)cfg::DRIVE_SPEED_MAX_MM_S);
 	g_tsd_diag_d_allow = d_allow;
 	g_tsd_diag_margin_eff = margin_eff;
+	g_tsd_diag_margin_pred = margin_pred;
 	g_tsd_diag_steer_ratio = steer_ratio;
 	g_tsd_diag_a_cap = a;
 	g_tsd_diag_tau = tau;
@@ -701,14 +734,17 @@ void loop() {
 		}
 		if (cfg::TSD20_ENABLE) {
 			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
-					  "reason=%u clamp=%d margin=%.0f steer=%.2f d_allow=%.0f "
+					  "reason=%u clamp=%d margin=%.0f pred=%.0f steer=%.2f "
+					  "d_allow=%.0f d_need=%.0f v_est=%.0f a_long=%.0f "
 					  "a_cap=%.0f tau=%.3f v_max=%.1f v_cap=%.1f",
 					  (unsigned)g_tsd_diag_reason, (int)g_tsd_diag_clamped,
 					  (double)g_tsd_diag_margin_eff,
+					  (double)g_tsd_diag_margin_pred,
 					  (double)g_tsd_diag_steer_ratio,
-					  (double)g_tsd_diag_d_allow, (double)g_tsd_diag_a_cap,
-					  (double)g_tsd_diag_tau, (double)g_tsd_diag_v_max,
-					  (double)g_tsd_diag_v_cap);
+					  (double)g_tsd_diag_d_allow, (double)g_tsd_diag_d_need,
+					  (double)g_tsd_diag_v_est, (double)g_tsd_diag_a_long,
+					  (double)g_tsd_diag_a_cap, (double)g_tsd_diag_tau,
+					  (double)g_tsd_diag_v_max, (double)g_tsd_diag_v_cap);
 		}
 		if (cfg::ABS_ENABLE) {
 			alog.logf(mc::LogLevel::INFO, "abs",
