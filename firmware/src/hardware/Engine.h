@@ -7,6 +7,7 @@ public:
 	void begin();
 
 	void setTarget(int speed_pwm);
+	void setRateLimits(float rate_up, float rate_down);
 	void stop();
 
 	void control(float dt_s);

@@ -39,6 +39,10 @@ void Engine::setTarget(int speed_pwm) {
 		constrain(speed_pwm, -cfg::ENGINE_SPEED_LIMIT, cfg::ENGINE_SPEED_LIMIT);
 }
 
+void Engine::setRateLimits(float rate_up, float rate_down) {
+	_lim.setRates(rate_up, rate_down);
+}
+
 void Engine::control(float dt_s) {
 	float y = _lim.update((float)_tgt, dt_s);
 	int next = (int)lroundf(y);

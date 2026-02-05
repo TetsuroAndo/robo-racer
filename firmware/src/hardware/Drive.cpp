@@ -28,6 +28,8 @@ void Drive::setDistMm(uint16_t dist_mm) {
 	_lastUpdateMs = millis();
 }
 
+void Drive::setBrakeMode(bool enabled) { _brake_mode = enabled; }
+
 int Drive::speedMmSToPwm_(int16_t mm_s) const {
 	int v = (int)mm_s;
 	v = mc::clamp< int >(v, -MAX_SPEED_MM_S, MAX_SPEED_MM_S);
@@ -50,6 +52,12 @@ void Drive::tick(uint32_t now_ms, float dt_s, bool killed) {
 	_applied_speed_mm_s = cmd_speed;
 	_applied_steer_cdeg = cmd_steer;
 
+	if (_brake_mode) {
+		_engine.setRateLimits(cfg::ENGINE_SPEED_STEP,
+							  cfg::ENGINE_RATE_DOWN_BRAKE);
+	} else {
+		_engine.setRateLimits(cfg::ENGINE_SPEED_STEP, cfg::ENGINE_SPEED_STEP);
+	}
 	_engine.setTarget(speedMmSToPwm_(cmd_speed));
 	_engine.control(dt_s);
 

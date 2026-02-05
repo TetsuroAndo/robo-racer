@@ -15,10 +15,12 @@ void ImuEstimator::reset(uint32_t now_ms) {
 	_sum_n = 0;
 	_bias_ax = _bias_ay = _bias_az = _bias_gz = 0;
 	_zupt_ms = 0;
+	_st.a_brake_cap_mm_s2 = (float)cfg::IMU_BRAKE_INIT_MM_S2;
 }
 
 void ImuEstimator::update(const ImuSample &s, uint32_t now_ms,
-						  int16_t applied_speed_mm_s) {
+						  int16_t applied_speed_mm_s,
+						  int16_t target_speed_mm_s) {
 	if (!_calib_started) {
 		_calib_started = true;
 		_calib_start_ms = now_ms;
@@ -81,6 +83,27 @@ void ImuEstimator::update(const ImuSample &s, uint32_t now_ms,
 		v = (float)cfg::IMU_V_EST_MAX_MM_S;
 
 	_st.v_est_mm_s = v;
+
+	const float decel = std::max(0.0f, -_st.a_long_mm_s2);
+	const bool braking = (applied_speed_mm_s > 0) &&
+						 ((applied_speed_mm_s - target_speed_mm_s) >
+							  cfg::IMU_BRAKE_CMD_DELTA_MM_S ||
+						  decel > (float)cfg::IMU_BRAKE_DETECT_MM_S2);
+	if (braking && decel > 0.0f) {
+		float cap = _st.a_brake_cap_mm_s2;
+		const float min_cap = (float)cfg::IMU_BRAKE_MIN_MM_S2;
+		const float max_cap = (float)cfg::IMU_BRAKE_MAX_MM_S2;
+		if (cap <= 0.0f)
+			cap = (float)cfg::IMU_BRAKE_INIT_MM_S2;
+		const float alpha =
+			(decel < cap) ? cfg::IMU_BRAKE_ALPHA_DOWN : cfg::IMU_BRAKE_ALPHA_UP;
+		cap = (1.0f - alpha) * cap + alpha * decel;
+		if (cap < min_cap)
+			cap = min_cap;
+		else if (cap > max_cap)
+			cap = max_cap;
+		_st.a_brake_cap_mm_s2 = cap;
+	}
 }
 
 void ImuEstimator::updateBias_(const ImuSample &s, uint32_t now_ms) {

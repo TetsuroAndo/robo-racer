@@ -31,7 +31,7 @@ static constexpr int TSD20_SDA_PIN             = 32;
 static constexpr int TSD20_SCL_PIN             = 33;
 
 // I2C settings
-static constexpr uint32_t TSD20_I2C_HZ         = 100000;
+static constexpr uint32_t TSD20_I2C_HZ         = 400000;
 static constexpr uint8_t TSD20_I2C_ADDR        = 0x52;
 
 // UART "Change IIC" settings
@@ -43,11 +43,15 @@ static constexpr bool TSD20_ALLOW_PIN_SWAP     = true;
 
 // Read/processing
 static constexpr bool TSD20_ENABLE              = true;
-static constexpr uint32_t TSD20_READ_INTERVAL_MS = 50;
+static constexpr uint32_t TSD20_READ_INTERVAL_MS = 10;
 static constexpr uint32_t TSD20_INIT_RETRY_MS     = 2000;
 static constexpr uint8_t TSD20_MAX_FAILS         = 5;
 static constexpr bool TSD20_REQUIRE_OK           = true;
 static constexpr bool TSD20_CLAMP_IN_MANUAL      = false;
+static constexpr bool TSD20_SET_FREQ_ON_BOOT     = true;
+static constexpr uint16_t TSD20_TARGET_HZ        = 100;
+static constexpr uint16_t TSD20_MARGIN_MM        = 150;
+static constexpr uint16_t TSD20_LATENCY_MS       = 80;
 
 // Distance clamp (tune to your course)
 static constexpr uint16_t TSD20_STOP_DISTANCE_MM    = 400;
@@ -100,6 +104,30 @@ static constexpr float IMU_ZUPT_GZ_DPS           = 5.0f;
 static constexpr int IMU_ZUPT_SPEED_MM_S         = 100;
 static constexpr float IMU_V_EST_LEAK_PER_S      = 0.2f;
 static constexpr int IMU_V_EST_MAX_MM_S          = DRIVE_SPEED_MAX_MM_S;
+static constexpr int IMU_BRAKE_INIT_MM_S2        = 4000;
+static constexpr int IMU_BRAKE_MIN_MM_S2         = 1500;
+static constexpr int IMU_BRAKE_MAX_MM_S2         = 12000;
+static constexpr float IMU_BRAKE_ALPHA_UP        = 0.02f;
+static constexpr float IMU_BRAKE_ALPHA_DOWN      = 0.2f;
+static constexpr int IMU_BRAKE_DETECT_MM_S2      = 800;
+static constexpr int IMU_BRAKE_CMD_DELTA_MM_S    = 200;
+
+//------------------------------------------------------------------------------
+// ABS reverse brake
+//------------------------------------------------------------------------------
+
+static constexpr bool ABS_ENABLE                = true;
+static constexpr bool ABS_ENABLE_IN_MANUAL      = false;
+static constexpr uint32_t ABS_PERIOD_MS          = 20;
+static constexpr uint8_t ABS_DUTY_MIN            = 20;
+static constexpr uint8_t ABS_DUTY_MAX            = 80;
+static constexpr float ABS_DUTY_KP               = 0.02f;
+static constexpr float ABS_DUTY_KI               = 0.01f;
+static constexpr float ABS_A_TARGET_SCALE        = 1.0f;
+static constexpr uint16_t ABS_BRAKE_HOLD_MS      = 200;
+static constexpr int ABS_REVERSE_MM_S           = 3000;
+static constexpr int ABS_SPEED_MARGIN_MM_S      = 150;
+static constexpr int ENGINE_RATE_DOWN_BRAKE      = 4000;
 
 //------------------------------------------------------------------------------
 // ステアサーボ設定（DS3218想定）

@@ -13,6 +13,7 @@ public:
 
 	bool readDistanceMm(uint16_t& mm);
 	bool setLaser(bool on);
+	bool setFrequencyHz(HardwareSerial& uart, uint16_t hz);
 
 private:
 	bool detectI2C(uint8_t& id);
@@ -27,6 +28,13 @@ private:
 		uint32_t baud,
 		int rx_pin,
 		int tx_pin,
+		bool& saw_response);
+	bool sendFrequencySetting(HardwareSerial& uart, uint16_t div);
+	bool sendFrequencySettingAtBaud(HardwareSerial& uart,
+		uint32_t baud,
+		int rx_pin,
+		int tx_pin,
+		uint16_t div,
 		bool& saw_response);
 
 	bool _ready = false;

@@ -8,13 +8,17 @@ struct ImuEstimate {
 	float a_long_mm_s2 = 0.0f;
 	float gz_dps = 0.0f;
 	float v_est_mm_s = 0.0f;
+	float a_brake_cap_mm_s2 = 0.0f;
 	uint32_t last_ms = 0;
 };
 
 class ImuEstimator {
 public:
 	void reset(uint32_t now_ms);
-	void update(const ImuSample &s, uint32_t now_ms, int16_t applied_speed_mm_s);
+	void update(const ImuSample &s,
+				uint32_t now_ms,
+				int16_t applied_speed_mm_s,
+				int16_t target_speed_mm_s);
 	const ImuEstimate &state() const { return _st; }
 
 private:

@@ -5,6 +5,12 @@ namespace {
 static constexpr uint8_t REG_DIST_H = 0x00;
 static constexpr uint8_t REG_LASER_CTRL = 0x02;
 static constexpr uint8_t REG_ID = 0x03;
+
+static uint8_t calcChecksum(uint8_t cmd, uint8_t len, uint8_t b0, uint8_t b1) {
+	const uint16_t sum =
+		(uint16_t)cmd + (uint16_t)len + (uint16_t)b0 + (uint16_t)b1;
+	return (uint8_t)(0xFFu - (sum & 0xFFu));
+}
 } // namespace
 
 bool Tsd20::begin(HardwareSerial &uart) {
@@ -37,6 +43,18 @@ bool Tsd20::readDistanceMm(uint16_t &mm) {
 }
 
 bool Tsd20::setLaser(bool on) { return i2cWrite8(REG_LASER_CTRL, on ? 1 : 0); }
+
+bool Tsd20::setFrequencyHz(HardwareSerial &uart, uint16_t hz) {
+	if (hz == 0)
+		return false;
+	const uint16_t div = (uint16_t)((10000u / hz) - 1u);
+	bool ok = sendFrequencySetting(uart, div);
+	if (ok) {
+		uint8_t id = 0;
+		(void)detectI2C(id);
+	}
+	return ok;
+}
 
 bool Tsd20::detectI2C(uint8_t &id) {
 	_ready = false;
@@ -174,6 +192,80 @@ bool Tsd20::sendChangeIICAtBaud(HardwareSerial &uart, uint32_t baud, int rx_pin,
 	if (n >= 6) {
 		for (size_t i = 0; i + 5 < n; i++) {
 			if (buf[i] == 0x5A && buf[i + 1] == 0x9F && buf[i + 2] == 0x02) {
+				saw_response = true;
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool Tsd20::sendFrequencySetting(HardwareSerial &uart, uint16_t div) {
+	bool saw_response = false;
+	(void)sendFrequencySettingAtBaud(uart, cfg::TSD20_UART_BAUD_PRIMARY,
+									 cfg::TSD20_SCL_PIN, cfg::TSD20_SDA_PIN,
+									 div, saw_response);
+
+	if (!saw_response) {
+		(void)sendFrequencySettingAtBaud(uart, cfg::TSD20_UART_BAUD_FALLBACK,
+										 cfg::TSD20_SCL_PIN, cfg::TSD20_SDA_PIN,
+										 div, saw_response);
+	}
+
+	if (!saw_response && cfg::TSD20_ALLOW_PIN_SWAP) {
+		(void)sendFrequencySettingAtBaud(uart, cfg::TSD20_UART_BAUD_PRIMARY,
+										 cfg::TSD20_SDA_PIN, cfg::TSD20_SCL_PIN,
+										 div, saw_response);
+	}
+
+	if (!saw_response && cfg::TSD20_ALLOW_PIN_SWAP) {
+		(void)sendFrequencySettingAtBaud(uart, cfg::TSD20_UART_BAUD_FALLBACK,
+										 cfg::TSD20_SDA_PIN, cfg::TSD20_SCL_PIN,
+										 div, saw_response);
+	}
+
+	return saw_response;
+}
+
+bool Tsd20::sendFrequencySettingAtBaud(HardwareSerial &uart, uint32_t baud,
+									   int rx_pin, int tx_pin, uint16_t div,
+									   bool &saw_response) {
+	saw_response = false;
+
+	const uint8_t div_h = (uint8_t)((div >> 8) & 0xFF);
+	const uint8_t div_l = (uint8_t)(div & 0xFF);
+	const uint8_t chk = calcChecksum(0x0B, 0x02, div_h, div_l);
+	const uint8_t cmd[] = {0x5A, 0x0B, 0x02, div_h, div_l, chk};
+
+	Wire.end();
+	delay(10);
+
+	uart.end();
+	delay(20);
+	uart.begin(baud, SERIAL_8N1, rx_pin, tx_pin);
+	delay(50);
+
+	while (uart.available())
+		(void)uart.read();
+
+	uart.write(cmd, sizeof(cmd));
+	uart.flush();
+
+	uint32_t t0 = millis();
+	uint8_t buf[16];
+	size_t n = 0;
+	while (millis() - t0 < 200) {
+		while (uart.available() && n < sizeof(buf)) {
+			buf[n++] = (uint8_t)uart.read();
+		}
+	}
+
+	uart.end();
+	delay(30);
+
+	if (n >= 3) {
+		for (size_t i = 0; i + 2 < n; i++) {
+			if (buf[i] == 0x5A && buf[i + 1] == 0x8B && buf[i + 2] == 0x02) {
 				saw_response = true;
 				return true;
 			}
