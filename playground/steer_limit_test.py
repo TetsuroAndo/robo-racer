@@ -31,8 +31,19 @@ TYPE_STATUS = 0x11
 
 def default_sock() -> str:
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+    candidates = []
     if runtime_dir:
-        return os.path.join(runtime_dir, "roboracer", "seriald.sock")
+        candidates.append(os.path.join(runtime_dir, "roboracer", "seriald.sock"))
+    candidates.extend(
+        [
+            "/run/roboracer/seriald.sock",
+            "/tmp/roboracer/seriald.sock",
+            "/tmp/seriald.sock",
+        ]
+    )
+    for path in candidates:
+        if os.path.exists(path):
+            return path
     return "/tmp/roboracer/seriald.sock"
 
 
@@ -252,13 +263,14 @@ def main() -> int:
         raise SystemExit("no angles to test")
 
     print("Steer limit test started.")
-    print("Manual stop: press 's' (stop/kill). Quit: press 'q'.")
+    print("Manual stop: press 's' (safe stop), 'k' (kill). Quit: press 'q'.")
     print(
         f"Sweep: max={format_cdeg(max_cdeg)}, step={format_cdeg(args.step_cdeg)}, "
         f"dwell={args.dwell_ms}ms, direction={args.direction}"
     )
 
     stop_reason = ""
+    stop_action = "safe"
     stop_angle_cdeg = 0
 
     with raw_terminal():
@@ -296,15 +308,27 @@ def main() -> int:
                                 last_status = status
                         else:
                             key = sys.stdin.read(1)
-                            if key in ("s", "q"):
-                                stop_reason = "manual_stop" if key == "s" else "manual_quit"
+                            if key in ("s", "q", "k"):
+                                if key == "k":
+                                    stop_reason = "manual_kill"
+                                    stop_action = "kill"
+                                elif key == "s":
+                                    stop_reason = "manual_stop"
+                                    stop_action = "safe"
+                                else:
+                                    stop_reason = "manual_quit"
+                                    stop_action = "safe"
                                 stop_angle_cdeg = target_cdeg
                                 raise KeyboardInterrupt
         except KeyboardInterrupt:
             pass
         finally:
-            send_kill(sock, seq)
-            seq = (seq + 1) & 0xFFFF
+            if stop_action == "kill":
+                send_kill(sock, seq)
+                seq = (seq + 1) & 0xFFFF
+            else:
+                send_drive(sock, seq, 0, 0, min(args.ttl_ms, 200))
+                seq = (seq + 1) & 0xFFFF
             send_mode(sock, seq, auto=False)
 
     if not stop_reason:
