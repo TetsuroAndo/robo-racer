@@ -52,13 +52,12 @@ void Drive::tick(uint32_t now_ms, float dt_s, bool killed) {
 	_applied_speed_mm_s = cmd_speed;
 	_applied_steer_cdeg = cmd_steer;
 
-	// SlewRateLimiter is per-second; convert per-tick step to rate.
-	const float dt_safe = (dt_s > 1e-3f) ? dt_s : 1e-3f;
-	const float rate_step = (float)cfg::ENGINE_SPEED_STEP / dt_safe;
+	// SlewRateLimiter expects per-second rates.
 	if (_brake_mode) {
-		_engine.setRateLimits(rate_step, (float)cfg::ENGINE_RATE_DOWN_BRAKE);
+		_engine.setRateLimits(cfg::ENGINE_RATE_UP,
+							  (float)cfg::ENGINE_RATE_DOWN_BRAKE);
 	} else {
-		_engine.setRateLimits(rate_step, rate_step);
+		_engine.setRateLimits(cfg::ENGINE_RATE_UP, cfg::ENGINE_RATE_DOWN);
 	}
 	_engine.setTarget(speedMmSToPwm_(cmd_speed));
 	_engine.control(dt_s);

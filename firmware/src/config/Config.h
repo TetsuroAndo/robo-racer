@@ -184,8 +184,9 @@ static constexpr int ENGINE_CHANNEL_LPWM       = 1;
 static constexpr int ENGINE_PWM_FREQ_HZ        = 20000;
 static constexpr int ENGINE_PWM_RES_BITS       = 8;
 
-// ランプ（per tick のステップ。SlewRateLimiterは per-second）
-static constexpr int ENGINE_SPEED_STEP         = 4;
+// ランプ（SlewRateLimiterは per-second）
+static constexpr float ENGINE_RATE_UP          = 800.0f;
+static constexpr float ENGINE_RATE_DOWN        = 1200.0f;
 static constexpr int ENGINE_RAMP_DELAY_MS      = 10;
 static constexpr int ENGINE_SPEED_LIMIT        = 255;
 static constexpr uint32_t ENGINE_DEADTIME_US   = 800;
