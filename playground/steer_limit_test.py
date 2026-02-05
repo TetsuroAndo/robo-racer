@@ -279,7 +279,7 @@ def format_cdeg(cdeg: int) -> str:
     return f"{cdeg / 100.0:.2f}deg ({cdeg} cdeg)"
 
 
-def ensure_auto(sock: socket.socket, seq: int, timeout_s: float = 2.0) -> tuple[int, StatusFrame | None]:
+def ensure_auto(sock: socket.socket, seq: int, timeout_s: float = 4.0) -> tuple[int, StatusFrame | None, bool]:
     end = time.time() + timeout_s
     next_send = 0.0
     last_status: StatusFrame | None = None
@@ -301,8 +301,8 @@ def ensure_auto(sock: socket.socket, seq: int, timeout_s: float = 2.0) -> tuple[
             continue
         last_status = status
         if status.auto_active == 1:
-            return seq, last_status
-    return seq, last_status
+            return seq, last_status, True
+    return seq, last_status, False
 
 
 def main() -> int:
@@ -339,9 +339,15 @@ def main() -> int:
     last_target_cdeg = 0
     last_print = 0.0
 
-    seq, last_status = ensure_auto(sock, seq)
-    if last_status is not None and last_status.auto_active != 1:
-        print("AUTO mode is not active. Run 'mode --mode auto' or check other processes.")
+    seq, last_status, auto_ok = ensure_auto(sock, seq)
+    if not auto_ok:
+        if last_status is None:
+            print("AUTO mode check failed: no STATUS frames received.")
+        else:
+            print(
+                "AUTO mode is not active. "
+                f"auto={last_status.auto_active} faults=0x{last_status.faults:04x}"
+            )
         send_mode(sock, seq, auto=False)
         return 1
 
