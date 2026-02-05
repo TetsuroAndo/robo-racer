@@ -345,7 +345,11 @@ setuphooks:
 
 # Python setup target. Creates venv and installs base dependencies only.
 pysync: $(PYTHON_LOCAL)
-	@$(UV) sync --all-extras
+	if [ $(IS_RPI) == 1 ]; then \
+		$(UV) sync --no-dev; \
+	else \
+		$(UV) sync --all-extras; \
+	fi
 
 # Ensure the virtual environment exists
 $(PYTHON_LOCAL):
