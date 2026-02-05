@@ -11,4 +11,5 @@
 | sharedライブラリ追加 | 完了 | 2026-02-05 | `shared/config` を新設 |
 | firmware参照更新 | 完了 | 2026-02-05 | `firmware/src/config/Config.h` から参照 |
 | rpi参照更新 | 完了 | 2026-02-05 | `rpi/src/config/Config.h` から参照 |
+| ビルド警告/エラー対応 | 完了 | 2026-02-05 | firmwareのinline警告とRPi include不足を修正 |
 | 動作確認 | 未着手 | 2026-02-05 | ビルド/実機は別途 |
