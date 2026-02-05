@@ -431,7 +431,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	}
 
 	int path_mm = s.path_obst_mm;
-	if (path_mm < 0 || path_mm >= (std::numeric_limits< int >::max() / 2)) {
+	if (path_mm <= 0 || path_mm >= (std::numeric_limits< int >::max() / 2)) {
 		path_mm = cfg::TELEMETRY_DIST_BAR_MAX_MM;
 	}
 	if (path_mm > cfg::TELEMETRY_DIST_BAR_MAX_MM)
@@ -479,10 +479,12 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	}
 
 	Severity dist_sev = Severity::Safe;
-	if (s.path_obst_mm <= cfg::PROCESS_MIN_DIST_STOP_MM) {
-		dist_sev = Severity::Crit;
-	} else if (s.path_obst_mm < cfg::PROCESS_MIN_DIST_SAFE_MM) {
-		dist_sev = Severity::Warn;
+	if (s.path_obst_mm > 0) {
+		if (s.path_obst_mm <= cfg::FTG_NEAR_OBSTACLE_MM) {
+			dist_sev = Severity::Crit;
+		} else if (s.path_obst_mm < cfg::FTG_WARN_OBSTACLE_MM) {
+			dist_sev = Severity::Warn;
+		}
 	}
 
 	Severity map_sev = Severity::Safe;
@@ -755,7 +757,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	const std::string sp_angle =
 		sparkline(spark_best_, -90.0f, 90.0f, cfg::TELEMETRY_SPARK_LEN);
 	const std::string sp_speed =
-		sparkline(spark_speed_, 0.0f, (float)cfg::PROCESS_MAX_SPEED,
+		sparkline(spark_speed_, 0.0f, (float)cfg::FTG_SPEED_MAX,
 				  cfg::TELEMETRY_SPARK_LEN);
 	const std::string sp_dist =
 		sparkline(spark_dist_, 0.0f, (float)cfg::TELEMETRY_DIST_BAR_MAX_MM,

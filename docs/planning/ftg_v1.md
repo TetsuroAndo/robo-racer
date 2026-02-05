@@ -68,7 +68,7 @@
 | `PROCESS_ANGLE_MIN_DEG` | 走行視野の左限 | -70.0 deg |
 | `PROCESS_ANGLE_MAX_DEG` | 走行視野の右限 | 70.0 deg |
 | `SPEED_MM_S_MAX` | 速度上限 | 2000 mm/s |
-| `STEER_CDEG_MAX` | 舵角上限 | 3000 cdeg |
+| `STEER_CDEG_MAX` | 舵角上限 | 2500 cdeg |
 | `AUTO_TTL_MS` | TTL既定 | 100 ms |
 
 **追加パラメータ（FTG側で定義）**
