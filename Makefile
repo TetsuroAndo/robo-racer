@@ -52,6 +52,14 @@ RPLIDAR_LIB			:= $(RPLIDAR_SDK_DIR)/output/$(OS)/Release
 RPLIDAR_SDK_MAKE	:= $(RPLIDAR_SDK_DIR)/Makefile
 
 # ================================
+# RPi bag fetch (scp)
+# ================================
+RPI_HOST			?=
+RPI_USER			?= pi
+RPI_SSH_PORT		?= 22
+BAG_DEST_DIR		?= $(ROOT)/training/data/bags
+
+# ================================
 # RPi build rules
 # ================================
 
@@ -196,12 +204,43 @@ ros2-bag-record:
 		bash /ws/tools/ros2/scripts/bag_record.sh
 
 ros2-bag-play:
-	@if [ -z "$(BAG)" ]; then \
-		echo "Error: BAG パラメータが未設定です。例: make ros2-bag-play BAG=/path/to/bag"; \
+	@bash -lc "set -e; \
+		BAG=\"$(BAG)\"; \
+		if [ -n \"$(RPI_HOST)\" ]; then \
+			if [ -z \"$(RUN_ID)\" ] && [ -z \"$(SRC_PATH)\" ]; then \
+				echo \"Error: RUN_ID または SRC_PATH を指定してください。例: make ros2-bag-play RPI_HOST=100.102.92.54 RUN_ID=<run_id>\"; \
+				exit 1; \
+			fi; \
+			RPI_HOST=\"$(RPI_HOST)\" RPI_USER=\"$(RPI_USER)\" PORT=\"$(RPI_SSH_PORT)\" \
+				RUN_ID=\"$(RUN_ID)\" SRC_PATH=\"$(SRC_PATH)\" DEST_DIR=\"$(BAG_DEST_DIR)\" \
+				bash tools/ros2/scripts/bag_fetch.sh; \
+			if [ -z \"$$BAG\" ]; then \
+				if [ -n \"$(SRC_PATH)\" ]; then \
+					BAG=\"$(BAG_DEST_DIR)/$$(basename \"$(SRC_PATH)\")\"; \
+				else \
+					BAG=\"$(BAG_DEST_DIR)/$(RUN_ID)\"; \
+				fi; \
+			fi; \
+		fi; \
+		if [ -z \"$$BAG\" ]; then \
+			echo \"Error: BAG パラメータが未設定です。例: make ros2-bag-play BAG=/path/to/bag\"; \
+			exit 1; \
+		fi; \
+		docker compose -f tools/ros2/compose.yml run --rm ros2 \
+			bash /ws/tools/ros2/scripts/bag_play.sh \"$$BAG\""
+
+ros2-bag-fetch:
+	@if [ -z "$(RPI_HOST)" ]; then \
+		echo "Error: RPI_HOST パラメータが未設定です。例: make ros2-bag-fetch RPI_HOST=100.102.92.54 RUN_ID=<run_id>"; \
 		exit 1; \
 	fi
-	docker compose -f tools/ros2/compose.yml run --rm ros2 \
-		bash /ws/tools/ros2/scripts/bag_play.sh $(BAG)
+	@if [ -z "$(RUN_ID)" ] && [ -z "$(SRC_PATH)" ]; then \
+		echo "Error: RUN_ID または SRC_PATH を指定してください。例: make ros2-bag-fetch RPI_HOST=100.102.92.54 RUN_ID=<run_id>"; \
+		exit 1; \
+	fi
+	RPI_HOST=$(RPI_HOST) RPI_USER=$(RPI_USER) PORT=$(RPI_SSH_PORT) \
+		RUN_ID=$(RUN_ID) SRC_PATH=$(SRC_PATH) DEST_DIR=$(BAG_DEST_DIR) \
+		bash tools/ros2/scripts/bag_fetch.sh
 
 ros2-session-up:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm \
@@ -361,6 +400,7 @@ help:
 	@echo "  ros2-novnc       Launch RViz via noVNC (browser)"
 	@echo "  ros2-bag-record  Record rosbag via container"
 	@echo "  ros2-bag-play    Play rosbag via container (BAG=... required)"
+	@echo "  ros2-bag-fetch   Fetch rosbag from RPi via scp (RUN_ID=... required)"
 	@echo "  ros2-session-up  Start ROS2 session + bag record"
 	@echo ""
 	@echo "Debug Targets:"

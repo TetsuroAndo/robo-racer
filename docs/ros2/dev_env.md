@@ -111,6 +111,16 @@ RPi 側で bag を保存し、PC 側へコピーして再生する。
 scp -r pi@<rpi-host>:/ws/training/data/bags/<run_id> ./training/data/bags/
 ```
 
+Make 経由（推奨）:
+```
+make ros2-bag-fetch RPI_HOST=<rpi-host> RUN_ID=<run_id>
+```
+
+Make で取得→再生まで一括:
+```
+make ros2-bag-play RPI_HOST=<rpi-host> RUN_ID=<run_id>
+```
+
 コピー後の再生例:
 ```
 ./tools/ros2/scripts/bag_play.sh ./training/data/bags/<run_id>
