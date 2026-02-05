@@ -90,6 +90,14 @@ static constexpr float FTG_SPEED_R_MAX_M       = 1.00f; // 100cm以上は最大�
 static constexpr float FTG_SPEED_K_M           = 0.10f; // 立ち上がり（最速）
 //数字が大きいほど加速度は下がる
 
+// コスト関数（目的関数）
+static constexpr float FTG_COST_W_OBS            = 10000.0f;
+static constexpr float FTG_COST_W_TURN           = 0.2f;
+static constexpr float FTG_COST_W_DELTA          = 0.6f;
+static constexpr float FTG_COST_BETA             = 8.0f;  // soft-argminの鋭さ
+static constexpr int FTG_COST_DIST_MIN_MM        = 50;    // 近距離の発散抑制
+static constexpr float FTG_STEER_SLEW_DEG_PER_S  = 120.0f;
+
 // 物理上限
 static constexpr int STEER_ANGLE_MAX_DEG       = 30;   // サーボの物理的上限
 

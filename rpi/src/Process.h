@@ -28,4 +28,5 @@ private:
 	TelemetryEmitter *telemetry_;
 	mutable bool has_last_best_ = false;
 	mutable float last_best_angle_ = 0.0f;
+	mutable uint64_t last_proc_ts_us_ = 0;
 };
