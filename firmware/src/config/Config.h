@@ -57,12 +57,15 @@ static constexpr int STEER_PWM_PERIOD_US       = 1000000 / STEER_PWM_FREQ_HZ;
 
 // パルス幅
 static constexpr int STEER_PULSE_MIN_US        = 1200;
-static constexpr int STEER_PULSE_MAX_US        = 1800;
+static constexpr int STEER_PULSE_MAX_US        = 1750;
 static constexpr int STEER_PULSE_CENTER_US     =
 	(STEER_PULSE_MIN_US + STEER_PULSE_MAX_US) / 2;
 
-// 角度マッピング
-static constexpr int STEER_ANGLE_RANGE_DEG     = 30;
+// 角度マッピング（物理可動域に合わせて±25deg）
+static constexpr float STEER_ANGLE_MIN_DEG     = -25.0f;
+static constexpr float STEER_ANGLE_MAX_DEG     = 25.0f;
+static constexpr int STEER_ANGLE_MIN_CDEG      = -2500;
+static constexpr int STEER_ANGLE_MAX_CDEG      = 2500;
 static constexpr int STEER_ANGLE_CENTER_DEG    = 90;
 static constexpr float STEER_CDEG_SCALE        = 100.0f;
 
@@ -96,7 +99,7 @@ static constexpr int   MANUAL_SPEED_MAX  = 180;
 static constexpr int   MANUAL_SPEED_STEP = 6;
 
 // 操舵
-static constexpr float MANUAL_STEER_DEG  = 20.0f;
+static constexpr float MANUAL_STEER_DEG  = 25.0f;
 
 //------------------------------------------------------------------------------
 // 通信/テレメトリ

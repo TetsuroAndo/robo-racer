@@ -39,7 +39,7 @@ static constexpr int SPEED_INPUT_LIMIT           = 255;
 static constexpr int SPEED_MM_S_MAX              = 13889; // 50km/h
 // steer: degree → centi-degree
 static constexpr int STEER_CDEG_SCALE            = 100;
-static constexpr int STEER_CDEG_MAX              = 3000;
+static constexpr int STEER_CDEG_MAX              = 2500;
 
 // 受信バッファ
 static constexpr size_t UART_READ_BUF_SIZE       = 256;
