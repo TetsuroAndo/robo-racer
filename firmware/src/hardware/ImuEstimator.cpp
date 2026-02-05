@@ -111,14 +111,22 @@ void ImuEstimator::update(const ImuSample &s, uint32_t now_ms,
 	if (cfg::IMU_USE_FUSION) {
 		if (!_fusion_init) {
 			FusionAhrsInitialise(&_fusion);
-			FusionAhrsSettings settings;
+			FusionAhrsSettings settings = fusionAhrsDefaultSettings;
 			settings.convention = FusionConventionNwu;
 			settings.gain = cfg::IMU_FUSION_GAIN;
 			settings.gyroscopeRange = gyroRangeDps_();
 			settings.accelerationRejection = cfg::IMU_FUSION_ACC_REJ_DEG;
 			settings.magneticRejection = 0.0f;
-			settings.recoveryTriggerPeriod = cfg::IMU_FUSION_RECOVER_S;
-			FusionAhrsSetSettings(&_fusion, settings);
+			unsigned int recover_samples = 0;
+			if (cfg::IMU_FUSION_RECOVER_S > 0.0f &&
+				cfg::IMU_READ_INTERVAL_MS > 0) {
+				const float period_s =
+					(float)cfg::IMU_READ_INTERVAL_MS / 1000.0f;
+				recover_samples = (unsigned int)std::max(
+					1.0f, std::round(cfg::IMU_FUSION_RECOVER_S / period_s));
+			}
+			settings.recoveryTriggerPeriod = recover_samples;
+			FusionAhrsSetSettings(&_fusion, &settings);
 			_fusion_init = true;
 		}
 		if (dt_s > 0.0f) {
