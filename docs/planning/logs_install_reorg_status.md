@@ -6,6 +6,7 @@
 - ルート直下の誤生成物（`install/`, `log/`）を整理する
 
 ## 状態
+
 | 項目 | 状態 | 日付 | メモ |
 | --- | --- | --- | --- |
 | ROS2 build ログの出力先を `rpi/ros2_ws/colcon_log` に変更 | 完了 | 2026-02-05 | `ros2_build.sh` と `Makefile` を更新 |

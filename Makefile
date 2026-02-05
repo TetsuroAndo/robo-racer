@@ -167,7 +167,8 @@ $(LOG_DIR):
 # ================================
 .PHONY: test activate hils-build hils-local ros2-up ros2-shell ros2-build ros2-build-clean \
 	ros2-mc-bridge ros2-topic-echo \
-	ros2-rviz ros2-novnc ros2-bag-record ros2-bag-play ros2-session-up
+	ros2-rviz ros2-novnc ros2-bag-record ros2-bag-play ros2-bag-fetch ros2-session-up \
+	ros2-mapping
 
 hils-build:
 	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
@@ -282,7 +283,6 @@ activate: $(PYTHON_LOCAL)
 	@bash -lc 'source "$(VENV)/bin/activate" && exec $$SHELL -l'
 
 
-.PHONY: ros2-mapping
 ros2-mapping:
 	@echo "🚀 Starting mapping..."
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
@@ -347,7 +347,7 @@ setuphooks:
 
 # Python setup target. Creates venv and installs base dependencies only.
 pysync: $(PYTHON_LOCAL)
-	if [ $(IS_RPI) == 1 ]; then \
+	if [ "$(IS_RPI)" = "1" ]; then \
 		$(UV) sync --no-dev; \
 	else \
 		$(UV) sync --all-extras; \
@@ -431,6 +431,7 @@ help:
 	@echo "  ros2-bag-play    Play rosbag via container (BAG=... required)"
 	@echo "  ros2-bag-fetch   Fetch rosbag from RPi via scp (RUN_ID=... required)"
 	@echo "  ros2-session-up  Start ROS2 session + bag record"
+	@echo "  ros2-mapping     Start mapping with SLAM Toolbox"
 	@echo ""
 	@echo "Debug Targets:"
 	@echo "  debug            Build debug"

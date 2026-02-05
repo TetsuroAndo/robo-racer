@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import math
 import os
+import shutil
 import subprocess
 import time
 
@@ -72,10 +73,10 @@ class LapManager(Node):
         except (LookupException, ConnectivityException, ExtrapolationException) as e:
             now = time.time()
             if now - self.last_tf_warn_time > 5.0:
-                self.get_logger().warn(f'TF wait (odom->base_link): {e}')
+                self.get_logger().warning(f'TF wait (odom->base_link): {e}')
                 self.last_tf_warn_time = now
-        except Exception as e:
-            self.get_logger().error(f'Unexpected error: {e}')
+        except Exception:
+            self.get_logger().exception('Unexpected error in check_lap')
 
     def save_map(self):
         save_dir = os.path.join(os.path.expanduser('~'), 'maps')
@@ -84,10 +85,20 @@ class LapManager(Node):
         file_prefix = f"my_race_map_lap{self.lap_count}"
         map_path = os.path.join(save_dir, file_prefix)
 
+        ros2_cmd = shutil.which('ros2')
+        if not ros2_cmd:
+            self.get_logger().error('ros2 command not found in PATH; cannot save map.')
+            return
+
         self.get_logger().info(f'Saving map to: {map_path} ...')
         try:
-            subprocess.run(['ros2', 'run', 'nav2_map_server', 'map_saver_cli', '-f', map_path], check=True)
-        except Exception as e:
+            subprocess.run(
+                [ros2_cmd, 'run', 'nav2_map_server', 'map_saver_cli', '-f', map_path],
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            self.get_logger().error(f'Map save failed: {e}')
+        except FileNotFoundError as e:
             self.get_logger().error(f'Map save failed: {e}')
 
 

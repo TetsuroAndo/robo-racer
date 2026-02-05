@@ -1,6 +1,6 @@
-from setuptools import setup
 import os
 from glob import glob
+from setuptools import setup
 
 package_name = 'race_manager'
 
@@ -17,8 +17,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='User',
-    maintainer_email='user@example.com',
+    maintainer='Robo Racer',
+    maintainer_email='tetsuro997@gmail.com',
     description='Race Manager',
     license='MIT',
     tests_require=['pytest'],
