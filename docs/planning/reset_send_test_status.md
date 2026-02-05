@@ -6,11 +6,12 @@
 - `platformio.ini` 変更は必要性を見て判断する。
 
 ## 状態
-- 進行中: 取り込み対象コミットの選定
-- 未着手: リセット関連コミットの cherry-pick
-- 未着手: `rpi/rplidar_sdk` 削除の回避
-- 未着手: `platformio.ini` 変更の確認と反映
-- 未着手: 追加/移動されたリセット用ファイルの整合確認
+- 完了: 取り込み対象コミットの選定
+- 完了: リセット関連コミットの cherry-pick
+- 完了: `rpi/rplidar_sdk` 削除の回避
+- 完了: `platformio.ini` 変更の確認と反映
+- 完了: 追加/移動されたリセット用ファイルの整合確認
 
 ## メモ
-- マージではなく cherry-pick で取り込む方針。
+- マージではなく cherry-pick で取り込み済み。
+- `platformio.ini` は `include_dir`/`data_dir`/`build_dir` を追加し、既存設定（Bluepad32差し替え・`lib_extra_dirs`）は維持。
