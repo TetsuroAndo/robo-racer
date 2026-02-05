@@ -56,7 +56,7 @@ static constexpr int STEER_PWM_PERIOD_US       = 1000000 / STEER_PWM_FREQ_HZ;
 
 // パルス幅
 static constexpr int STEER_PULSE_MIN_US        = 1200;
-static constexpr int STEER_PULSE_MAX_US        = 1800;
+static constexpr int STEER_PULSE_MAX_US        = 1750;
 static constexpr int STEER_PULSE_CENTER_US     =
 	(STEER_PULSE_MIN_US + STEER_PULSE_MAX_US) / 2;
 
