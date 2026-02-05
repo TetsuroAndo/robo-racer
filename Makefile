@@ -21,7 +21,12 @@ endif
 
 ifeq ($(OS), Linux)
   ifeq ($(ARCH), aarch64)
-    ROS2_SERVICE ?= ros2-record
+    IS_RPI := $(shell if [ -f /proc/device-tree/model ] && grep -qi 'raspberry pi' /proc/device-tree/model; then echo 1; elif [ "$(USER)" = "pi" ]; then echo 1; elif [ -e /dev/ttyAMA0 ]; then echo 1; fi)
+    ifeq ($(IS_RPI),1)
+      ROS2_SERVICE ?= ros2-record
+    else
+      ROS2_SERVICE ?= ros2
+    endif
   else
     ROS2_SERVICE ?= ros2
   endif
@@ -101,7 +106,7 @@ PIO_RUN			:= $(PIO) run -j $(shell nproc)
 .PHONY: all
 
 all: pio rpi
-	@if [ "$(USER)" = "pi" ]; then $(MAKE) upload; fi
+	@if [ "$(IS_RPI)" = "1" ]; then $(MAKE) upload; fi
 
 # === RPi build ===
 .PHONY: rpi c-rpi

@@ -10,6 +10,8 @@
 - リポジトリを `/ws` にマウント
 - RPi は **64bit OS (arm64)** が必須（32bit だと ROS2 Docker が動かない）
 - RPi では **headless (record only)** を推奨（`ros2-record` サービス）
+  - 既定は自動判定（Raspberry Pi 判定時に `ros2-record` を選択）
+  - 明示指定したい場合は `ROS2_SERVICE=ros2` / `ROS2_SERVICE=ros2-record`
 
 ## 1) Docker イメージのビルド
 ```
