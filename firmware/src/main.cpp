@@ -68,6 +68,7 @@ static constexpr uint8_t TSD_DIAG_INVALID = 4;
 static constexpr uint8_t TSD_DIAG_MARGIN = 5;
 static constexpr uint8_t TSD_DIAG_CLAMP = 6;
 static constexpr uint8_t TSD_DIAG_OK = 7;
+static constexpr uint8_t TSD_DIAG_STOP = 8;
 
 static float g_tsd_diag_d_allow = 0.0f;
 static float g_tsd_diag_margin_eff = 0.0f;
@@ -275,6 +276,12 @@ static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 		return speed_mm_s;
 	}
 
+	if (cfg::TSD20_STOP_DISTANCE_MM > 0 &&
+		g_tsd_mm <= cfg::TSD20_STOP_DISTANCE_MM) {
+		g_tsd_diag_reason = TSD_DIAG_STOP;
+		return 0;
+	}
+
 	if (g_tsd_mm <= cfg::TSD20_MARGIN_MM) {
 		g_tsd_diag_reason = TSD_DIAG_MARGIN;
 		return 0;
@@ -293,11 +300,18 @@ static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 	if (base_margin > (float)cfg::TSD20_MARGIN_MM)
 		base_margin = (float)cfg::TSD20_MARGIN_MM;
 
-	const float a_min = (float)cfg::IMU_BRAKE_MIN_MM_S2;
-	const float a_max = (float)cfg::IMU_BRAKE_MAX_MM_S2;
-	float a = a_brake_cap_mm_s2;
-	if (a <= 0.0f)
-		a = (float)cfg::IMU_BRAKE_INIT_MM_S2;
+	const bool imu_calibrated = g_imu_valid && imu_est.state().calibrated;
+	const float a_min = imu_calibrated ? (float)cfg::IMU_BRAKE_MIN_MM_S2
+									   : (float)cfg::IMU_BRAKE_MIN_UNCAL_MM_S2;
+	const float a_max = imu_calibrated ? (float)cfg::IMU_BRAKE_MAX_MM_S2
+									   : (float)cfg::IMU_BRAKE_MAX_UNCAL_MM_S2;
+	float a = 0.0f;
+	if (imu_calibrated && a_brake_cap_mm_s2 > 0.0f)
+		a = a_brake_cap_mm_s2;
+	if (a <= 0.0f) {
+		a = imu_calibrated ? (float)cfg::IMU_BRAKE_INIT_MM_S2
+						   : (float)cfg::IMU_BRAKE_INIT_UNCAL_MM_S2;
+	}
 	if (a < a_min)
 		a = a_min;
 	else if (a > a_max)
@@ -333,7 +347,15 @@ static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
 	if (v_max < 0.0f)
 		v_max = 0.0f;
 
-	const float v_cap = std::min(v_max, (float)mc_config::SPEED_MAX_MM_S);
+	float v_cap = std::min(v_max, (float)mc_config::SPEED_MAX_MM_S);
+	const uint16_t stop_mm = cfg::TSD20_STOP_DISTANCE_MM;
+	const uint16_t slow_mm = cfg::TSD20_SLOWDOWN_DISTANCE_MM;
+	if (slow_mm > stop_mm && g_tsd_mm < slow_mm) {
+		const float ratio =
+			(float)(g_tsd_mm - stop_mm) / (float)(slow_mm - stop_mm);
+		const float slow = mc::clamp< float >(ratio, 0.0f, 1.0f);
+		v_cap *= slow;
+	}
 	g_tsd_diag_d_allow = d_allow;
 	g_tsd_diag_margin_eff = margin_eff;
 	g_tsd_diag_margin_pred = margin_pred;
