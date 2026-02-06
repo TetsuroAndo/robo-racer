@@ -157,22 +157,6 @@ static constexpr int IMU_BRAKE_DETECT_MM_S2      = 800;
 static constexpr int IMU_BRAKE_CMD_DELTA_MM_S    = 200;
 
 //------------------------------------------------------------------------------
-// ABS reverse brake
-//------------------------------------------------------------------------------
-
-static constexpr bool ABS_ENABLE                = true;
-static constexpr bool ABS_ENABLE_IN_MANUAL      = false;
-static constexpr bool ABS_REQUIRE_CALIB         = true;
-static constexpr int ABS_SPEED_MARGIN_MM_S      = 150;
-static constexpr float ENGINE_RATE_DOWN_BRAKE    = 4000.0f;
-// TSD20がこの距離以下を検出したときのみABS発動（壁なし誤発動防止）
-static constexpr uint16_t ABS_TSD_TRIGGER_MM    = 320;
-// v_cmdがこれ以上なら発動しない（減速したい状況のみ）
-static constexpr int ABS_V_CMD_MAX_MM_S         = 200;
-// v_estがこれ未満は無視（ノイズ・手動移動の誤検出防止）
-static constexpr int ABS_V_EST_MIN_MM_S         = 300;
-
-//------------------------------------------------------------------------------
 // 速度制御（speed_mm_s -> PWM）
 //------------------------------------------------------------------------------
 
@@ -187,21 +171,7 @@ static constexpr int SPEED_MIN_FWD_VEST_MM_S   = 100;
 static constexpr int SPEED_PWM_MIN_FORWARD     = 30;
 
 //------------------------------------------------------------------------------
-// DecelController（能動制動：減速局面で負PWMを許可）
-//------------------------------------------------------------------------------
-
-static constexpr float DECEL_TAU_S             = 0.25f;  // v_err/tau -> a_tgt
-static constexpr int   DECEL_V_ERR_DEADBAND_MM_S = 120;
-static constexpr int   DECEL_STOP_EPS_MM_S     = 120;    // これ以下でブレーキ解除
-static constexpr int   DECEL_PWM_MAX_BRAKE     = 200;    // brake PWM magnitude cap
-static constexpr float DECEL_KP                = 0.010f; // accel error -> pwm
-static constexpr float DECEL_KI                = 0.002f;
-static constexpr int   DECEL_A_MIN_MM_S2       = 1500;
-static constexpr int   DECEL_A_CAP_FLOOR_MM_S2 = 3000;
-static constexpr int   DECEL_A_CAP_MAX_MM_S2   = 12000;
-
-//------------------------------------------------------------------------------
-// BrakeController（安全系 STOP 要求時のみ負PWMで減速）
+// BrakeController（安全系 STOP 要求時のみ）
 //------------------------------------------------------------------------------
 
 // これ以下で負PWM禁止（静止中の後退防止）
@@ -216,6 +186,14 @@ static constexpr uint32_t BRAKE_HOLD_MS = 120;
 static constexpr uint32_t BRAKE_RAMP_MS = 150;
 // ブレーキ解除後の再加速抑制時間 [ms]。この間は推力PWMを0に抑える
 static constexpr uint32_t BRAKE_COOLDOWN_MS = 100;
+
+// 逆転パルスブレーキ（連続逆転は禁止）
+static constexpr int BRAKE_REV_PWM = 255; // 逆転PWM（符号はコード側で負にする）
+static constexpr uint32_t BRAKE_REV_PULSE_MS = 200;   // 逆転する時間
+static constexpr uint32_t BRAKE_REV_COAST_MS = 60;    // パルス間の惰行
+static constexpr uint8_t BRAKE_REV_MAX_PULSES = 4;    // 最大パルス回数
+static constexpr int BRAKE_REV_MIN_V_MM_S = 900;     // これ以上速いときだけ逆転を許可
+static constexpr int BRAKE_REV_EXIT_V_MM_S = 350;    // これ未満になったら逆転禁止
 
 //------------------------------------------------------------------------------
 // ステアサーボ設定（DS3218想定）
@@ -257,6 +235,8 @@ static constexpr int ENGINE_PWM_RES_BITS       = 8;
 static constexpr float ENGINE_RATE_UP          = 1600.0f;
 // 減速を速くしてブレーキ応答を改善（255→0 を約64msに短縮）
 static constexpr float ENGINE_RATE_DOWN        = 4000.0f;
+// ブレーキモード時の減速レート（Drive::setBrakeMode 時）
+static constexpr float ENGINE_RATE_DOWN_BRAKE = 4000.0f;
 static constexpr int ENGINE_SPEED_LIMIT        = 128;
 static constexpr uint32_t ENGINE_DEADTIME_US   = 800;
 // アクティブブレーキ（両PWM同時＝短絡制動）。false なら推力0のみ（惰行）
@@ -267,18 +247,6 @@ static constexpr bool DRIVE_BRAKE_ON_KILLED = true;
 static constexpr uint8_t DRIVE_KILL_BRAKE_DUTY = 60;
 static_assert(DRIVE_KILL_BRAKE_DUTY <= BRAKE_PWM_MAX,
 			  "DRIVE_KILL_BRAKE_DUTY must be <= BRAKE_PWM_MAX");
-
-// 非常用：短い逆転パルスで減速（連続後退しない：総予算で打ち切る）
-static constexpr bool BRAKE_REV_PULSE_ENABLE = true;
-static constexpr uint8_t BRAKE_REV_PULSE_PWM = 128; // -128 を打つ（ENGINE_SPEED_LIMIT 以下）
-static constexpr uint16_t BRAKE_REV_PULSE_BUDGET_MS = 200;  // 総予算
-static constexpr uint16_t BRAKE_REV_PULSE_ON_MS = 25;       // 逆転ON
-static constexpr uint16_t BRAKE_REV_PULSE_OFF_MS = 25;      // 逆転OFF（ブレーキに戻る）
-static constexpr int BRAKE_REV_PULSE_V_START_MM_S = 2500;   // この速度以上で発動
-static constexpr int BRAKE_REV_PULSE_V_END_MM_S = 800;      // この速度未満で解除
-
-static_assert(BRAKE_REV_PULSE_PWM <= ENGINE_SPEED_LIMIT,
-			  "BRAKE_REV_PULSE_PWM must be <= ENGINE_SPEED_LIMIT");
 
 //------------------------------------------------------------------------------
 // 手動操作の上限（ゲームパッド）

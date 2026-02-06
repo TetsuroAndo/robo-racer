@@ -55,4 +55,4 @@
 
 DecelController の負 PWM は **ブレーキ duty に変換**され、通常経路では後退しない形に変更済み。
 
-**2026-02-07 更新**: 単純化リファクタにより DecelController は **削除**され、BrakeController に統合される予定。詳細は `docs/planning/brake_dual_objective_plan.md` を参照。
+**2026-02-07 更新**: 単純化リファクタにより DecelController は **削除**され、BrakeController に統合された。詳細は `docs/planning/brake_dual_objective_plan.md` を参照。

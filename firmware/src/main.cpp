@@ -1,7 +1,6 @@
 #include "config/Config.h"
 #include "control/AutoCommandSource.h"
 #include "control/BrakeController.h"
-#include "control/DecelController.h"
 #include "control/SafetySupervisor.h"
 #include "control/SpeedController.h"
 #include "control/StopLevel.h"
@@ -31,7 +30,6 @@ static Tsd20 tsd20;
 static AutoCommandSource cmd_source;
 static SafetySupervisor safety;
 static SpeedController speed_ctl;
-static DecelController decel_ctl;
 static BrakeController brake_ctl;
 static mc::AsyncLogger alog;
 static mc::UartTx uart_tx;
@@ -61,7 +59,7 @@ static uint32_t g_imu_last_ms = 0;
 static ImuSample g_imu_sample{};
 static int16_t g_last_cmd_speed_mm_s = 0;
 
-static bool g_abs_active = false;
+static bool g_brake_mode = false;
 static float g_last_dt_s = 0.0f;
 
 static float g_loop_dt_min_s = 0.0f;
@@ -84,22 +82,6 @@ static bool g_speed_diag_calib = false;
 static bool g_brake_diag_stop_req = false;
 static int16_t g_brake_diag_pwm = 0;
 static bool g_brake_diag_active = false;
-
-static int16_t g_decel_diag_pwm = 0;
-static float g_decel_diag_a_tgt = 0.0f;
-static float g_decel_diag_a_err = 0.0f;
-static float g_decel_diag_u_ff = 0.0f;
-static float g_decel_diag_u_fb = 0.0f;
-static float g_decel_diag_u_i = 0.0f;
-static bool g_decel_diag_active = false;
-
-struct RevPulseState {
-	bool active = false;
-	bool phase_rev = false;
-	uint32_t phase_until_ms = 0;
-	uint32_t end_ms = 0;
-};
-static RevPulseState g_rev_pulse;
 
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
@@ -201,7 +183,7 @@ static void sendImuStatus_(uint32_t now_ms) {
 		flags |= 1u << 0;
 	if (st.calibrated)
 		flags |= 1u << 1;
-	if (g_abs_active)
+	if (g_brake_mode)
 		flags |= 1u << 2;
 	p.flags = flags;
 	p.reserved = 0;
@@ -321,14 +303,9 @@ static void updateTsd20_(uint32_t now_ms) {
 }
 
 static void applyTargets_(uint32_t now_ms, float dt_s) {
-	const bool abs_allowed =
-		!g_state.killed &&
-		(cfg::ABS_ENABLE &&
-		 (g_state.mode == mc::Mode::AUTO || cfg::ABS_ENABLE_IN_MANUAL));
 	const ImuEstimate &imu_state = imu_est.state();
 	const bool imu_calib = g_imu_valid && imu_state.calibrated;
 	const float v_est = g_imu_valid ? imu_state.v_est_mm_s : 0.0f;
-	const bool v_est_valid = g_imu_valid;
 	const bool speed_active = !g_state.killed;
 
 	const AutoCommandResult desired = cmd_source.update(now_ms, g_state);
@@ -340,8 +317,7 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	}
 	const SafetyResult safe =
 		safety.apply(now_ms, dt_s, desired.targets, g_state.mode, g_tsd_state,
-					 imu_state, g_imu_valid, abs_allowed, &g_safety_diag);
-	g_abs_active = safe.brake_mode;
+					 imu_state, g_imu_valid, &g_safety_diag);
 	g_last_cmd_speed_mm_s = safe.targets.speed_mm_s;
 
 	const SpeedControlOutput out = speed_ctl.update(
@@ -356,94 +332,30 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	g_speed_diag_active = out.active;
 	g_speed_diag_calib = out.calibrated;
 
-	const DecelControlOutput decel_out = decel_ctl.update(
-		safe.targets.speed_mm_s, v_est, imu_state.a_long_lpf_mm_s2,
-		imu_state.a_brake_cap_mm_s2, dt_s, imu_calib, speed_active);
-	g_decel_diag_pwm = decel_out.pwm_cmd;
-	g_decel_diag_a_tgt = decel_out.a_tgt_mm_s2;
-	g_decel_diag_a_err = decel_out.a_err_mm_s2;
-	g_decel_diag_u_ff = decel_out.u_ff;
-	g_decel_diag_u_fb = decel_out.u_fb;
-	g_decel_diag_u_i = decel_out.u_i;
-	g_decel_diag_active = decel_out.active;
-
 	const BrakeControllerOutput brake_out =
 		brake_ctl.update(safe.stop_requested, safe.stop_level, g_tsd_state.mm,
-						 v_est, v_est_valid, now_ms);
+						 v_est, imu_state.a_brake_cap_mm_s2, now_ms);
+	g_brake_mode = brake_out.brake_mode || brake_out.brake_active ||
+				   brake_out.pwm_override;
 	g_brake_diag_stop_req = safe.stop_requested;
 	g_brake_diag_pwm = brake_out.brake_duty;
-	g_brake_diag_active = brake_out.active;
+	g_brake_diag_active = brake_out.brake_active || brake_out.pwm_override;
 
 	// 1) 推進PWMは「前進のみ」に限定（負PWMは通常経路で禁止）
 	int16_t pwm_cmd = out.pwm_cmd;
 	if (pwm_cmd < 0)
 		pwm_cmd = 0;
 
-	// 2) DecelController(負PWM)は「ブレーキduty」へ変換して outputBrake
-	// に寄せる
-	uint8_t decel_brake_duty = 0;
-	bool decel_brake_active = false;
-	if (decel_out.active && decel_out.pwm_cmd < 0) {
-		const float u = -(float)decel_out.pwm_cmd;
-		const float r = (cfg::DECEL_PWM_MAX_BRAKE > 0)
-							? (u / (float)cfg::DECEL_PWM_MAX_BRAKE)
-							: 0.0f;
-		int duty = (int)lroundf(r * (float)cfg::BRAKE_PWM_MAX);
-		duty = mc::clamp< int >(duty, 0, cfg::BRAKE_PWM_MAX);
-		if (duty > 0 && duty < cfg::BRAKE_PWM_MIN)
-			duty = cfg::BRAKE_PWM_MIN;
-		decel_brake_duty = (uint8_t)duty;
-		decel_brake_active = (decel_brake_duty > 0);
-	}
+	// 2) BrakeController が逆転パルス/惰行で PWM 上書きする場合
+	if (brake_out.pwm_override)
+		pwm_cmd = brake_out.pwm_cmd;
 
-	uint8_t brake_duty =
-		(uint8_t)std::max< int >(brake_out.brake_duty, decel_brake_duty);
-	bool brake_active = (brake_out.active || decel_brake_active);
+	uint8_t brake_duty = brake_out.brake_duty;
+	bool brake_active = brake_out.brake_active;
 	if (brake_active && brake_duty > 0 && brake_duty < cfg::BRAKE_PWM_MIN)
 		brake_duty = (uint8_t)cfg::BRAKE_PWM_MIN;
 
-	// 3) （オプション）非常時のみ「短い逆転パルス」を入れる
-	bool use_rev_pulse = false;
-	if (cfg::BRAKE_REV_PULSE_ENABLE) {
-		const bool arm = brake_active &&
-						 (safe.stop_level == StopLevel::STOP ||
-						  safe.stop_level == StopLevel::STALE) &&
-						 imu_calib &&
-						 (v_est > (float)cfg::BRAKE_REV_PULSE_V_START_MM_S);
-
-		if (!arm) {
-			g_rev_pulse.active = false;
-		} else {
-			if (!g_rev_pulse.active) {
-				g_rev_pulse.active = true;
-				g_rev_pulse.phase_rev = true;
-				g_rev_pulse.phase_until_ms =
-					now_ms + cfg::BRAKE_REV_PULSE_ON_MS;
-				g_rev_pulse.end_ms = now_ms + cfg::BRAKE_REV_PULSE_BUDGET_MS;
-			} else {
-				if ((int32_t)(now_ms - g_rev_pulse.end_ms) >= 0 ||
-					v_est < (float)cfg::BRAKE_REV_PULSE_V_END_MM_S) {
-					g_rev_pulse.active = false;
-				} else if ((int32_t)(now_ms - g_rev_pulse.phase_until_ms) >=
-						   0) {
-					g_rev_pulse.phase_rev = !g_rev_pulse.phase_rev;
-					g_rev_pulse.phase_until_ms =
-						now_ms + (g_rev_pulse.phase_rev
-									  ? cfg::BRAKE_REV_PULSE_ON_MS
-									  : cfg::BRAKE_REV_PULSE_OFF_MS);
-				}
-			}
-		}
-
-		if (g_rev_pulse.active && g_rev_pulse.phase_rev) {
-			use_rev_pulse = true;
-			pwm_cmd = -(int16_t)cfg::BRAKE_REV_PULSE_PWM;
-			brake_active = false;
-			brake_duty = 0;
-		}
-	}
-
-	drive.setBrakeMode(g_abs_active || brake_active || use_rev_pulse);
+	drive.setBrakeMode(g_brake_mode);
 	drive.setTargetMmS(safe.targets.speed_mm_s, now_ms);
 	drive.setTargetPwm(pwm_cmd, now_ms);
 	drive.setTargetBrake(brake_duty, brake_active, now_ms);
@@ -628,14 +540,6 @@ void loop() {
 				  (double)g_speed_diag_err, (int)g_speed_diag_pwm_cmd,
 				  (int)g_speed_diag_pwm_ff, (double)g_speed_diag_i,
 				  (int)g_speed_diag_saturated);
-		if (g_decel_diag_active) {
-			alog.logf(
-				mc::LogLevel::INFO, "decel_ctl",
-				"pwm=%d a_tgt=%.0f a_err=%.0f u_ff=%.1f u_fb=%.1f u_i=%.1f",
-				(int)g_decel_diag_pwm, (double)g_decel_diag_a_tgt,
-				(double)g_decel_diag_a_err, (double)g_decel_diag_u_ff,
-				(double)g_decel_diag_u_fb, (double)g_decel_diag_u_i);
-		}
 		alog.logf(mc::LogLevel::INFO, "brake",
 				  "stop_req=%d d_mm=%u v_est=%.1f pwm_speed=%d brake_duty=%u "
 				  "pwm_applied=%d applied_brake=%u v_cap=%.1f",
@@ -669,19 +573,6 @@ void loop() {
 					  (double)g_safety_diag.tsd.tau,
 					  (double)g_safety_diag.tsd.v_max,
 					  (double)g_safety_diag.tsd.v_cap);
-		}
-		if (cfg::ABS_ENABLE) {
-			alog.logf(mc::LogLevel::INFO, "abs",
-					  "reason=%u active=%d duty=%.2f v_cmd=%.1f v_est=%.1f",
-					  (unsigned)g_safety_diag.abs.reason, (int)g_abs_active,
-					  (double)g_safety_diag.abs.duty,
-					  (double)g_safety_diag.abs.v_cmd,
-					  (double)g_safety_diag.abs.v_est);
-			alog.logf(mc::LogLevel::INFO, "abs",
-					  "a_tgt=%.0f a_cap=%.0f decel=%.0f dt=%.3f",
-					  (double)g_safety_diag.abs.a_target,
-					  (double)g_safety_diag.abs.a_cap,
-					  (double)g_safety_diag.abs.decel, (double)g_last_dt_s);
 		}
 	}
 
