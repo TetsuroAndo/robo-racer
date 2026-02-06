@@ -514,9 +514,12 @@ void loop() {
 			// tsd20 cap diagnostics, split into multiple short lines
 			// to avoid truncation while preserving all fields.
 			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
-					  "reason=%u clamp=%d margin=%.0f pred=%.0f steer=%.2f",
+					  "reason=%u clamp=%d mm=%u age_ms=%.0f",
 					  (unsigned)g_safety_diag.tsd.reason,
-					  (int)g_safety_diag.tsd.clamped,
+					  (int)g_safety_diag.tsd.clamped, (unsigned)g_tsd_state.mm,
+					  (double)g_safety_diag.tsd.age_ms);
+			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
+					  "margin=%.0f pred=%.0f steer=%.2f",
 					  (double)g_safety_diag.tsd.margin_eff,
 					  (double)g_safety_diag.tsd.margin_pred,
 					  (double)g_safety_diag.tsd.steer_ratio);
