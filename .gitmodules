@@ -3,4 +3,4 @@
 	url = https://github.com/Slamtec/rplidar_sdk.git
 [submodule "firmware/lib/fusion_upstream"]
 	path = firmware/lib/fusion_upstream
-	url = https://github.com/xioTechnologies/Fusion
+	url = https://github.com/xioTechnologies/Fusion.git

@@ -12,7 +12,7 @@
 - `OUT_DIR` を指定すれば任意の場所に保存可能
 
 ## record
-```
+```bash
 RUN_ID=<run_id> TOPICS="/scan /mc/status /mc/drive_cmd" NOTES="optional" \
   ./tools/ros2/scripts/bag_record.sh
 ```
@@ -25,17 +25,27 @@ RUN_ID=<run_id> TOPICS="/scan /mc/status /mc/drive_cmd" NOTES="optional" \
 - `meta.txt` に `present_topics`（記録開始時に見えていた topic）も保存
 
 ## play
-```
+```bash
 ./tools/ros2/scripts/bag_play.sh <bag_path> [rate]
 ```
 - `--clock` を有効にして再生する
+
+Make で取得→再生まで一括（RPi からコピーする場合）:
+```bash
+make ros2-bag-play RPI_HOST=<rpi-host> RUN_ID=<run_id>
+```
+
+RPi で headless 記録を使う場合:
+```bash
+ROS2_SERVICE=ros2-record make ros2-bag-record
+```
 
 ## topics プロファイル
 - `tools/ros2/topics/<profile>.txt` で管理
 - 例: `PROFILE=slam ./tools/ros2/scripts/bag_record.sh`
 
 ## session 起動（run_id 伝播を固定したい場合）
-```
+```bash
 SESSION_CMD="ros2 launch <pkg> <file.launch.py>" \
   ./tools/ros2/scripts/session_up.sh
 ```

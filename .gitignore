@@ -20,10 +20,16 @@ robo-racer
 ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
+ros2_ws/colcon_log/
 /rpi/ros2_ws/build/
 /rpi/ros2_ws/install/
 /rpi/ros2_ws/log/
+/rpi/ros2_ws/colcon_log/
 /training/data/bags/
+# Accidental colcon outputs at repo root
+/build/
+/install/
+/log/
 
 # Created by https://www.toptal.com/developers/gitignore/api/c
 # Edit at https://www.toptal.com/developers/gitignore?templates=c

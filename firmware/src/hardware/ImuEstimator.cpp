@@ -16,7 +16,8 @@ static inline int clampAxisIndex(int idx) {
 
 static inline int32_t mapAxis(const int32_t v[3], int map, int sign) {
 	const int idx = clampAxisIndex(map);
-	return v[idx] * (int32_t)sign;
+	const int axis_sign = (sign >= 0) ? 1 : -1;
+	return v[idx] * (int32_t)axis_sign;
 }
 } // namespace
 
@@ -111,7 +112,7 @@ void ImuEstimator::update(const ImuSample &s, uint32_t now_ms,
 	if (cfg::IMU_USE_FUSION) {
 		if (!_fusion_init) {
 			FusionAhrsInitialise(&_fusion);
-			FusionAhrsSettings settings = fusionAhrsDefaultSettings;
+			FusionAhrsSettings settings{};
 			settings.convention = FusionConventionNwu;
 			settings.gain = cfg::IMU_FUSION_GAIN;
 			settings.gyroscopeRange = gyroRangeDps_();
@@ -213,7 +214,6 @@ void ImuEstimator::updateBias_(const ImuSample &s, uint32_t now_ms) {
 	_sum_n += 1;
 
 	if ((now_ms - _calib_start_ms) >= cfg::IMU_CALIBRATION_MS && _sum_n >= 1) {
-		// Only calibrate gyro bias (accelerometer bias = 0, keep gravity)
 		_bias_ax = 0;
 		_bias_ay = 0;
 		_bias_az = 0;

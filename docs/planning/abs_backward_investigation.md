@@ -10,7 +10,7 @@ ABS が `speed_mm_s = 0` を返すと、SpeedController が「目標 0・推定�
 
 ## 1. 制御の流れ
 
-```
+```text
 ABS active
   → safe.targets.speed_mm_s = 0
   → SpeedController.update(0, v_est, ...)

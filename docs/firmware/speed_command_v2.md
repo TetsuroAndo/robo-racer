@@ -159,6 +159,13 @@ IMU の `v_est` は低速で誤差が出やすいので、
 
 ## 5. 実装タスク（firmware）
 
+| Task | 内容 | 状態 |
+| --- | --- | --- |
+| A | SpeedController の追加 | 完了 |
+| B | Drive の責務を整理 | 完了 |
+| C | main loop の流れ変更 | 完了 |
+| D | ログと可観測性 | 完了 |
+
 ### Task A: SpeedController の追加
 
 - `firmware/src/control/SpeedController.h/.cpp`（新規）
