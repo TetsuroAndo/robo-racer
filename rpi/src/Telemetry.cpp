@@ -385,9 +385,12 @@ void TelemetryEmitter::emitJson_(const TelemetrySample &s) {
 				  << ",\"faults\":" << status.faults
 				  << ",\"speed_mm_s\":" << status.speed_mm_s
 				  << ",\"steer_cdeg\":" << status.steer_cdeg
-				  << ",\"age_ms\":" << status.age_ms
-				  << ",\"log_drop\":" << status.log_drop
-				  << ",\"uart_drop\":" << status.uart_drop << "}";
+				  << ",\"age_ms\":" << status.age_ms;
+		if (status.drops_valid) {
+			telemetry << ",\"log_drop\":" << status.log_drop
+					  << ",\"uart_drop\":" << status.uart_drop;
+		}
+		telemetry << "}";
 	} else {
 		telemetry << ",\"esp_status\":null";
 	}
@@ -779,8 +782,11 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	if (status.valid) {
 		l5 << " auto=" << (unsigned)status.auto_active << " faults=0x"
 		   << std::hex << status.faults << std::dec << " age=" << status.age_ms
-		   << "ms | drop(log=" << status.log_drop
-		   << " uart=" << status.uart_drop << ")";
+		   << "ms";
+		if (status.drops_valid) {
+			l5 << " | drop(log=" << status.log_drop
+			   << " uart=" << status.uart_drop << ")";
+		}
 	}
 	if (motion.valid) {
 		l5 << " abs=" << (motion.abs_active ? 1 : 0);

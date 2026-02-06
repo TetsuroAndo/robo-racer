@@ -152,6 +152,8 @@ private:
 		uint32_t log_drop = 0;
 		uint32_t uart_drop = 0;
 		uint64_t ts_us = 0;
+		bool drops_valid = false;
+		uint64_t drops_ts_us = 0;
 	};
 	struct MotionCache {
 		bool valid = false;
@@ -227,10 +229,10 @@ inline void TelemetryEmitter::updateStatus(uint8_t auto_active,
 inline void TelemetryEmitter::updateDrops(uint32_t log_drop,
 										  uint32_t uart_drop) {
 	std::lock_guard< std::mutex > lk(metrics_mtx_);
-	status_.valid = true;
 	status_.log_drop = log_drop;
 	status_.uart_drop = uart_drop;
-	status_.ts_us = mc::core::Time::us();
+	status_.drops_valid = true;
+	status_.drops_ts_us = mc::core::Time::us();
 }
 
 inline void TelemetryEmitter::updateMotion(const MotionState &motion) {

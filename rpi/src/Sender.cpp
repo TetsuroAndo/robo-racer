@@ -261,8 +261,9 @@ void Sender::handleFrame(const mc::proto::Frame &frame) {
 			} else if (msg.rfind("drive:", 0) == 0 && telemetry_) {
 				int log_drop = 0;
 				int uart_drop = 0;
-				if (parse_kv_int(msg, "log_drop", log_drop) ||
-					parse_kv_int(msg, "uart_drop", uart_drop)) {
+				const bool has_log = parse_kv_int(msg, "log_drop", log_drop);
+				const bool has_uart = parse_kv_int(msg, "uart_drop", uart_drop);
+				if (has_log || has_uart) {
 					telemetry_->updateDrops(
 						log_drop >= 0 ? (uint32_t)log_drop : 0u,
 						uart_drop >= 0 ? (uint32_t)uart_drop : 0u);
