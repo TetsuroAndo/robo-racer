@@ -227,6 +227,8 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 
 	const bool blocked = !(z > 0.0f);
 	float target_angle_f = blocked ? 0.0f : (angle_sum / z);
+	// Safety: ensure target stays within steering limits even transiently.
+	target_angle_f = std::max(-max_steer, std::min(max_steer, target_angle_f));
 
 	const float max_delta = cfg::FTG_STEER_SLEW_DEG_PER_S * dt_s;
 	float applied_angle_f = target_angle_f;

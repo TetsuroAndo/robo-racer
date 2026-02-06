@@ -6,17 +6,19 @@
 
 namespace mc::core {
 
-namespace {
-static volatile sig_atomic_t *s_stop_flag = nullptr;
-static void (*s_extra_cb)(int) = nullptr;
+// NOTE:
+// This header may be included by multiple translation units.
+// Use C++17 inline variables/functions to ensure a single instance
+// program-wide.
+inline volatile sig_atomic_t *s_stop_flag = nullptr;
+inline void (*s_extra_cb)(int) = nullptr;
 
-static void signal_handler(int sig) {
+inline void signal_handler(int sig) {
 	if (s_stop_flag)
 		*s_stop_flag = 1;
 	if (s_extra_cb)
 		s_extra_cb(sig);
 }
-} // namespace
 
 /** Set SIGINT/SIGTERM to set *stop_flag to 1. Optional extra_cb(sig) called
  * after. */
