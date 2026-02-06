@@ -148,24 +148,15 @@ static constexpr int IMU_BRAKE_CMD_DELTA_MM_S    = 200;
 
 static constexpr bool ABS_ENABLE                = true;
 static constexpr bool ABS_ENABLE_IN_MANUAL      = false;
-// 簡素化したキャリブは1.5秒で完了するため true 推奨
 static constexpr bool ABS_REQUIRE_CALIB         = true;
-static constexpr uint32_t ABS_PERIOD_MS          = 20;
-static constexpr uint8_t ABS_DUTY_MIN            = 20;
-static constexpr uint8_t ABS_DUTY_MAX            = 80;
-static constexpr float ABS_DUTY_KP               = 0.02f;
-static constexpr float ABS_DUTY_KI               = 0.01f;
-static constexpr float ABS_A_TARGET_SCALE        = 1.0f;
-static constexpr uint16_t ABS_BRAKE_HOLD_MS      = 200;
-static constexpr int ABS_REVERSE_MM_S           = 1200;
 static constexpr int ABS_SPEED_MARGIN_MM_S      = 150;
 static constexpr int ENGINE_RATE_DOWN_BRAKE      = 4000;
-static constexpr uint16_t ABS_REVERSE_DISABLE_MARGIN_MM = 150;
-// この距離以下では逆転しない（惰行のみ、後退しすぎ防止）
-static constexpr uint16_t ABS_REVERSE_DISABLE_NEAR_MM   = 200;
-// 徐行・停止目標かつ既に十分減速中ならABSをスキップ（逆転不要）
-static constexpr int ABS_SKIP_V_CMD_MM_S       = 600;
-static constexpr int ABS_SKIP_DECEL_MM_S2       = 1500;
+// TSD20がこの距離以下を検出したときのみABS発動（壁なし誤発動防止）
+static constexpr uint16_t ABS_TSD_TRIGGER_MM    = 320;
+// v_cmdがこれ以上なら発動しない（減速したい状況のみ）
+static constexpr int ABS_V_CMD_MAX_MM_S         = 200;
+// v_estがこれ未満は無視（ノイズ・手動移動の誤検出防止）
+static constexpr int ABS_V_EST_MIN_MM_S         = 300;
 
 //------------------------------------------------------------------------------
 // 速度制御（speed_mm_s -> PWM）

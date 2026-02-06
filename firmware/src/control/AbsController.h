@@ -32,11 +32,4 @@ public:
 	int16_t apply(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
 				 bool allow_abs, const ImuEstimate &imu, bool imu_valid,
 				 const Tsd20State &tsd, AbsDiag *diag, bool *active_out);
-
-private:
-	bool _active = false;
-	uint32_t _cycle_ms = 0;
-	float _duty = 0.0f;
-	float _i = 0.0f;
-	uint32_t _hold_until_ms = 0;
 };
