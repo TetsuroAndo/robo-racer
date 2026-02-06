@@ -1,5 +1,7 @@
 # DecelController 実装ステータス
 
+**注意**: 本モジュールは **削除予定**。`docs/planning/brake_dual_objective_plan.md` の単純化リファクタで BrakeController に統合される。
+
 ## 概要
 
 速度目標が下がった際に能動制動（負PWM）を出し、停止距離を物理的に詰めるための DecelController を追加した。
@@ -52,4 +54,5 @@
 ## 関連改修（2026-02-07）
 
 DecelController の負 PWM は **ブレーキ duty に変換**され、通常経路では後退しない形に変更済み。
-詳細は `docs/planning/brake_dual_objective_plan.md` を参照。
+
+**2026-02-07 更新**: 単純化リファクタにより DecelController は **削除**され、BrakeController に統合される予定。詳細は `docs/planning/brake_dual_objective_plan.md` を参照。

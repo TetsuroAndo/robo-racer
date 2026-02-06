@@ -1,95 +1,292 @@
 # 後退禁止・確実停止の両立 改修計画書
 
 **作成日**: 2026-02-07  
-**ステータス**: 実装完了（ビルド要確認）
+**更新日**: 2026-02-07  
+**ステータス**: 計画（単純化リファクタ）
 
 ---
 
 ## 1. 概要
 
-「**後退させない**」と「**十分に止める**」を両立するため、制御系を以下の方針で改修する。
+「**前進のみ（後退させない）**」と「**強い減速（壁に突っ込まない）**」を両立しつつ、**ファイルごと削って全体を単純化**する。
 
-### 1.1 現状の主因（衝突の構造バグ）
+### 1.1 目標アーキテクチャ
+
+| モジュール | 役割 |
+|------------|------|
+| **SpeedController** | 前進 PWM のみ |
+| **BrakeController** | 1個だけ（短い逆転パルス＋最終的にアクティブブレーキ） |
+| **Tsd20Limiter** | 速度 cap ＋ stop_requested / stop_level だけ |
+
+Speed / Decel / ABS / Brake が並列していた構造をやめ、**SpeedController → BrakeController の1段**に潰す。
+
+### 1.2 現状の主因（衝突の構造バグ）
 
 | 問題 | 説明 |
 |------|------|
-| brake_mode が ABS 由来のみ | `SafetySupervisor` は `stop_requested` を出しているが、`brake_mode` は ABS 由来だけで決まり、TSD20 の STOP/MARGIN がブレーキ要求に接続されていない |
-| 距離が近いほど弱ブレーキ | `BrakeController` の `ratio = d/stop_dist` により、壁が近いほど `pwm_max_allowed` が小さくなり、止まるべき瞬間にブレーキが消える |
-| 惰行で突っ込む | `Drive::tick` はブレーキ中に `Engine::outputBrake(duty)` を呼べるが、`brake_mode` が false のためブレーキ分岐に入らず、PWM=0 惰行になる |
-| Decel が負PWMを混ぜる | `applyTargets_()` で `decel_out.pwm_cmd` をそのまま `setTargetPwm()` に混ぜており、減速＝負PWM＝連続後退の温床 |
+| 距離が近いほど弱ブレーキ | `BrakeController` の `ratio = d_mm/stop_dist` で duty 上限が縮む実装。近づいた瞬間に弱ブレーキ→衝突の原因 |
+| 肥大化した並列制御 | Speed / Decel / ABS / Brake が同時に口を出す状態 |
+| Decel が負 PWM を混ぜる | 減速＝負PWM＝連続後退の温床 |
 | STALE でブレーキ解除 | Tsd20Limiter は STALE で `stop_requested=true` を出すが、BrakeController は STALE で return（ブレーキ無し）してしまう |
 
-### 1.2 方針（最小で両立する形）
+---
 
-- **通常経路は「前進 PWM のみ」**（負 PWM を混ぜない）
-- **減速は「ブレーキ duty」に変換して `outputBrake()` に寄せる**
-- **TSD stop / margin / stale は必ずブレーキ有効**（距離で弱めない）
-- それでも止まらない場合のみ、**短い逆転パルス（200ms 予算）**を非常時オプションで追加（連続後退しない）
+## 2. 削除対象（git rm）
+
+### 削除するファイル
+
+- `firmware/src/control/AbsController.h`
+- `firmware/src/control/AbsController.cpp`
+- `firmware/src/control/DecelController.h`
+- `firmware/src/control/DecelController.cpp`
+
+ABS と Decel を消して、**ブレーキは BrakeController 1個**に統合する。
 
 ---
 
-## 2. 改修タスク一覧
+## 3. 新しい「段階的逆転ブレーキ」の考え方
 
-| ID | タスク | ステータス | 備考 |
-|----|--------|------------|------|
-| B1 | SafetySupervisor: brake_mode に stop_requested を OR | 完了 | 最小修正・最優先 |
-| B2 | BrakeController: 距離 ratio 削除・STALE 対応・stop_level ラッチ | 完了 | 近いほど弱い→近いほど強い |
-| B3 | main.cpp: Decel 負 PWM → ブレーキ duty 変換 | 完了 | 通常経路で後退しない |
-| B4 | main.cpp: 推進 PWM は前進のみ（負を禁止） | 完了 | pwm_cmd = max(0, ...) |
-| B5 | main.cpp: 逆転パルス（非常用オプション） | 完了 | 総予算 200ms・ON/OFF で刻む |
-| B6 | Drive.cpp: クールダウンで逆転パルスは通す | 完了 | 前進だけ抑制 |
-| B7 | Config.h: 逆転パルス用パラメータ追加 | 完了 | BRAKE_REV_PULSE_* |
+停止が必要（`stop_requested`）になったら BrakeController が以下を繰り返す：
 
----
+1. **逆転パルス**：`-255` を **200ms だけ**出す（連続逆転は禁止）
+2. **惰行**：`0` を **数十 ms**（例：60ms）出す
+3. **再評価**：IMU の `v_est` がまだ大きいなら、もう1回だけパルス（最大 N 回で打ち止め）
+4. 速度が落ちたら **アクティブブレーキ（短絡制動）**で止めきる（後退リスク 0）
 
-## 3. 詳細設計
+### 安全策
 
-### 3.1 推進と制動の分離
-
-| チャネル | 内容 | 出力先 |
-|----------|------|--------|
-| 推進コマンド | 前進のみ `pwm_drive = max(0, …)` | `Engine::setTarget(pwm)` |
-| 制動コマンド | `Engine::outputBrake(duty)`（短絡制動） | 逆転ではなくアクティブブレーキ |
-| 逆転パルス | 非常時のみ・短パルス・連続しない | 総予算 200ms |
-
-### 3.2 BrakeController の新ロジック
-
-- **距離 ratio を削除**：`ratio = d/stop_dist` による「近いほど弱い」を廃止
-- **stop_level 別の duty 上限**：
-  - STOP: `BRAKE_PWM_MAX`
-  - MARGIN: `BRAKE_PWM_MAX / 2`
-  - STALE: `BRAKE_PWM_MAX`（安全側に倒す＝止める）
-- **v_est による早期解除を廃止**：IMU 不調時でも「止めたい」ならブレーキを出す
-- **stop_level ラッチ**：HOLD 中は `stop_requested` が落ちても直前の level を保持
-
-### 3.3 逆転パルス（オプション）
-
-- **起動条件**（全て満たした時のみ）：
-  - `brake_active`
-  - `stop_level == STOP` または `STALE`
-  - `imu_calib`
-  - `v_est > BRAKE_REV_PULSE_V_START_MM_S`
-- **実行**：ON 25ms / OFF 25ms で刻む、総予算 200ms
-- **連続逆転はしない**：on/off で必ず状態を戻し、IMU 推定を再評価
-
-### 3.4 テスト観点
-
-1. `StopLevel::STOP` / `MARGIN` / `STALE` それぞれで `applied_brake_duty > 0` になること
-2. IMU 無効（`g_imu_valid=false`）でも STOP/MARGIN/STALE でブレーキが出ること
-3. DecelController が active のときに `setTargetPwm()` が負にならないこと
-4. 逆転パルス有効時：`BRAKE_COOLDOWN_MS` 中でも負 PWM が潰されないこと
+| 条件 | 動作 |
+|------|------|
+| `v_est` が小さい（例：350mm/s 未満） | **逆転パルス禁止**（後退しない） |
+| `stop_level == STALE` | **逆転せず最大ブレーキ**（フェイルセーフ） |
 
 ---
 
-## 4. シンプル化の完成形（将来）
+## 4. 具体的な差分（最小構成）
 
-- **推進**：SpeedController は最小の FF（線形 or テーブル）＋弱い P だけ
-- **制動**：BrakeController 1 個に集約（STOP/MARGIN・距離・速度で duty を決める）
-- **ABS/Decel**：残すなら「制動 duty の上限/下限を調整する係」に格下げ（推進 PWM に負符号で混ぜない）
+### 4.1 Config.h
+
+ABS/DECEL パラメータを削除し、逆転パルス用だけ追加：
+
+```diff
+- static constexpr bool ABS_ENABLE                = true;
+- static constexpr bool ABS_ENABLE_IN_MANUAL      = false;
+- static constexpr bool ABS_REQUIRE_CALIB         = true;
+- static constexpr int ABS_SPEED_MARGIN_MM_S      = 150;
+- static constexpr uint16_t ABS_TSD_TRIGGER_MM    = 320;
+- static constexpr int ABS_V_CMD_MAX_MM_S         = 200;
+- static constexpr int ABS_V_EST_MIN_MM_S         = 300;
+-
+- static constexpr float DECEL_TAU_S             = 0.25f;
+- static constexpr int   DECEL_V_ERR_DEADBAND_MM_S = 120;
+- static constexpr int   DECEL_STOP_EPS_MM_S     = 120;
+- static constexpr int   DECEL_PWM_MAX_BRAKE     = 200;
+- static constexpr float DECEL_KP                = 0.010f;
+- static constexpr float DECEL_KI                = 0.002f;
+- static constexpr int   DECEL_A_MIN_MM_S2       = 1500;
+- static constexpr int   DECEL_A_CAP_FLOOR_MM_S2 = 3000;
+- static constexpr int   DECEL_A_CAP_MAX_MM_S2   = 12000;
+-
+  static constexpr int BRAKE_V_EPS_MM_S = 150;
+  static constexpr int BRAKE_PWM_MAX = 80;
+  static constexpr int BRAKE_PWM_MIN = 20;
+  static constexpr uint32_t BRAKE_HOLD_MS = 120;
+  static constexpr uint32_t BRAKE_RAMP_MS = 150;
+  static constexpr uint32_t BRAKE_COOLDOWN_MS = 100;
++
++ // 逆転パルスブレーキ（連続逆転は禁止）
++ static constexpr int      BRAKE_REV_PWM = 255;          // 逆転PWM（符号はコード側で負にする）
++ static constexpr uint32_t BRAKE_REV_PULSE_MS = 200;     // 逆転する時間
++ static constexpr uint32_t BRAKE_REV_COAST_MS = 60;      // パルス間の惰行
++ static constexpr uint8_t  BRAKE_REV_MAX_PULSES = 4;     // 最大パルス回数
++ static constexpr int      BRAKE_REV_MIN_V_MM_S = 900;   // これ以上速いときだけ逆転を許可
++ static constexpr int      BRAKE_REV_EXIT_V_MM_S = 350;  // これ未満になったら逆転禁止
+```
+
+### 4.2 SafetySupervisor
+
+Tsd20Limiter だけにする（ABS を完全撤去）：
+
+**SafetySupervisor.h**
+
+```diff
+- #include "AbsController.h"
+  #include "StopLevel.h"
+  #include "Tsd20Limiter.h"
+  ...
+  struct SafetyDiag {
+    Tsd20Diag tsd{};
+-   AbsDiag abs{};
+  };
+  ...
+  struct SafetyResult {
+    Targets targets{};
+-   bool brake_mode = false;
+    bool stop_requested = false;
+    StopLevel stop_level = StopLevel::NONE;
+  };
+  class SafetySupervisor {
+  ...
+  private:
+    Tsd20Limiter _tsd;
+-   AbsController _abs;
+  };
+```
+
+**SafetySupervisor.cpp**
+
+```diff
+  SafetyResult SafetySupervisor::apply(...){
+    ...
+    out.targets.speed_mm_s =
+      _tsd.limit(..., &d->tsd);
+    out.stop_requested = diag ? diag->tsd.stop_requested : false;
+    out.stop_level     = diag ? diag->tsd.stop_level     : StopLevel::NONE;
+-   const bool imu_ok_for_abs = ...
+-   bool abs_active = false;
+-   out.targets.speed_mm_s = _abs.apply(..., &d->abs, &abs_active);
+-   out.brake_mode = abs_active;
+    return out;
+  }
+```
+
+### 4.3 BrakeController
+
+逆転パルス＋最終短絡制動へ統合（Decel 不要）。出力を「ブレーキ duty」だけでなく「PWM 上書き（逆転/惰行）」も出せるようにする。
+
+**BrakeController.h**
+
+```diff
+  struct BrakeControllerOutput {
+-   uint8_t brake_duty = 0;
+-   bool active = false;
++   // PWMを上書きする場合（逆転パルス / 惰行0固定）
++   int16_t pwm_cmd = 0;
++   bool pwm_override = false;
++
++   // アクティブブレーキ（短絡制動）
++   uint8_t brake_duty = 0;
++   bool brake_active = false;
++
++   // engine rate_down をブレーキ用にするか
++   bool brake_mode = false;
+  };
+  class BrakeController {
+  public:
+-   BrakeControllerOutput update(bool stop_requested, StopLevel stop_level,
+-                                uint16_t d_mm, float v_est_mm_s, uint32_t now_ms);
++   BrakeControllerOutput update(bool stop_requested, StopLevel stop_level,
++                                uint16_t d_mm, float v_est_mm_s,
++                                float a_brake_cap_mm_s2,
++                                uint32_t now_ms);
+  private:
++   enum class Phase : uint8_t { IDLE=0, REV=1, COAST=2 };
++   Phase _phase = Phase::IDLE;
++   uint32_t _phase_until_ms = 0;
++   uint8_t _pulse_count = 0;
+    uint32_t _stop_since_ms = 0;
+    uint32_t _last_stop_ms = 0;
+    float _brake_ramp = 0.0f;
++   void reset_();
+  };
+```
+
+**BrakeController.cpp**（主要ロジック）
+
+- `reset_()` で状態をクリア
+- `stop_level == STALE` は逆転せず最大短絡制動
+- 低速域（`v_est <= BRAKE_REV_EXIT_V_MM_S`）は逆転禁止
+- Phase: REV → COAST → IDLE のサイクルで逆転パルス
+- **「近いほど強く」**：`close = 1.0f - (d_mm/stop_dist)` で duty を決める（現状の逆を修正）
+
+### 4.4 main.cpp
+
+Decel/ABS 配線を撤去して BrakeController だけにする：
+
+```diff
+- #include "control/DecelController.h"
+  ...
+  static SafetySupervisor safety;
+  static SpeedController speed_ctl;
+- static DecelController decel_ctl;
+  static BrakeController brake_ctl;
+  ...
+- static bool g_abs_active = false;
+- static int16_t g_decel_diag_pwm = 0;
+- ...（decel系diag一式）...
++ static bool g_brake_mode = false;
+  ...
+  static void applyTargets_(uint32_t now_ms, float dt_s) {
+-   const bool abs_allowed = !g_state.killed && (cfg::ABS_ENABLE && ...);
+    ...
+    const SafetyResult safe = safety.apply(...);
+-   g_abs_active = safe.brake_mode;
+    ...
+    const SpeedControlOutput out = speed_ctl.update(...);
+-   const DecelControlOutput decel_out = decel_ctl.update(...);
+-   const BrakeControllerOutput brake_out = brake_ctl.update(...);
++   const BrakeControllerOutput brake_out = brake_ctl.update(
++       safe.stop_requested, safe.stop_level, g_tsd_state.mm, v_est,
++       imu_state.a_brake_cap_mm_s2, now_ms);
++
++   g_brake_mode = brake_out.brake_mode || brake_out.brake_active || brake_out.pwm_override;
++
+-   int16_t pwm_cmd = out.pwm_cmd;
+-   if (decel_out.active)
+-     pwm_cmd = (pwm_cmd < decel_out.pwm_cmd) ? pwm_cmd : decel_out.pwm_cmd;
+-   drive.setBrakeMode(g_abs_active || brake_out.active || decel_out.active);
++   int16_t pwm_cmd = out.pwm_cmd;
++   if (brake_out.pwm_override) pwm_cmd = brake_out.pwm_cmd;
++   drive.setBrakeMode(g_brake_mode);
+    drive.setTargetMmS(safe.targets.speed_mm_s, now_ms);
+    drive.setTargetPwm(pwm_cmd, now_ms);
+-   drive.setTargetBrake(brake_out.brake_duty, brake_out.active, now_ms);
++   drive.setTargetBrake(brake_out.brake_duty, brake_out.brake_active, now_ms);
+    ...
+  }
+  ...
+  static void sendImuStatus_(uint32_t now_ms) {
+    ...
+-   if (g_abs_active) flags |= 1u << 2;
++   if (g_brake_mode) flags |= 1u << 2;
+  }
+```
 
 ---
 
-## 5. 参照
+## 5. 簡素化で得られるポイント
 
-- `docs/planning/decel_controller_status.md`：DecelController の現状
+| ポイント | 効果 |
+|----------|------|
+| 制御の分岐が 1 段 | SpeedController → BrakeController のみ（「Speed/Decel/ABS/Brake が同時に口を出す」状態を根絶） |
+| 逆転は 200ms パルス以外に存在しない | 「逆転し続けて後退」問題が構造的に起きない |
+| 低速域は逆転禁止 | 停止間際の「行ったり来たり」も消える |
+| 距離が近いほどブレーキが強くなる | 「間に合わず正面衝突」の確率が下がる |
+
+---
+
+## 6. 実行手順
+
+```sh
+git rm firmware/src/control/AbsController.h firmware/src/control/AbsController.cpp
+git rm firmware/src/control/DecelController.h firmware/src/control/DecelController.cpp
+
+# 上記 diff どおりに以下を編集
+# - Config.h
+# - SafetySupervisor.h / SafetySupervisor.cpp
+# - BrakeController.h / BrakeController.cpp
+# - main.cpp
+```
+
+---
+
+## 7. 将来の拡張（オプション）
+
+**逆転パルスの「効き」を IMU の decel 実測で自動調整**（パルス回数/長さを増減）も、追加ロジックは数十行で済む。DecelController の復活は不要。
+
+---
+
+## 8. 参照
+
+- `docs/planning/decel_controller_status.md`：DecelController の現状（削除予定）
 - `docs/planning/abs_backward_investigation.md`：後退問題の調査
