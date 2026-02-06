@@ -13,6 +13,8 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 	*d = Tsd20Diag{};
 	d->reason = TSD_DISABLED;
 	d->clamped = false;
+	// age_ms はここで一度だけ初期化し、以降の分岐では変更しない。
+	d->age_ms = (tsd.age_ms != 0xFFFFu) ? (float)tsd.age_ms : -1.0f;
 	if (!cfg::TSD20_ENABLE)
 		return speed_mm_s;
 
@@ -40,8 +42,7 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 
 	if (tsd.age_ms != 0xFFFFu && tsd.age_ms > cfg::TSD20_MAX_AGE_MS) {
 		d->reason = TSD_AGE_STALE;
-		d->age_ms = (float)tsd.age_ms;
-		d->tau = 0.0f;
+		d->tau = -1.0f;
 		d->v_max = 0.0f;
 		d->v_cap = 0.0f;
 		d->clamped = true;
@@ -97,8 +98,6 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 		const float age_s = (float)tsd.age_ms / 1000.0f;
 		tau += age_s;
 	}
-	// age_ms は「未取得=-1」、それ以外はそのまま。
-	d->age_ms = (tsd.age_ms != 0xFFFFu) ? (float)tsd.age_ms : -1.0f;
 	const float d_allow_base = (float)tsd.mm - base_margin;
 	float margin_pred = 0.0f;
 	if (cfg::TSD20_PREDICT_ENABLE && d_allow_base > 0.0f) {
