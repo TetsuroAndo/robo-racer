@@ -49,10 +49,19 @@ int16_t AbsController::apply(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
 		return speed_mm_s;
 	}
 
+	// 前進のみ対象。v_est/a_long は車体前後軸のみ（上下左右の加速度は使わない）
 	const float v_cmd = std::max(0.0f, (float)speed_mm_s);
 	const float v_est = std::max(0.0f, imu.v_est_mm_s);
 	d->v_cmd = v_cmd;
 	d->v_est = v_est;
+
+	// 前進していない（停止または後退）ならABS無効
+	if (imu.v_est_mm_s <= 0.0f) {
+		d->reason = imu.v_est_mm_s < 0.0f ? ABS_REVERSE : ABS_INACTIVE;
+		reset(now_ms);
+		return (imu.v_est_mm_s < 0.0f) ? 0 : speed_mm_s;
+	}
+
 	const float margin = (float)cfg::ABS_SPEED_MARGIN_MM_S;
 	const bool want_brake = (v_est > (v_cmd + margin));
 
