@@ -385,7 +385,12 @@ void TelemetryEmitter::emitJson_(const TelemetrySample &s) {
 				  << ",\"faults\":" << status.faults
 				  << ",\"speed_mm_s\":" << status.speed_mm_s
 				  << ",\"steer_cdeg\":" << status.steer_cdeg
-				  << ",\"age_ms\":" << status.age_ms << "}";
+				  << ",\"age_ms\":" << status.age_ms;
+		if (status.drops_valid) {
+			telemetry << ",\"log_drop\":" << status.log_drop
+					  << ",\"uart_drop\":" << status.uart_drop;
+		}
+		telemetry << "}";
 	} else {
 		telemetry << ",\"esp_status\":null";
 	}
@@ -778,6 +783,10 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		l5 << " auto=" << (unsigned)status.auto_active << " faults=0x"
 		   << std::hex << status.faults << std::dec << " age=" << status.age_ms
 		   << "ms";
+		if (status.drops_valid) {
+			l5 << " | drop(log=" << status.log_drop
+			   << " uart=" << status.uart_drop << ")";
+		}
 	}
 	if (motion.valid) {
 		l5 << " abs=" << (motion.abs_active ? 1 : 0);
@@ -795,7 +804,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	const std::string sp_angle =
 		sparkline(spark_best_, -90.0f, 90.0f, cfg::TELEMETRY_SPARK_LEN);
 	const std::string sp_speed =
-		sparkline(spark_speed_, 0.0f, (float)cfg::FTG_SPEED_MAX,
+		sparkline(spark_speed_, 0.0f, (float)cfg::FTG_SPEED_MAX_MM_S,
 				  cfg::TELEMETRY_SPARK_LEN);
 	const std::string sp_dist =
 		sparkline(spark_dist_, 0.0f, (float)cfg::TELEMETRY_DIST_BAR_MAX_MM,
@@ -828,9 +837,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		   << (metrics.mem_total_kb / 1024.0f) << "MB";
 	}
 
-	const float cmd_mm_s = (float)s.limited_speed *
-						   (float)mc_config::SPEED_MAX_MM_S /
-						   (float)mc_config::SPEED_INPUT_LIMIT;
+	const float cmd_mm_s = (float)s.limited_speed;
 	const float cmd_kmh = cmd_mm_s * 0.0036f;
 	std::ostringstream l10;
 	l10 << std::fixed << std::setprecision(1);
@@ -857,23 +864,26 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	}
 	std::ostringstream l11;
 	l11 << std::fixed << std::setprecision(1);
-	l11 << "imu ";
+	l11 << "IMU ";
 	if (motion.valid) {
-		l11 << "v=" << motion.v_est_mm_s << "mm/s a=" << motion.a_long_mm_s2
+		l11 << "v_est=" << motion.v_est_mm_s
+			<< "mm/s a_long=" << motion.a_long_mm_s2
 			<< "mm/s2 yaw=" << motion.yaw_dps
 			<< "dps cal=" << (motion.calibrated ? 1 : 0)
 			<< " age=" << motion.age_ms << "ms";
 	} else {
 		l11 << "NA";
 	}
-	l11 << " | tsd20 ";
+
+	std::ostringstream l12;
+	l12 << "TSD20 ";
 	if (tsd20.valid) {
-		l11 << "mm=" << tsd20.mm << " v=" << (tsd20.sensor_valid ? 1 : 0)
+		l12 << "mm=" << tsd20.mm << " v=" << (tsd20.sensor_valid ? 1 : 0)
 			<< " r=" << (tsd20.ready ? 1 : 0);
 		if (tsd20_age_valid)
-			l11 << " age=" << tsd20_age_ms << "ms";
+			l12 << " age=" << tsd20_age_ms << "ms";
 	} else {
-		l11 << "NA";
+		l12 << "NA";
 	}
 
 	auto sev_name = [](Severity s) {
@@ -1086,7 +1096,8 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 				  << line(l8.str()) << "\n"
 				  << line(l9.str()) << "\n"
 				  << line(l10.str()) << "\n"
-				  << line(l11.str()) << "\n";
+				  << line(l11.str()) << "\n"
+				  << line(l12.str()) << "\n";
 		for (const auto &ev : event_lines) {
 			std::cout << line(ev) << "\n";
 		}
@@ -1116,6 +1127,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		std::cout << "\x1b[2K\r" << line(l9.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l10.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l11.str()) << "\n";
+		std::cout << "\x1b[2K\r" << line(l12.str()) << "\n";
 		for (const auto &ev : event_lines) {
 			std::cout << "\x1b[2K\r" << line(ev) << "\n";
 		}

@@ -102,6 +102,7 @@ public:
 					  int16_t speed_mm_s,
 					  int16_t steer_cdeg,
 					  uint16_t age_ms);
+	void updateDrops(uint32_t log_drop, uint32_t uart_drop);
 	void updateMotion(const MotionState &motion);
 	void updateTsd20(const Tsd20State &tsd);
 	void shutdownUi();
@@ -148,7 +149,11 @@ private:
 		int16_t speed_mm_s = 0;
 		int16_t steer_cdeg = 0;
 		uint16_t age_ms = 0;
+		uint32_t log_drop = 0;
+		uint32_t uart_drop = 0;
 		uint64_t ts_us = 0;
+		bool drops_valid = false;
+		uint64_t drops_ts_us = 0;
 	};
 	struct MotionCache {
 		bool valid = false;
@@ -219,6 +224,15 @@ inline void TelemetryEmitter::updateStatus(uint8_t auto_active,
 	status_.steer_cdeg = steer_cdeg;
 	status_.age_ms = age_ms;
 	status_.ts_us = mc::core::Time::us();
+}
+
+inline void TelemetryEmitter::updateDrops(uint32_t log_drop,
+										  uint32_t uart_drop) {
+	std::lock_guard< std::mutex > lk(metrics_mtx_);
+	status_.log_drop = log_drop;
+	status_.uart_drop = uart_drop;
+	status_.drops_valid = true;
+	status_.drops_ts_us = mc::core::Time::us();
 }
 
 inline void TelemetryEmitter::updateMotion(const MotionState &motion) {

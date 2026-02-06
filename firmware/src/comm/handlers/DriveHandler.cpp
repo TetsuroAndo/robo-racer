@@ -48,7 +48,7 @@ public:
 		auto *st = ctx.st;
 		st->last_seq = f.seq();
 		st->last_cmd_ms = now_ms;
-		st->cmd_expire_ms = now_ms + ttl_ms;
+		st->cmd_expire_ms = 0;
 
 		st->target_steer_cdeg = steer_cdeg;
 		st->target_speed_mm_s = speed_mm_s;

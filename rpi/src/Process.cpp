@@ -285,8 +285,8 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			}
 		}
 
-		const float v_min = (float)cfg::FTG_SPEED_MIN;
-		const float v_max = (float)cfg::FTG_SPEED_MAX;
+		const float v_min = (float)cfg::FTG_SPEED_MIN_MM_S;
+		const float v_max = (float)cfg::FTG_SPEED_MAX_MM_S;
 		const float r_m = std::max(0.0f, d_speed_mm / 1000.0f);
 		float v_dist = v_min;
 		if (r_m <= cfg::FTG_SPEED_R_SAFE_M) {
@@ -312,7 +312,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			(int)std::lround(std::max(v_min, std::min(v_max, v_final)));
 		out_speed = speed;
 		if (warn) {
-			out_speed = std::min(out_speed, cfg::FTG_SPEED_WARN_CAP);
+			out_speed = std::min(out_speed, cfg::FTG_SPEED_WARN_CAP_MM_S);
 		}
 	}
 	if (!blocked && out_speed > 0 && has_brake_cap && corridor_min_mm > 0) {
@@ -322,18 +322,13 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		float v_cap_mm_s = (a_brake_use > 0.0f)
 							   ? std::sqrt(2.0f * a_brake_use * (float)d_cap_mm)
 							   : 0.0f;
-		int v_cap_input = 0;
-		if (mc_config::SPEED_MAX_MM_S > 0) {
-			v_cap_input = (int)std::lround(v_cap_mm_s *
-										   (float)mc_config::SPEED_INPUT_LIMIT /
-										   (float)mc_config::SPEED_MAX_MM_S);
-		}
-		if (v_cap_input < 0)
-			v_cap_input = 0;
-		if (v_cap_input > mc_config::SPEED_INPUT_LIMIT)
-			v_cap_input = mc_config::SPEED_INPUT_LIMIT;
-		if (v_cap_input < out_speed)
-			out_speed = v_cap_input;
+		if (v_cap_mm_s < 0.0f)
+			v_cap_mm_s = 0.0f;
+		if (v_cap_mm_s > (float)mc_config::SPEED_MAX_MM_S)
+			v_cap_mm_s = (float)mc_config::SPEED_MAX_MM_S;
+		const int v_cap = (int)std::lround(v_cap_mm_s);
+		if (v_cap < out_speed)
+			out_speed = v_cap;
 	}
 
 	if (telemetry_) {

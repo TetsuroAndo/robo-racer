@@ -12,13 +12,18 @@
 #include <sys/socket.h>
 
 namespace {
-int16_t clamp_speed_input(int speed) {
-	if (speed > mc_config::SPEED_INPUT_LIMIT) {
-		speed = mc_config::SPEED_INPUT_LIMIT;
-	} else if (speed < -mc_config::SPEED_INPUT_LIMIT) {
-		speed = -mc_config::SPEED_INPUT_LIMIT;
+int16_t clamp_speed_mm_s(int speed_mm_s) {
+	if (speed_mm_s > mc_config::SPEED_MAX_MM_S) {
+		speed_mm_s = mc_config::SPEED_MAX_MM_S;
+	} else if (speed_mm_s < -mc_config::SPEED_MAX_MM_S) {
+		speed_mm_s = -mc_config::SPEED_MAX_MM_S;
 	}
-	return static_cast< int16_t >(speed);
+	// int16 wire range safety
+	if (speed_mm_s > std::numeric_limits< int16_t >::max())
+		speed_mm_s = std::numeric_limits< int16_t >::max();
+	else if (speed_mm_s < std::numeric_limits< int16_t >::min())
+		speed_mm_s = std::numeric_limits< int16_t >::min();
+	return static_cast< int16_t >(speed_mm_s);
 }
 
 int16_t clamp_cdeg(int32_t cdeg) {
@@ -77,7 +82,7 @@ bool Sender::tsd20(Tsd20State &out) const {
 	return true;
 }
 
-void Sender::send(int speed, int angle) {
+void Sender::send(int speed_mm_s, int angle) {
 	poll();
 	sendHeartbeatIfDue();
 	if (!auto_enabled_) {
@@ -100,11 +105,7 @@ void Sender::send(int speed, int angle) {
 	payload.steer_cdeg =
 		clamp_cdeg(static_cast< int32_t >(angle) *
 				   static_cast< int32_t >(mc_config::STEER_CDEG_SCALE));
-	const int16_t speed_input = clamp_speed_input(speed);
-	const int32_t speed_mm_s = (int32_t)speed_input *
-							   mc_config::SPEED_MAX_MM_S /
-							   mc_config::SPEED_INPUT_LIMIT;
-	payload.speed_mm_s = static_cast< int16_t >(speed_mm_s);
+	payload.speed_mm_s = clamp_speed_mm_s(speed_mm_s);
 	payload.ttl_ms_le = mc::proto::to_le16(cfg::AUTO_TTL_MS);
 	payload.dist_mm_le = mc::proto::to_le16(0);
 
@@ -206,6 +207,26 @@ void Sender::handleFrame(const mc::proto::Frame &frame) {
 		mc::proto::ImuStatusPayload payload{};
 		memcpy(&payload, frame.payload, sizeof(payload));
 		handleImuStatus(payload);
+	} else if (frame.type() == (uint8_t)mc::proto::Type::TSD20_STATUS &&
+			   frame.payload_len == sizeof(mc::proto::Tsd20StatusPayload)) {
+		mc::proto::Tsd20StatusPayload payload{};
+		memcpy(&payload, frame.payload, sizeof(payload));
+
+		Tsd20State st{};
+		st.valid = true;
+		st.ts_us = mc::core::Time::us();
+		const uint8_t flags = payload.flags;
+		st.ready = (flags & (1u << 0)) != 0;
+		st.sensor_valid = (flags & (1u << 1)) != 0;
+		st.mm = (int32_t)mc::proto::from_le16(payload.mm_le);
+		st.period_ms = (int32_t)mc::proto::from_le16(payload.period_ms_le);
+		st.fails = (int32_t)payload.fail_count;
+
+		tsd20_ = st;
+		has_tsd20_ = true;
+		if (telemetry_) {
+			telemetry_->updateTsd20(st);
+		}
 	} else if (frame.type() == (uint8_t)mc::proto::Type::LOG &&
 			   frame.payload_len >= 1) {
 		const uint8_t *p = frame.payload;
@@ -236,6 +257,16 @@ void Sender::handleFrame(const mc::proto::Frame &frame) {
 				has_tsd20_ = true;
 				if (telemetry_) {
 					telemetry_->updateTsd20(st);
+				}
+			} else if (msg.rfind("drive:", 0) == 0 && telemetry_) {
+				int log_drop = 0;
+				int uart_drop = 0;
+				const bool has_log = parse_kv_int(msg, "log_drop", log_drop);
+				const bool has_uart = parse_kv_int(msg, "uart_drop", uart_drop);
+				if (has_log || has_uart) {
+					telemetry_->updateDrops(
+						log_drop >= 0 ? (uint32_t)log_drop : 0u,
+						uart_drop >= 0 ? (uint32_t)uart_drop : 0u);
 				}
 			}
 		}
@@ -290,7 +321,7 @@ void Sender::handleImuStatus(const mc::proto::ImuStatusPayload &payload) {
 	st.a_brake_cap_mm_s2 =
 		(uint16_t)mc::proto::from_le16(payload.a_brake_cap_mm_s2_le);
 	const int16_t yaw_x10 =
-		(int16_t)mc::proto::from_le16((uint16_t)payload.yaw_dps_x10_le);
+		(int16_t)mc::proto::from_le16((uint16_t)payload.yaw_rate_dps_x10_le);
 	st.yaw_dps = (float)yaw_x10 * 0.1f;
 	st.age_ms = mc::proto::from_le16(payload.age_ms_le);
 	st.ts_us = mc::core::Time::us();

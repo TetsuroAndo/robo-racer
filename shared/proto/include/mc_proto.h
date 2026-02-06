@@ -27,6 +27,7 @@ enum class Type : uint8_t {
 	STATUS = 0x11,
 	HILS_STATE = 0x12,
 	IMU_STATUS = 0x13,
+	TSD20_STATUS = 0x14,
 
 	// IPC topics (RPi internal)
 	IPC_LIDAR_SCAN = 0x20,
@@ -103,12 +104,24 @@ struct ImuStatusPayload {
 	int16_t a_long_mm_s2_le;
 	int16_t v_est_mm_s_le;
 	uint16_t a_brake_cap_mm_s2_le;
-	int16_t yaw_dps_x10_le;
+	int16_t yaw_rate_dps_x10_le;
 	uint16_t age_ms_le;
 	uint8_t flags;
 	uint8_t reserved;
 };
 static_assert(sizeof(ImuStatusPayload) == 12, "ImuStatusPayload must be 12 bytes");
+
+// TSD20_STATUS (ESP32 -> RPi)
+// As defined in firmware/src/main.cpp::Tsd20StatusPayload
+struct Tsd20StatusPayload {
+	uint16_t mm_le;
+	uint16_t period_ms_le;
+	uint16_t age_ms_le;
+	uint8_t fail_count;
+	uint8_t flags;
+};
+static_assert(sizeof(Tsd20StatusPayload) == 8,
+			  "Tsd20StatusPayload must be 8 bytes");
 
 // IPC_LIDAR_SCAN (RPi internal)
 // Chunked scan payload header (data follows as uint16 mm array).

@@ -156,10 +156,17 @@ void ImuEstimator::update(const ImuSample &s, uint32_t now_ms,
 		v *= scale;
 	}
 
-	const bool zupt_cond =
+	const bool zupt_kin_ok =
 		std::fabs(_st.a_long_mm_s2) < (float)cfg::IMU_ZUPT_A_LONG_MM_S2 &&
-		std::fabs(_st.gz_dps) < cfg::IMU_ZUPT_GZ_DPS &&
-		std::abs(applied_speed_mm_s) < cfg::IMU_ZUPT_SPEED_MM_S;
+		std::fabs(_st.gz_dps) < cfg::IMU_ZUPT_GZ_DPS;
+	// NOTE: applied_speed_mm_s は実測速度ではなく「適用コマンド」なので、
+	// これに依存しすぎると「実際は静止しているのに ZUPT
+	// が効かない」状況が起きる。 推定速度 v_est
+	// が十分小さい場合は、コマンドが非0でも停止扱いを許可する。
+	const bool zupt_speed_ok =
+		(std::abs(applied_speed_mm_s) < cfg::IMU_ZUPT_SPEED_MM_S) ||
+		(_st.v_est_mm_s < (float)cfg::IMU_ZUPT_V_EST_MM_S);
+	const bool zupt_cond = zupt_kin_ok && zupt_speed_ok;
 
 	if (zupt_cond) {
 		_zupt_ms += dt_ms;

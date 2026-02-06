@@ -43,6 +43,7 @@ static mc::PeriodicTimer tsdTimer(cfg::TSD20_READ_INTERVAL_MS);
 static mc::PeriodicTimer tsdInitTimer(cfg::TSD20_INIT_RETRY_MS);
 static uint16_t status_seq = 0;
 static uint16_t imu_seq = 0;
+static uint16_t tsd_seq = 0;
 
 static Tsd20State g_tsd_state{};
 static bool g_tsd_fail_logged = false;
@@ -75,38 +76,29 @@ static inline void wr16(uint8_t *p, uint16_t v) {
 	p[1] = (uint8_t)(v >> 8);
 }
 
-#pragma pack(push, 1)
-struct StatusPayload {
-	uint8_t seq_applied;
-	uint8_t auto_active;
-	uint16_t faults_le;
-	int16_t speed_mm_s_le;
-	int16_t steer_cdeg_le;
-	uint16_t age_ms_le;
-};
-
-struct ImuStatusPayload {
-	int16_t a_long_mm_s2_le;
-	int16_t v_est_mm_s_le;
-	uint16_t a_brake_cap_mm_s2_le;
-	int16_t yaw_dps_x10_le;
-	uint16_t age_ms_le;
-	uint8_t flags;
-	uint8_t reserved;
-};
-#pragma pack(pop)
+// shared/proto のワイヤ構造体をそのまま利用し、サイズ一致をここでも検証する。
+static_assert(sizeof(mc::proto::StatusPayload) == 10,
+			  "StatusPayload size (wire) must be 10 bytes");
+static_assert(sizeof(mc::proto::ImuStatusPayload) == 12,
+			  "ImuStatusPayload size (wire) must be 12 bytes");
+static_assert(sizeof(mc::proto::Tsd20StatusPayload) == 8,
+			  "Tsd20StatusPayload size (wire) must be 8 bytes");
 
 static void sendStatus_(uint32_t now_ms) {
 	const bool auto_active = (g_state.mode == mc::Mode::AUTO);
 	const bool hb_timeout = auto_active && (g_state.last_hb_ms != 0) &&
 							((uint32_t)(now_ms - g_state.last_hb_ms) >
 							 (uint32_t)cfg::HEARTBEAT_TIMEOUT_MS);
+	const bool have_cmd =
+		(g_state.last_cmd_ms != 0) && (g_state.target_ttl_ms != 0);
+	const uint32_t age_since_cmd_ms =
+		have_cmd ? (uint32_t)(now_ms - g_state.last_cmd_ms) : 0;
 	const bool ttl_expired =
-		auto_active && (g_state.cmd_expire_ms != 0) &&
-		((uint32_t)now_ms > (uint32_t)g_state.cmd_expire_ms);
+		auto_active && have_cmd &&
+		(age_since_cmd_ms > (uint32_t)g_state.target_ttl_ms);
 	const bool auto_inactive =
-		(!auto_active) && (g_state.cmd_expire_ms != 0) &&
-		((uint32_t)now_ms <= (uint32_t)g_state.cmd_expire_ms);
+		(!auto_active) && have_cmd &&
+		(age_since_cmd_ms <= (uint32_t)g_state.target_ttl_ms);
 
 	uint16_t faults = 0;
 	if (g_state.killed)
@@ -126,8 +118,8 @@ static void sendStatus_(uint32_t now_ms) {
 		age_ms = (uint16_t)age;
 	}
 
-	StatusPayload p{};
-	p.seq_applied = (uint8_t)(g_state.last_seq & 0xFFu);
+	mc::proto::StatusPayload p{};
+	p.seq_applied = (uint8_t)(g_state.last_applied_seq & 0xFFu);
 	p.auto_active = auto_active ? 1u : 0u;
 	wr16((uint8_t *)&p.faults_le, faults);
 	wr16((uint8_t *)&p.speed_mm_s_le,
@@ -156,7 +148,7 @@ static void sendImuStatus_(uint32_t now_ms) {
 														0u, 0xFFFFu)
 					  : 0xFFFFu;
 
-	ImuStatusPayload p{};
+	mc::proto::ImuStatusPayload p{};
 	const int a_long =
 		mc::clamp< int >((int)lroundf(st.a_long_mm_s2), -32768, 32767);
 	const int v_est =
@@ -167,7 +159,7 @@ static void sendImuStatus_(uint32_t now_ms) {
 		 (uint16_t)mc::clamp< int >((int)lroundf(st.a_brake_cap_mm_s2), 0,
 									0xFFFF));
 	const int yaw_x10 = (int)lroundf(st.gz_dps * 10.0f);
-	wr16((uint8_t *)&p.yaw_dps_x10_le,
+	wr16((uint8_t *)&p.yaw_rate_dps_x10_le,
 		 (uint16_t)(int16_t)mc::clamp< int >(yaw_x10, -32768, 32767));
 	wr16((uint8_t *)&p.age_ms_le, age_ms);
 	uint8_t flags = 0;
@@ -184,6 +176,40 @@ static void sendImuStatus_(uint32_t now_ms) {
 	size_t out_len = 0;
 	mc::proto::PacketWriter::build(out, sizeof(out), out_len,
 								   mc::proto::Type::IMU_STATUS, 0, imu_seq++,
+								   (const uint8_t *)&p, (uint16_t)sizeof(p));
+	if (g_ctx.tx) {
+		g_ctx.tx->enqueue(out, (uint16_t)out_len);
+	}
+}
+
+static void sendTsd20Status_(uint32_t now_ms) {
+	if (!cfg::TSD20_ENABLE)
+		return;
+
+	uint16_t age_ms = 0xFFFFu;
+	if (g_tsd_last_read_ms != 0) {
+		uint32_t age = now_ms - g_tsd_last_read_ms;
+		if (age > 0xFFFFu)
+			age = 0xFFFFu;
+		age_ms = (uint16_t)age;
+	}
+
+	mc::proto::Tsd20StatusPayload p{};
+	wr16((uint8_t *)&p.mm_le, g_tsd_state.mm);
+	wr16((uint8_t *)&p.period_ms_le, g_tsd_period_ms);
+	wr16((uint8_t *)&p.age_ms_le, age_ms);
+	p.fail_count = g_tsd_state.fail_count;
+	uint8_t flags = 0;
+	if (g_tsd_state.ready)
+		flags |= 1u << 0;
+	if (g_tsd_state.valid)
+		flags |= 1u << 1;
+	p.flags = flags;
+
+	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
+	size_t out_len = 0;
+	mc::proto::PacketWriter::build(out, sizeof(out), out_len,
+								   mc::proto::Type::TSD20_STATUS, 0, tsd_seq++,
 								   (const uint8_t *)&p, (uint16_t)sizeof(p));
 	if (g_ctx.tx) {
 		g_ctx.tx->enqueue(out, (uint16_t)out_len);
@@ -274,6 +300,12 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	const bool speed_active = !g_state.killed;
 
 	const AutoCommandResult desired = cmd_source.update(now_ms, g_state);
+	if (desired.fresh) {
+		// AUTOモードかつHB/TTLが有効で、今回のループで DRIVE
+		// コマンドを実際に適用した。 このときのみ「適用された seq」として
+		// last_applied_seq を更新する。
+		g_state.last_applied_seq = g_state.last_seq;
+	}
 	const SafetyResult safe =
 		safety.apply(now_ms, dt_s, desired.targets, g_state.mode, g_tsd_state,
 					 imu_state, g_imu_valid, abs_allowed, &g_safety_diag);
@@ -390,6 +422,7 @@ void loop() {
 	if (statusTimer.due(now_ms)) {
 		sendStatus_(now_ms);
 		sendImuStatus_(now_ms);
+		sendTsd20Status_(now_ms);
 	}
 
 	if (logTimer.due(now_ms)) {
@@ -397,10 +430,11 @@ void loop() {
 			(g_state.mode == mc::Mode::MANUAL) ? "MANUAL" : "AUTO";
 		alog.logf(mc::LogLevel::INFO, "drive",
 				  "mode=%s killed=%d applied(speed=%dmm/s steer=%dcdeg "
-				  "ttl=%ums dist=%umm) drop=%u",
+				  "ttl=%ums dist=%umm) log_drop=%u uart_drop=%u",
 				  mode, (int)g_state.killed, (int)drive.appliedSpeedMmS(),
 				  (int)drive.appliedSteerCdeg(), (unsigned)drive.ttlMs(),
-				  (unsigned)drive.distMm(), (unsigned)alog.dropped());
+				  (unsigned)drive.distMm(), (unsigned)alog.dropped(),
+				  (unsigned)uart_tx.dropped());
 		if (cfg::TSD20_ENABLE) {
 			alog.logf(mc::LogLevel::INFO, "tsd20",
 					  "ready=%d valid=%d mm=%u fails=%u period=%ums "

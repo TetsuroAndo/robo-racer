@@ -18,7 +18,10 @@ struct ControlState {
 #endif
 	volatile bool killed = false;
 
+	// last_seq: 最後に受理した DRIVE の seq（モードに関係なく進む）
 	volatile uint16_t last_seq = 0;
+	// last_applied_seq: 実際に制御に適用された DRIVE の seq（AUTOかつ有効TTL/HB時だけ更新）
+	volatile uint16_t last_applied_seq = 0;
 	volatile uint32_t last_cmd_ms = 0;
 	volatile uint32_t cmd_expire_ms = 0;
 	volatile uint32_t last_hb_ms = 0;

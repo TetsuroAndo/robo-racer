@@ -8,10 +8,11 @@
 #include <vector>
 
 struct ProcResult {
-	int speed;
+	// RPi planner output speed is physical mm/s (not 0..255 input).
+	int speed_mm_s;
 	int angle;
 
-	ProcResult(int speed, int angle) : speed(speed), angle(angle) {}
+	ProcResult(int speed_mm_s, int angle) : speed_mm_s(speed_mm_s), angle(angle) {}
 };
 
 class Process {

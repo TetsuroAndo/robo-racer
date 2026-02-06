@@ -38,7 +38,7 @@ static constexpr uint8_t ACK_MAX_RETRY           = 3;
 static constexpr uint32_t STATUS_DEAD_MS         = 300;
 
 // 送信値のスケール/上限（ESP32側の単位に合わせる）
-// speed: RPi内部は旧PWM相当(-255..255) → ESP32はmm/s
+// speed: RPi内部も mm/s（物理）で統一し、ESP32へそのまま送る
 // steer: degree → centi-degree
 
 // 受信バッファ
@@ -92,8 +92,11 @@ static constexpr int FTG_NEAR_OBSTACLE_MM      = 100;  // 10cm以内でブロッ
 static constexpr int FTG_WARN_OBSTACLE_MM      = 200;  // テレメトリ警告用
 
 // 速度（距離・ステア連動）
-static constexpr int FTG_SPEED_MIN             = 14;
-static constexpr int FTG_SPEED_MAX             = 255;
+// NOTE: RPi側plannerの速度は mm/s（物理）で統一する。
+// 旧: 段階値 speed_input (14..255) を使っていたが、Sender側の換算を廃止する。
+static constexpr int FTG_SPEED_MIN_MM_S        =
+	(mc_config::SPEED_MAX_MM_S * 14) / mc_config::SPEED_INPUT_LIMIT;
+static constexpr int FTG_SPEED_MAX_MM_S        = mc_config::SPEED_MAX_MM_S;
 // v_dist の指数飽和パラメータ（m）
 static constexpr float FTG_SPEED_R_SAFE_M      = 0.30f; // 30cm以下は最小速度
 static constexpr float FTG_SPEED_R_MAX_M       = 1.00f; // 100cm以上は最大速度
@@ -108,7 +111,8 @@ static constexpr float FTG_COST_W_TURN           = 0.05f;
 static constexpr float FTG_COST_W_DELTA          = 0.3f;
 static constexpr float FTG_COST_BETA             = 4.0f;  // soft-argminの鋭さ
 static constexpr float FTG_STEER_SLEW_DEG_PER_S  = 120.0f;
-static constexpr int FTG_SPEED_WARN_CAP          = 39;    // warn時の速度上限(入力スケール)
+static constexpr int FTG_SPEED_WARN_CAP_MM_S     =
+	(mc_config::SPEED_MAX_MM_S * 39) / mc_config::SPEED_INPUT_LIMIT;
 static constexpr uint16_t FTG_IMU_MAX_AGE_MS     = 200;
 static constexpr float FTG_YAW_BIAS_DEG          = 0.0f;
 static constexpr float FTG_YAW_BIAS_REF_DPS      = 90.0f;

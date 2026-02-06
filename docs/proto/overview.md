@@ -15,7 +15,7 @@
 * **AUTO**：RPiからUARTで送られる自律制御コマンド。
 * **KILL**：緊急停止。**どのモードでも最優先**。解除は現状プロトコルでは行わない（再起動/ローカル操作）。
 
-> 本番ビルドでは `MC_ENABLE_MANUAL=0` を想定し、MANUAL/Bluepad32 を無効化する。MODE_SET は **AUTOのみ受理** する。
+> 本番ビルドでは `MC_ENABLE_MANUAL=0` を想定し、MANUAL/Bluepad32 を無効化する。MODE_SET は **AUTO(1) と AUTO_OFF(0) を受理**する（手動操作は提供しない）。
 
 ---
 
@@ -91,14 +91,27 @@
 * Pi/ESP32がともにlittle-endianでも、**仕様として rd16_le()/wr16_le() を通す**こと。
 * “たまたま動く”実装を防ぐため、サンプルコードも変換込みで示す。
 
-**flags（共通）定義**
+**flags（共通）定義（v1固定）**
 
 * bit0: `ACK_REQ`（1=ACKが欲しい）
-* bit1: `RESERVED`
-* bit2: `RESERVED`
-* bit3..7: 予約
+* bit1: `RESERVED`（常に0。v1では意味なし）
+* bit2: `RESERVED`（常に0。v1では意味なし）
+* bit3..7: 予約（常に0）
+
+**flags の運用ルール（v1）**
+
+* **送信側**:
+  * `DRIVE` / `MODE_SET` / `KILL` / `PING` は、v1 では **bit0=ACK_REQのみ使用可能**。
+  * それ以外のbitは **必ず0** にする（将来v2で意味が付く可能性がある）。
+* **受信側**:
+  * v1 では **bit0 以外は無視**する（0/1 どちらでも挙動を変えない）。
+  * `ACK_REQ` が立っているフレームに対してのみ、必要なら `ACK` を返す。
+  * ただし `PING` は **`ACK_REQ` に関係なく常に ACK を返す**（後方互換のため）。
 
 > MANUAL/AUTO は flags では表しません。理由：あなたの確定方針が「mode=AUTO時は手動無視」なので、入力の“出所”は ESP32 内部のソース（BT）と UART（RPi）で明確に分離でき、flags に混ぜると事故るためです。
+>
+> 補足: ここで説明している `flags` は、すべて**フレームヘッダの共通 `flags` フィールド**を指します。  
+> `ImuStatusPayload.flags` や `Tsd20StatusPayload.flags` など、payload 内の `flags` フィールドは type 固有の意味を持つ別のフラグであり、混同しないようにしてください。
 
 ---
 
@@ -112,6 +125,8 @@
 | 0x04 | `PING`           | RPi→ESP   | なし      | 生存確認（ACK応答）                |
 | 0x10 | `LOG`            | ESP→RPi   | 可変      | ログ（level + text）               |
 | 0x11 | `STATUS`         | ESP→RPi   | 固定      | 状態通知（任意）                  |
+| 0x13 | `IMU_STATUS`     | ESP→RPi   | 固定      | IMU推定状態                        |
+| 0x14 | `TSD20_STATUS`   | ESP→RPi   | 固定      | TSD20状態（固定長）                |
 | 0x80 | `ACK`            | ESP→RPi   | なし      | PING応答                          |
 
 ---
@@ -136,7 +151,7 @@
 * `len == 1` のみ許可。`len != 1` は無視（or NACK）。
 * `reason` は v2 で追加する（例：`MODE_SET_EX` など）。
 
-> 本番ビルド（`MC_ENABLE_MANUAL=0`）では `mode=1`（AUTO）のみ受理し、`mode=0`（MANUAL）はエラー扱い。
+> 本番ビルド（`MC_ENABLE_MANUAL=0`）では `mode=1`（AUTO）に加えて `mode=0` を **AUTO_OFF（=MANUAL相当だが手動操作は提供しない）**として受理する。
 
 ---
 
