@@ -378,8 +378,8 @@ def main() -> int:
         else:
             direction = args.direction
         angles = build_angles(max_cdeg, args.step_cdeg, direction)
-    if not angles:
-        raise SystemExit("no angles to test")
+        if not angles:
+            raise SystemExit("no angles to test")
 
     print("Steer limit test started.")
     print("Manual stop: press 's' (safe stop), 'k' (kill). Quit: press 'q'.")

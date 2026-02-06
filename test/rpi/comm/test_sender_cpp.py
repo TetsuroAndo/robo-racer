@@ -42,6 +42,8 @@ def test_sender_cpp(tmp_path: Path):
         "-I",
         str(repo_root / "shared/proto/include"),
         "-I",
+        str(repo_root / "shared/config/include"),
+        "-I",
         str(repo_root / "rpi/lib/mc_ipc/include"),
         "-I",
         str(repo_root / "rpi/lib/mc_core/include"),

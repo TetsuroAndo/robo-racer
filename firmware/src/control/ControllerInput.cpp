@@ -1,5 +1,7 @@
 #include "ControllerInput.h"
 
+#if MC_ENABLE_MANUAL
+
 ControllerPtr ControllerInput::myCtl_ = nullptr;
 
 void ControllerInput::onConnected(ControllerPtr ctl) {
@@ -69,3 +71,4 @@ void ControllerInput::readPad_() {
 
 	st_.dpad = myCtl_->dpad();
 }
+#endif

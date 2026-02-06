@@ -74,7 +74,7 @@ bool Tsd20::readDistanceMm(uint16_t &mm) {
 bool Tsd20::setLaser(bool on) { return i2cWrite8(REG_LASER_CTRL, on ? 1 : 0); }
 
 bool Tsd20::setFrequencyHz(HardwareSerial &uart, uint16_t hz) {
-	if (hz == 0)
+	if (hz == 0 || hz > 10000)
 		return false;
 	const uint16_t div = (uint16_t)((10000u / hz) - 1u);
 	bool ok = sendFrequencySetting(uart, div);
@@ -215,7 +215,7 @@ bool Tsd20::sendChangeIICAtBaud(HardwareSerial &uart, uint32_t baud, int rx_pin,
 }
 
 bool Tsd20::sendFreqAndChangeIIC(HardwareSerial &uart, uint16_t hz) {
-	if (hz == 0)
+	if (hz == 0 || hz > 10000)
 		return false;
 	const uint16_t div = (uint16_t)((10000u / hz) - 1u);
 	bool freq_ok = false;

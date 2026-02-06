@@ -14,7 +14,7 @@
 ## 入力
 - `IPC_LIDAR_SUMMARY`（10-50Hz）
 - `IPC_LIDAR_SCAN`（5-20Hz、補助）
-- `IPC_VEHICLE_STATUS`（10-50Hz）
+- `IPC_VEHICLE_STATUS`（**100Hz（10ms）**）
 - `IPC_IMU_SAMPLE`（50-200Hz、任意）
 
 **優先順位**
@@ -24,13 +24,13 @@
 ---
 
 ## 出力
-- `IPC_DRIVE_CMD`（20-100Hz）
+- `IPC_DRIVE_CMD`（**100Hz（10ms）**）
   - `steer_cdeg`, `speed_mm_s`, `ttl_ms`
   - `source=SOURCE_FTG`
 
 **TTL/周期**
-- 送信周期: 20-50ms（=20-50Hz）
-- `ttl_ms`: 送信周期の2-3倍（例: 50ms周期なら ttl=100-150ms）
+- 送信周期: **10ms（100Hz）**
+- `ttl_ms`: 送信周期の2-3倍（例: 10ms周期なら ttl=20-30ms）
 
 ---
 
@@ -69,7 +69,7 @@
 | `PROCESS_ANGLE_MAX_DEG` | 走行視野の右限 | 70.0 deg |
 | `SPEED_MM_S_MAX` | 速度上限 | 2000 mm/s |
 | `STEER_CDEG_MAX` | 舵角上限 | 2500 cdeg |
-| `AUTO_TTL_MS` | TTL既定 | 100 ms |
+| `AUTO_TTL_MS` | TTL既定 | **30 ms（100Hz前提）** |
 
 **追加パラメータ（FTG側で定義）**
 - `min_clearance_mm`（gap判定閾値）
@@ -89,7 +89,7 @@
 
 ## DoD
 - 동일入力で**決定論的**に同じ出力が出る
-- 20-50ms周期で `DRIVE_CMD` を生成できる
+- **10ms周期**で `DRIVE_CMD` を生成できる
 - TTLが常に有効（失効前に更新）
 - `LIDAR_SUMMARY` あり/なし両方で動作
 

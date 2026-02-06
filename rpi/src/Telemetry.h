@@ -1,5 +1,7 @@
 #pragma once
 
+#include "MotionState.h"
+#include "Tsd20State.h"
 #include "mc/core/Time.hpp"
 
 #include <array>
@@ -100,6 +102,8 @@ public:
 					  int16_t speed_mm_s,
 					  int16_t steer_cdeg,
 					  uint16_t age_ms);
+	void updateMotion(const MotionState &motion);
+	void updateTsd20(const Tsd20State &tsd);
 	void shutdownUi();
 
 private:
@@ -146,6 +150,26 @@ private:
 		uint16_t age_ms = 0;
 		uint64_t ts_us = 0;
 	};
+	struct MotionCache {
+		bool valid = false;
+		bool calibrated = false;
+		bool abs_active = false;
+		int16_t a_long_mm_s2 = 0;
+		int16_t v_est_mm_s = 0;
+		uint16_t a_brake_cap_mm_s2 = 0;
+		float yaw_dps = 0.0f;
+		uint16_t age_ms = 0;
+		uint64_t ts_us = 0;
+	};
+	struct Tsd20Cache {
+		bool valid = false;
+		bool ready = false;
+		bool sensor_valid = false;
+		int32_t mm = 0;
+		int32_t fails = 0;
+		int32_t period_ms = 0;
+		uint64_t ts_us = 0;
+	};
 
 	std::string last_override_;
 	bool ui_initialized_ = false;
@@ -158,6 +182,8 @@ private:
 	uint64_t metrics_last_read_us_ = 0;
 	MetricsCache metrics_;
 	StatusCache status_;
+	MotionCache motion_;
+	Tsd20Cache tsd20_;
 	std::mutex metrics_mtx_;
 
 	std::atomic< bool > running_{false};
@@ -193,4 +219,29 @@ inline void TelemetryEmitter::updateStatus(uint8_t auto_active,
 	status_.steer_cdeg = steer_cdeg;
 	status_.age_ms = age_ms;
 	status_.ts_us = mc::core::Time::us();
+}
+
+inline void TelemetryEmitter::updateMotion(const MotionState &motion) {
+	std::lock_guard< std::mutex > lk(metrics_mtx_);
+	motion_.valid = motion.valid;
+	motion_.calibrated = motion.calibrated;
+	motion_.abs_active = motion.abs_active;
+	motion_.a_long_mm_s2 = motion.a_long_mm_s2;
+	motion_.v_est_mm_s = motion.v_est_mm_s;
+	motion_.a_brake_cap_mm_s2 = motion.a_brake_cap_mm_s2;
+	motion_.yaw_dps = motion.yaw_dps;
+	motion_.age_ms = motion.age_ms;
+	motion_.ts_us = mc::core::Time::us();
+}
+
+inline void TelemetryEmitter::updateTsd20(const Tsd20State &tsd) {
+	std::lock_guard< std::mutex > lk(metrics_mtx_);
+	tsd20_.valid = tsd.valid;
+	tsd20_.ready = tsd.ready;
+	tsd20_.sensor_valid = tsd.sensor_valid;
+	tsd20_.mm = tsd.mm;
+	tsd20_.fails = tsd.fails;
+	tsd20_.period_ms = tsd.period_ms;
+	// TSD20 はセンサ生成時刻を保持し、更新時刻系 (status/motion) と区別する。
+	tsd20_.ts_us = tsd.ts_us;
 }

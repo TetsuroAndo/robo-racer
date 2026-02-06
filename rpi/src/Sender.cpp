@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <sstream>
 #include <sys/socket.h>
 #include <time.h>
@@ -21,21 +22,39 @@ uint32_t now_ms() {
 }
 
 int16_t clamp_speed_input(int speed) {
-	if (speed > cfg::SPEED_INPUT_LIMIT) {
-		speed = cfg::SPEED_INPUT_LIMIT;
-	} else if (speed < -cfg::SPEED_INPUT_LIMIT) {
-		speed = -cfg::SPEED_INPUT_LIMIT;
+	if (speed > mc_config::SPEED_INPUT_LIMIT) {
+		speed = mc_config::SPEED_INPUT_LIMIT;
+	} else if (speed < -mc_config::SPEED_INPUT_LIMIT) {
+		speed = -mc_config::SPEED_INPUT_LIMIT;
 	}
 	return static_cast< int16_t >(speed);
 }
 
 int16_t clamp_cdeg(int32_t cdeg) {
-	if (cdeg > cfg::STEER_CDEG_MAX) {
-		cdeg = cfg::STEER_CDEG_MAX;
-	} else if (cdeg < -cfg::STEER_CDEG_MAX) {
-		cdeg = -cfg::STEER_CDEG_MAX;
+	if (cdeg > mc_config::STEER_ANGLE_MAX_CDEG) {
+		cdeg = mc_config::STEER_ANGLE_MAX_CDEG;
+	} else if (cdeg < -mc_config::STEER_ANGLE_MAX_CDEG) {
+		cdeg = -mc_config::STEER_ANGLE_MAX_CDEG;
 	}
 	return static_cast< int16_t >(cdeg);
+}
+
+bool parse_kv_int(const std::string &s, const char *key, int &out) {
+	const std::string needle = std::string(key) + "=";
+	const size_t pos = s.find(needle);
+	if (pos == std::string::npos)
+		return false;
+	const char *p = s.c_str() + pos + needle.size();
+	char *end = nullptr;
+	const long v = std::strtol(p, &end, 10);
+	if (end == p)
+		return false;
+	if (v < std::numeric_limits< int >::min() ||
+		v > std::numeric_limits< int >::max()) {
+		return false;
+	}
+	out = static_cast< int >(v);
+	return true;
 }
 
 } // namespace
@@ -59,19 +78,41 @@ bool Sender::motion(MotionState &out) const {
 	return true;
 }
 
+bool Sender::tsd20(Tsd20State &out) const {
+	if (!has_tsd20_) {
+		return false;
+	}
+	out = tsd20_;
+	return true;
+}
+
 void Sender::send(int speed, int angle) {
 	poll();
 	sendHeartbeatIfDue();
 	if (!auto_enabled_) {
 		return;
 	}
+	const uint32_t send_ts = now_ms();
+	if (last_drive_send_ms_ != 0) {
+		const uint32_t gap = send_ts - last_drive_send_ms_;
+		if (gap > worst_drive_gap_ms_) {
+			worst_drive_gap_ms_ = gap;
+			std::ostringstream ss;
+			ss << "DRIVE worst gap updated: last=" << gap
+			   << "ms worst=" << worst_drive_gap_ms_ << "ms";
+			MC_LOGI("sender", ss.str());
+		}
+	}
+	last_drive_send_ms_ = send_ts;
 
 	mc::proto::DrivePayload payload{};
 	payload.steer_cdeg =
-		clamp_cdeg(static_cast< int32_t >(angle) * cfg::STEER_CDEG_SCALE);
+		clamp_cdeg(static_cast< int32_t >(angle) *
+				   static_cast< int32_t >(mc_config::STEER_CDEG_SCALE));
 	const int16_t speed_input = clamp_speed_input(speed);
-	const int32_t speed_mm_s =
-		(int32_t)speed_input * cfg::SPEED_MM_S_MAX / cfg::SPEED_INPUT_LIMIT;
+	const int32_t speed_mm_s = (int32_t)speed_input *
+							   mc_config::SPEED_MAX_MM_S /
+							   mc_config::SPEED_INPUT_LIMIT;
 	payload.speed_mm_s = static_cast< int16_t >(speed_mm_s);
 	payload.ttl_ms_le = mc::proto::to_le16(cfg::AUTO_TTL_MS);
 	payload.dist_mm_le = mc::proto::to_le16(0);
@@ -174,6 +215,39 @@ void Sender::handleFrame(const mc::proto::Frame &frame) {
 		mc::proto::ImuStatusPayload payload{};
 		memcpy(&payload, frame.payload, sizeof(payload));
 		handleImuStatus(payload);
+	} else if (frame.type() == (uint8_t)mc::proto::Type::LOG &&
+			   frame.payload_len >= 1) {
+		const uint8_t *p = frame.payload;
+		if (frame.payload_len > 1) {
+			const char *msg_ptr = reinterpret_cast< const char * >(p + 1);
+			const size_t msg_len = frame.payload_len - 1;
+			std::string msg(msg_ptr, msg_len);
+			if (msg.rfind("tsd20:", 0) == 0) {
+				Tsd20State st{};
+				st.valid = true;
+				st.ts_us = mc::core::Time::us();
+				int ready = 0;
+				int valid = 0;
+				int mm = 0;
+				int fails = 0;
+				int period = 0;
+				if (parse_kv_int(msg, "ready", ready))
+					st.ready = (ready != 0);
+				if (parse_kv_int(msg, "valid", valid))
+					st.sensor_valid = (valid != 0);
+				if (parse_kv_int(msg, "mm", mm))
+					st.mm = mm;
+				if (parse_kv_int(msg, "fails", fails))
+					st.fails = fails;
+				if (parse_kv_int(msg, "period", period))
+					st.period_ms = period;
+				tsd20_ = st;
+				has_tsd20_ = true;
+				if (telemetry_) {
+					telemetry_->updateTsd20(st);
+				}
+			}
+		}
 	} else if (frame.type() == (uint8_t)mc::proto::Type::ACK &&
 			   frame.payload_len == 0) {
 		const uint16_t seq = frame.seq();
@@ -231,6 +305,9 @@ void Sender::handleImuStatus(const mc::proto::ImuStatusPayload &payload) {
 	st.ts_us = mc::core::Time::us();
 	motion_ = st;
 	has_motion_ = true;
+	if (telemetry_) {
+		telemetry_->updateMotion(st);
+	}
 }
 
 void Sender::handleAck(uint16_t seq) {

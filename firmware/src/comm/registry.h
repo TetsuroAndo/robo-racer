@@ -1,5 +1,6 @@
 #pragma once
 #include "../../lib/common/Result.h"
+#include "../config/Config.h"
 #include <mc/proto/Proto.hpp>
 #include <stdint.h>
 
@@ -10,7 +11,11 @@ namespace mc {
 enum class Mode : uint8_t { MANUAL = 0, AUTO = 1 };
 
 struct ControlState {
+#if MC_ENABLE_MANUAL
 	volatile Mode mode = Mode::MANUAL;
+#else
+	volatile Mode mode = Mode::AUTO;
+#endif
 	volatile bool killed = false;
 
 	volatile uint16_t last_seq = 0;

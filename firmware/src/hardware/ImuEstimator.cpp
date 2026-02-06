@@ -16,7 +16,8 @@ static inline int clampAxisIndex(int idx) {
 
 static inline int32_t mapAxis(const int32_t v[3], int map, int sign) {
 	const int idx = clampAxisIndex(map);
-	return v[idx] * (int32_t)sign;
+	const int axis_sign = (sign >= 0) ? 1 : -1;
+	return v[idx] * (int32_t)axis_sign;
 }
 } // namespace
 
@@ -32,6 +33,7 @@ void ImuEstimator::reset(uint32_t now_ms) {
 	_g_est_y = 0.0f;
 	_g_est_z = 0.0f;
 	_gravity_init = false;
+	_fusion_init = false;
 	_st.a_brake_cap_mm_s2 = (float)cfg::IMU_BRAKE_INIT_MM_S2;
 }
 
@@ -61,12 +63,18 @@ void ImuEstimator::update(const ImuSample &s, uint32_t now_ms,
 		mapAxis(accel_raw, cfg::IMU_AXIS_MAP_Y, cfg::IMU_AXIS_SIGN_Y);
 	const int32_t az_raw =
 		mapAxis(accel_raw, cfg::IMU_AXIS_MAP_Z, cfg::IMU_AXIS_SIGN_Z);
+	const int32_t gx_raw =
+		mapAxis(gyro_raw, cfg::IMU_AXIS_MAP_X, cfg::IMU_AXIS_SIGN_X);
+	const int32_t gy_raw =
+		mapAxis(gyro_raw, cfg::IMU_AXIS_MAP_Y, cfg::IMU_AXIS_SIGN_Y);
 	const int32_t gz_raw =
 		mapAxis(gyro_raw, cfg::IMU_AXIS_MAP_Z, cfg::IMU_AXIS_SIGN_Z);
 
 	const float ax = (float)ax_raw * accel_scale;
 	const float ay = (float)ay_raw * accel_scale;
 	const float az = (float)az_raw * accel_scale;
+	const float gx = (float)gx_raw * gyro_scale;
+	const float gy = (float)gy_raw * gyro_scale;
 	const float gz = (float)gz_raw * gyro_scale;
 	const float a_norm = std::sqrt(ax * ax + ay * ay + az * az);
 	const bool accel_norm_ok =
@@ -82,7 +90,7 @@ void ImuEstimator::update(const ImuSample &s, uint32_t now_ms,
 	const float dt_s =
 		(dt_ms > 0) ? std::max(0.0f, std::min(0.1f, dt_ms / 1000.0f)) : 0.0f;
 
-	float a_long = ax;
+	float a_long_lpf = ax;
 	if (cfg::IMU_GRAVITY_TAU_MS > 0) {
 		if (!_gravity_init) {
 			_g_est_x = ax;
@@ -97,10 +105,44 @@ void ImuEstimator::update(const ImuSample &s, uint32_t now_ms,
 			_g_est_y += alpha * (ay - _g_est_y);
 			_g_est_z += alpha * (az - _g_est_z);
 		}
-		a_long = ax - _g_est_x;
+		a_long_lpf = ax - _g_est_x;
 	}
 
-	_st.a_long_mm_s2 = a_long;
+	float a_long_fusion = a_long_lpf;
+	if (cfg::IMU_USE_FUSION) {
+		if (!_fusion_init) {
+			FusionAhrsInitialise(&_fusion);
+			FusionAhrsSettings settings{};
+			settings.convention = FusionConventionNwu;
+			settings.gain = cfg::IMU_FUSION_GAIN;
+			settings.gyroscopeRange = gyroRangeDps_();
+			settings.accelerationRejection = cfg::IMU_FUSION_ACC_REJ_DEG;
+			settings.magneticRejection = 0.0f;
+			unsigned int recover_samples = 0;
+			if (cfg::IMU_FUSION_RECOVER_S > 0.0f &&
+				cfg::IMU_READ_INTERVAL_MS > 0) {
+				const float period_s =
+					(float)cfg::IMU_READ_INTERVAL_MS / 1000.0f;
+				recover_samples = (unsigned int)std::max(
+					1.0f, std::round(cfg::IMU_FUSION_RECOVER_S / period_s));
+			}
+			settings.recoveryTriggerPeriod = recover_samples;
+			FusionAhrsSetSettings(&_fusion, &settings);
+			_fusion_init = true;
+		}
+		if (dt_s > 0.0f) {
+			const FusionVector gyro = {gx, gy, gz};
+			const FusionVector accel = {ax / kG_mm_s2, ay / kG_mm_s2,
+										az / kG_mm_s2};
+			FusionAhrsUpdateNoMagnetometer(&_fusion, gyro, accel, dt_s);
+			const FusionVector lin = FusionAhrsGetLinearAcceleration(&_fusion);
+			a_long_fusion = lin.axis.x * kG_mm_s2;
+		}
+	}
+
+	_st.a_long_lpf_mm_s2 = a_long_lpf;
+	_st.a_long_fusion_mm_s2 = a_long_fusion;
+	_st.a_long_mm_s2 = cfg::IMU_USE_FUSION ? a_long_fusion : a_long_lpf;
 	_st.gz_dps = gz;
 
 	if (dt_ms == 0) {
@@ -161,38 +203,9 @@ void ImuEstimator::update(const ImuSample &s, uint32_t now_ms,
 void ImuEstimator::updateBias_(const ImuSample &s, uint32_t now_ms) {
 	if (_st.calibrated)
 		return;
-	const float accel_scale = accelScaleMmS2PerLsb_();
-	const float gyro_scale = gyroScaleDpsPerLsb_();
-	const float ax = (float)s.ax * accel_scale;
-	const float ay = (float)s.ay * accel_scale;
-	const float az = (float)s.az * accel_scale;
-	const float gx = (float)s.gx * gyro_scale;
-	const float gy = (float)s.gy * gyro_scale;
-	const float gz = (float)s.gz * gyro_scale;
-	const float a_norm = std::sqrt(ax * ax + ay * ay + az * az);
-	const float g_dev = std::fabs(a_norm - kG_mm_s2);
-	const float g_abs =
-		std::max(std::fabs(gx), std::max(std::fabs(gy), std::fabs(gz)));
-	if (g_abs > cfg::IMU_CALIB_GYRO_DPS ||
-		g_dev > cfg::IMU_CALIB_ACCEL_DEV_MM_S2) {
-		return;
-	}
 
 	if (_sum_n == 0)
 		_calib_start_ms = now_ms;
-
-	if ((now_ms - _calib_start_ms) > cfg::IMU_CALIBRATION_MS &&
-		_sum_n >= cfg::IMU_CALIB_MIN_SAMPLES) {
-		_bias_ax = (int32_t)(_sum_ax / (int64_t)_sum_n);
-		_bias_ay = (int32_t)(_sum_ay / (int64_t)_sum_n);
-		_bias_az = (int32_t)(_sum_az / (int64_t)_sum_n);
-		_bias_gx = (int32_t)(_sum_gx / (int64_t)_sum_n);
-		_bias_gy = (int32_t)(_sum_gy / (int64_t)_sum_n);
-		_bias_gz = (int32_t)(_sum_gz / (int64_t)_sum_n);
-		_st.calibrated = true;
-		_gravity_init = false;
-		return;
-	}
 
 	_sum_ax += s.ax;
 	_sum_ay += s.ay;
@@ -201,6 +214,17 @@ void ImuEstimator::updateBias_(const ImuSample &s, uint32_t now_ms) {
 	_sum_gy += s.gy;
 	_sum_gz += s.gz;
 	_sum_n += 1;
+
+	if ((now_ms - _calib_start_ms) >= cfg::IMU_CALIBRATION_MS) {
+		_bias_ax = (int32_t)(_sum_ax / (int64_t)_sum_n);
+		_bias_ay = (int32_t)(_sum_ay / (int64_t)_sum_n);
+		_bias_az = (int32_t)(_sum_az / (int64_t)_sum_n);
+		_bias_gx = (int32_t)(_sum_gx / (int64_t)_sum_n);
+		_bias_gy = (int32_t)(_sum_gy / (int64_t)_sum_n);
+		_bias_gz = (int32_t)(_sum_gz / (int64_t)_sum_n);
+		_st.calibrated = true;
+		_gravity_init = false;
+	}
 }
 
 float ImuEstimator::accelScaleMmS2PerLsb_() const {
@@ -239,4 +263,18 @@ float ImuEstimator::gyroScaleDpsPerLsb_() const {
 		break;
 	}
 	return 1.0f / lsb_per_dps;
+}
+
+float ImuEstimator::gyroRangeDps_() const {
+	switch (cfg::IMU_GYRO_FS_SEL & 0x03) {
+	case 0:
+		return 250.0f;
+	case 1:
+		return 500.0f;
+	case 2:
+		return 1000.0f;
+	case 3:
+	default:
+		return 2000.0f;
+	}
 }

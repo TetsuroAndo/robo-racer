@@ -18,5 +18,6 @@ static constexpr const char* DEFAULT_LOG = "./logs/seriald.log";
 static constexpr int POLL_TIMEOUT_MS = 10;
 static constexpr int TX_IDLE_US = 1000;
 static constexpr int MAX_CLIENT_FDS = 64;
+static constexpr int IMU_LOG_INTERVAL_MS = 1000;
 
 } // namespace seriald_cfg

@@ -166,7 +166,7 @@
 
 ### 7.1 通常制御
 1) MODE_SET(AUTO)
-2) DRIVE 50-100Hz
+2) DRIVE **100Hz（10ms）**
 3) STATUSでspeed/steer/age確認
 
 ### 7.2 フェイルセーフ

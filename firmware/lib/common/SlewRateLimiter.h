@@ -8,13 +8,14 @@ namespace mc {
 class SlewRateLimiter {
  public:
   SlewRateLimiter(float rate_up, float rate_down, float initial = 0.0f)
-  : _rateUp(rate_up), _rateDown(rate_down), _y(initial) {}
+  : _rateUp(rate_up >= 0.0f ? rate_up : 0.0f),
+    _rateDown(rate_down >= 0.0f ? rate_down : 0.0f), _y(initial) {}
 
   void reset(float v) { _y = v; }
   float value() const { return _y; }
   void setRates(float rate_up, float rate_down) {
-    _rateUp = rate_up;
-    _rateDown = rate_down;
+    _rateUp = (rate_up >= 0.0f) ? rate_up : 0.0f;
+    _rateDown = (rate_down >= 0.0f) ? rate_down : 0.0f;
   }
 
   float update(float target, float dt_s) {

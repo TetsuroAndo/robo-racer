@@ -2,19 +2,20 @@
 #include "../config/Config.h"
 
 namespace {
-static constexpr uint8_t REG_SMPLRT_DIV = 0x19;
-static constexpr uint8_t REG_CONFIG = 0x1A;
-static constexpr uint8_t REG_GYRO_CONFIG = 0x1B;
-static constexpr uint8_t REG_ACCEL_CONFIG = 0x1C;
-static constexpr uint8_t REG_ACCEL_CONFIG2 = 0x1D;
-static constexpr uint8_t REG_ACCEL_XOUT_H = 0x3B;
-static constexpr uint8_t REG_PWR_MGMT_1 = 0x6B;
-static constexpr uint8_t REG_WHO_AM_I = 0x75;
+constexpr uint8_t REG_SMPLRT_DIV = 0x19;
+constexpr uint8_t REG_CONFIG = 0x1A;
+constexpr uint8_t REG_GYRO_CONFIG = 0x1B;
+constexpr uint8_t REG_ACCEL_CONFIG = 0x1C;
+constexpr uint8_t REG_ACCEL_CONFIG2 = 0x1D;
+constexpr uint8_t REG_ACCEL_XOUT_H = 0x3B;
+constexpr uint8_t REG_PWR_MGMT_1 = 0x6B;
+constexpr uint8_t REG_WHO_AM_I = 0x75;
 } // namespace
 
 bool Mpu6500::begin(TwoWire &wire) {
 	_wire = &wire;
 	_wire->begin(cfg::IMU_SDA_PIN, cfg::IMU_SCL_PIN, cfg::IMU_I2C_HZ);
+	_wire->setTimeOut(cfg::IMU_I2C_TIMEOUT_MS);
 	delay(10);
 
 	uint8_t id = 0;
@@ -34,13 +35,28 @@ bool Mpu6500::begin(TwoWire &wire) {
 	}
 	delay(10);
 
-	(void)writeReg(REG_SMPLRT_DIV, 0x00);
-	(void)writeReg(REG_CONFIG, (uint8_t)(cfg::IMU_DLPF_CFG & 0x07));
-	(void)writeReg(REG_GYRO_CONFIG,
-				   (uint8_t)((cfg::IMU_GYRO_FS_SEL & 0x03) << 3));
-	(void)writeReg(REG_ACCEL_CONFIG,
-				   (uint8_t)((cfg::IMU_ACCEL_FS_SEL & 0x03) << 3));
-	(void)writeReg(REG_ACCEL_CONFIG2, (uint8_t)(cfg::IMU_DLPF_CFG & 0x07));
+	if (!writeReg(REG_SMPLRT_DIV, 0x00)) {
+		_ready = false;
+		return false;
+	}
+	if (!writeReg(REG_CONFIG, (uint8_t)(cfg::IMU_DLPF_CFG & 0x07))) {
+		_ready = false;
+		return false;
+	}
+	if (!writeReg(REG_GYRO_CONFIG,
+				  (uint8_t)((cfg::IMU_GYRO_FS_SEL & 0x03) << 3))) {
+		_ready = false;
+		return false;
+	}
+	if (!writeReg(REG_ACCEL_CONFIG,
+				  (uint8_t)((cfg::IMU_ACCEL_FS_SEL & 0x03) << 3))) {
+		_ready = false;
+		return false;
+	}
+	if (!writeReg(REG_ACCEL_CONFIG2, (uint8_t)(cfg::IMU_DLPF_CFG & 0x07))) {
+		_ready = false;
+		return false;
+	}
 
 	_ready = true;
 	return true;

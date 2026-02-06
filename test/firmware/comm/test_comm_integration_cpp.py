@@ -40,6 +40,8 @@ def test_firmware_comm_integration_cpp(tmp_path: Path):
         str(repo_root / "firmware/src"),
         "-I",
         str(repo_root / "shared/proto/include"),
+        "-I",
+        str(repo_root / "shared/config/include"),
         str(test_cpp),
         *[str(path) for path in proto_src],
         "-o",

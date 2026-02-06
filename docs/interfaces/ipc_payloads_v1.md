@@ -74,7 +74,7 @@ RPi内IPCで運搬する payload の**フィールド/単位/意味**を凍結�
 | --- | --- | --- | --- |
 | `ts_ms` | u32 | ms | 生成時刻（monotonic） |
 | `steer_cdeg` | i16 | 0.01° | 目標舵角 |
-| `speed_mm_s` | i16 | mm/s | 目標速度 |
+| `speed_mm_s` | i16 | mm/s | 目標速度（前進正。物理一致は前進のみ。範囲は `mc_config::SPEED_MAX_MM_S` にクランプ） |
 | `ttl_ms` | u16 | ms | 有効期限（ESP32受理時刻基準） |
 | `source` | u8 | enum | 生成元（下表） |
 | `flags` | u8 | bit | 予約（v1は0固定） |

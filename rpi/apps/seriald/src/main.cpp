@@ -19,6 +19,7 @@
 #include "../config/Config.h"
 #include <mc/core/Log.hpp>
 #include <mc/core/Path.hpp>
+#include <mc/core/Time.hpp>
 #include <mc/ipc/UdsSeqPacket.hpp>
 #include <mc/proto/Proto.hpp>
 #include <mc/serial/Uart.hpp>
@@ -42,6 +43,11 @@ static mc::core::LogLevel mapEspLv(uint8_t lv) {
 	if (lv > 5)
 		lv = 5;
 	return (mc::core::LogLevel)lv;
+}
+
+static bool starts_with(const std::string &s, const char *prefix) {
+	const size_t n = ::strlen(prefix);
+	return s.size() >= n && s.compare(0, n, prefix) == 0;
 }
 
 struct TxMsg {
@@ -296,6 +302,7 @@ int main(int argc, char **argv) {
 	}
 
 	mc::proto::PacketReader pr;
+	uint32_t last_imu_log_ms = 0;
 
 	std::atomic< bool > run{true};
 	std::thread txThread([&] {
@@ -411,7 +418,9 @@ int main(int argc, char **argv) {
 							if (msg.empty()) {
 								msg = "ESPLOG (empty)";
 							}
-							logger.log(mapEspLv(lv), "esp32", msg);
+							const std::string tag =
+								starts_with(msg, "tsd20") ? "tsd20" : "esp32";
+							logger.log(mapEspLv(lv), tag, msg);
 						} else if (f.type() ==
 									   (uint8_t)mc::proto::Type::STATUS &&
 								   f.payload_len == sizeof(EspStatusPayload)) {
@@ -435,6 +444,42 @@ int main(int argc, char **argv) {
 										snprintf(b, sizeof(b), "%04x", x);
 										return std::string(b);
 									}(faults));
+						} else if (f.type() ==
+									   (uint8_t)mc::proto::Type::IMU_STATUS &&
+								   f.payload_len ==
+									   sizeof(mc::proto::ImuStatusPayload)) {
+							const uint8_t *p = f.payload;
+							const int16_t a_long = rd16s(p + 0);
+							const int16_t v_est = rd16s(p + 2);
+							const uint16_t a_cap = rd16u(p + 4);
+							const int16_t yaw_x10 = rd16s(p + 6);
+							const uint16_t age_ms = rd16u(p + 8);
+							const uint8_t flags = p[10];
+							const uint8_t reserved = p[11];
+							(void)reserved;
+							const bool valid = (flags & (1u << 0)) != 0;
+							const bool calibrated = (flags & (1u << 1)) != 0;
+							const bool abs_active = (flags & (1u << 2)) != 0;
+							const uint32_t now_ms = mc::core::Time::ms();
+							if (now_ms - last_imu_log_ms >=
+								seriald_cfg::IMU_LOG_INTERVAL_MS) {
+								last_imu_log_ms = now_ms;
+								logger.log(
+									mc::core::LogLevel::Info, "imu",
+									"valid=" + std::to_string(valid) +
+										" calib=" + std::to_string(calibrated) +
+										" abs=" + std::to_string(abs_active) +
+										" a_long_mm_s2=" +
+										std::to_string(a_long) +
+										" v_est_mm_s=" + std::to_string(v_est) +
+										" yaw_dps=" +
+										std::to_string(
+											static_cast< float >(yaw_x10) *
+											0.1f) +
+										" a_brake_cap_mm_s2=" +
+										std::to_string(a_cap) +
+										" age_ms=" + std::to_string(age_ms));
+							}
 						} else {
 							logger.log(
 								mc::core::LogLevel::Debug, "seriald",

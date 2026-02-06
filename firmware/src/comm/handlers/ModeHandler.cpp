@@ -17,6 +17,7 @@ public:
 			return mc::Result::Fail(mc::Errc::Invalid, "mode len");
 		}
 		uint8_t mode = f.payload[0];
+#if MC_ENABLE_MANUAL
 		if (mode == 0)
 			ctx.st->mode = mc::Mode::MANUAL;
 		else if (mode == 1)
@@ -32,6 +33,21 @@ public:
 			ctx.log->logf(mc::LogLevel::INFO, "proto", "RX MODE -> %s",
 						  (mode == 0 ? "MANUAL" : "AUTO"));
 		}
+#else
+		if (mode != 1) {
+			if (ctx.log) {
+				ctx.log->logf(mc::LogLevel::WARN, "proto",
+							  "RX MODE rejected (manual disabled) val=%u",
+							  (unsigned)mode);
+			}
+			return mc::Result::Fail(mc::Errc::Range, "mode disabled");
+		}
+		ctx.st->mode = mc::Mode::AUTO;
+		if (ctx.log) {
+			ctx.log->logf(mc::LogLevel::INFO, "proto",
+						  "RX MODE -> AUTO (manual disabled)");
+		}
+#endif
 		if (f.flags() & mc::proto::FLAG_ACK_REQ) {
 			mc::proto::send_ack(ctx.tx, f.seq());
 		}
