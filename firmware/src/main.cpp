@@ -86,6 +86,10 @@ static uint8_t g_brake_diag_phase = 0;
 static uint8_t g_brake_diag_pulse_count = 0;
 static bool g_brake_diag_pwm_override = false;
 static int16_t g_brake_diag_pwm_cmd = 0;
+static float g_brake_diag_dv = 0.0f;
+static float g_brake_diag_a_eff = 0.0f;
+static float g_brake_diag_a_tgt = 0.0f;
+static float g_brake_diag_r = 0.0f;
 
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
@@ -348,6 +352,10 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	g_brake_diag_pulse_count = brake_out.pulse_count;
 	g_brake_diag_pwm_override = brake_out.pwm_override;
 	g_brake_diag_pwm_cmd = brake_out.pwm_cmd;
+	g_brake_diag_dv = brake_out.dv_mm_s;
+	g_brake_diag_a_eff = brake_out.a_eff_mm_s2;
+	g_brake_diag_a_tgt = brake_out.a_tgt_mm_s2;
+	g_brake_diag_r = brake_out.r_eff;
 
 	// 1) 推進PWMは「前進のみ」に限定（負PWMは通常経路で禁止）
 	int16_t pwm_cmd = out.pwm_cmd;
@@ -559,6 +567,12 @@ void loop() {
 				  (unsigned)g_brake_diag_pwm, (int)drive.appliedPwm(),
 				  (unsigned)drive.appliedBrakeDuty(),
 				  (double)g_safety_diag.tsd.v_cap);
+		if (g_brake_diag_dv > 0.0f) {
+			alog.logf(mc::LogLevel::INFO, "brake_adapt",
+					  "dv=%.0f a_eff=%.0f a_tgt=%.0f r=%.2f",
+					  (double)g_brake_diag_dv, (double)g_brake_diag_a_eff,
+					  (double)g_brake_diag_a_tgt, (double)g_brake_diag_r);
+		}
 		if (cfg::TSD20_ENABLE) {
 			// tsd20 cap diagnostics, split into multiple short lines
 			// to avoid truncation while preserving all fields.

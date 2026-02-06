@@ -20,6 +20,11 @@ struct BrakeControllerOutput {
 	uint8_t pulse_count = 0;
 	uint8_t pulse_limit = 0;
 	uint16_t rev_on_ms = 0;
+	// 適応ログ（REV終了時のみ。dv>0 で適応あり）
+	float dv_mm_s = 0.0f;
+	float a_eff_mm_s2 = 0.0f;
+	float a_tgt_mm_s2 = 0.0f;
+	float r_eff = 0.0f;
 };
 
 class BrakeController {
@@ -42,4 +47,5 @@ private:
 	float _brake_ramp = 0.0f;
 	StopLevel _latched_level = StopLevel::NONE;
 	void reset_();
+	void fillDebug_(BrakeControllerOutput& out, uint8_t phase) const;
 };
