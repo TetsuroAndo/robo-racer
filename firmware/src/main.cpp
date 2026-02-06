@@ -1,5 +1,6 @@
 #include "config/Config.h"
 #include "control/ControllerInput.h"
+#include "control/SpeedController.h"
 #include "hardware/Drive.h"
 #include "hardware/ImuEstimator.h"
 #include "hardware/Mpu6500.h"
@@ -23,6 +24,7 @@ static Mpu6500 imu;
 static ImuEstimator imu_est;
 static Tsd20 tsd20;
 static ControllerInput pad;
+static SpeedController speed_ctl;
 static mc::AsyncLogger alog;
 static mc::UartTx uart_tx;
 
@@ -31,7 +33,7 @@ static HardwareSerial tsd_uart(1);
 
 static mc::proto::PacketReader reader;
 
-static mc::PeriodicTimer statusTimer(50);
+static mc::PeriodicTimer statusTimer(cfg::STATUS_INTERVAL_MS);
 static mc::PeriodicTimer logTimer(200);
 static mc::PeriodicTimer imuTimer(cfg::IMU_READ_INTERVAL_MS);
 static mc::PeriodicTimer tsdTimer(cfg::TSD20_READ_INTERVAL_MS);
@@ -97,6 +99,16 @@ static float g_abs_diag_a_target = 0.0f;
 static float g_abs_diag_a_cap = 0.0f;
 static float g_abs_diag_decel = 0.0f;
 static uint8_t g_abs_diag_reason = ABS_DIAG_DISABLED;
+
+static float g_speed_diag_v_cmd = 0.0f;
+static float g_speed_diag_v_est = 0.0f;
+static float g_speed_diag_err = 0.0f;
+static float g_speed_diag_i = 0.0f;
+static int16_t g_speed_diag_pwm_cmd = 0;
+static int16_t g_speed_diag_pwm_ff = 0;
+static bool g_speed_diag_saturated = false;
+static bool g_speed_diag_active = false;
+static bool g_speed_diag_calib = false;
 
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
@@ -567,6 +579,26 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 		!g_state.killed &&
 		((cfg::ABS_ENABLE_IN_MANUAL && g_state.mode == mc::Mode::MANUAL) ||
 		 (g_state.mode == mc::Mode::AUTO));
+	const ImuEstimate &imu_state = imu_est.state();
+	const bool imu_calib = g_imu_valid && imu_state.calibrated;
+	const float v_est = g_imu_valid ? imu_state.v_est_mm_s : 0.0f;
+	const bool speed_active = !g_state.killed;
+
+	const auto applySpeedControl = [&](int16_t speed_mm_s) -> int16_t {
+		const SpeedControlOutput out =
+			speed_ctl.update(speed_mm_s, v_est, dt_s, imu_calib, speed_active);
+		g_speed_diag_v_cmd = (float)speed_mm_s;
+		g_speed_diag_v_est = v_est;
+		g_speed_diag_err = out.error_mm_s;
+		g_speed_diag_i = out.integrator;
+		g_speed_diag_pwm_cmd = out.pwm_cmd;
+		g_speed_diag_pwm_ff = out.pwm_ff;
+		g_speed_diag_saturated = out.saturated;
+		g_speed_diag_active = out.active;
+		g_speed_diag_calib = out.calibrated;
+		return out.pwm_cmd;
+	};
+
 	if (g_state.mode == mc::Mode::MANUAL) {
 		pad.update();
 		if (pad.isConnected()) {
@@ -588,8 +620,10 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 
 			speed_mm_s = applyAbsBrake_(now_ms, dt_s, speed_mm_s, abs_allowed);
 			g_last_cmd_speed_mm_s = speed_mm_s;
+			const int16_t pwm_cmd = applySpeedControl(speed_mm_s);
 			drive.setBrakeMode(g_abs_active);
 			drive.setTargetMmS(speed_mm_s, now_ms);
+			drive.setTargetPwm(pwm_cmd, now_ms);
 			drive.setTargetSteerCdeg(steer, now_ms);
 			drive.setTtlMs(100, now_ms);
 			drive.setDistMm(0, now_ms);
@@ -598,8 +632,10 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 			const int16_t speed_mm_s =
 				applyAbsBrake_(now_ms, dt_s, 0, abs_allowed);
 			g_last_cmd_speed_mm_s = speed_mm_s;
+			const int16_t pwm_cmd = applySpeedControl(speed_mm_s);
 			drive.setBrakeMode(g_abs_active);
 			drive.setTargetMmS(speed_mm_s, now_ms);
+			drive.setTargetPwm(pwm_cmd, now_ms);
 			drive.setTargetSteerCdeg(0, now_ms);
 			drive.setTtlMs(100, now_ms);
 			drive.setDistMm(0, now_ms);
@@ -611,8 +647,10 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 				imu_est.state().a_brake_cap_mm_s2, g_state.target_steer_cdeg);
 			speed_mm_s = applyAbsBrake_(now_ms, dt_s, speed_mm_s, abs_allowed);
 			g_last_cmd_speed_mm_s = speed_mm_s;
+			const int16_t pwm_cmd = applySpeedControl(speed_mm_s);
 			drive.setBrakeMode(g_abs_active);
 			drive.setTargetMmS(speed_mm_s, now_ms);
+			drive.setTargetPwm(pwm_cmd, now_ms);
 			drive.setTargetSteerCdeg(g_state.target_steer_cdeg, now_ms);
 			drive.setTtlMs(g_state.target_ttl_ms, now_ms);
 			drive.setDistMm(g_state.target_dist_mm, now_ms);
@@ -620,8 +658,10 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 			const int16_t speed_mm_s =
 				applyAbsBrake_(now_ms, dt_s, 0, abs_allowed);
 			g_last_cmd_speed_mm_s = speed_mm_s;
+			const int16_t pwm_cmd = applySpeedControl(speed_mm_s);
 			drive.setBrakeMode(g_abs_active);
 			drive.setTargetMmS(speed_mm_s, now_ms);
+			drive.setTargetPwm(pwm_cmd, now_ms);
 			drive.setTargetSteerCdeg(0, now_ms);
 			drive.setTtlMs(100, now_ms);
 			drive.setDistMm(0, now_ms);
@@ -753,6 +793,14 @@ void loop() {
 					  (double)st.a_long_fusion_mm_s2, (double)st.v_est_mm_s,
 					  (double)st.a_brake_cap_mm_s2);
 		}
+		alog.logf(mc::LogLevel::INFO, "speed_ctl",
+				  "active=%d calib=%d v_cmd=%.1f v_est=%.1f err=%.1f "
+				  "pwm_cmd=%d pwm_ff=%d i=%.1f sat=%d",
+				  (int)g_speed_diag_active, (int)g_speed_diag_calib,
+				  (double)g_speed_diag_v_cmd, (double)g_speed_diag_v_est,
+				  (double)g_speed_diag_err, (int)g_speed_diag_pwm_cmd,
+				  (int)g_speed_diag_pwm_ff, (double)g_speed_diag_i,
+				  (int)g_speed_diag_saturated);
 		if (cfg::TSD20_ENABLE) {
 			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
 					  "reason=%u clamp=%d margin=%.0f pred=%.0f steer=%.2f "

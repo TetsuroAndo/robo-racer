@@ -156,6 +156,17 @@ static constexpr int ENGINE_RATE_DOWN_BRAKE      = 4000;
 static constexpr uint16_t ABS_REVERSE_DISABLE_MARGIN_MM = 150;
 
 //------------------------------------------------------------------------------
+// 速度制御（speed_mm_s -> PWM）
+//------------------------------------------------------------------------------
+
+static constexpr float SPEED_KP                = 0.02f;
+static constexpr float SPEED_KI                = 0.005f;
+static constexpr float SPEED_KP_UNCAL          = 0.005f;
+static constexpr float SPEED_KI_UNCAL          = 0.0f;
+static constexpr int SPEED_I_CLAMP             = 120;
+static constexpr int SPEED_DEADBAND_MM_S       = 200;
+
+//------------------------------------------------------------------------------
 // ステアサーボ設定（DS3218想定）
 //------------------------------------------------------------------------------
 
@@ -214,7 +225,7 @@ static constexpr float MANUAL_STEER_DEG  = 25.0f;
 //------------------------------------------------------------------------------
 
 // 送信周期
-static constexpr uint32_t STATUS_INTERVAL_MS       = 50;
+static constexpr uint32_t STATUS_INTERVAL_MS       = 10;
 
 // プロトコルトレース
 static constexpr bool PROTO_TRACE_ENABLE           = true;
