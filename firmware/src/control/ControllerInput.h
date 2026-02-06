@@ -1,6 +1,6 @@
 #pragma once
 #include <Arduino.h>
-#include <Bluepad32.h>
+#include "../config/Config.h"
 
 struct PadState {
   int lt = 0;
@@ -17,6 +17,9 @@ struct PadState {
 
   int dpad = 0;
 };
+
+#if MC_ENABLE_MANUAL
+#include <Bluepad32.h>
 
 class ControllerInput {
 public:
@@ -41,3 +44,18 @@ private:
 
   void readPad_();
 };
+#else
+class ControllerInput {
+public:
+  void begin() {}
+  void update() {}
+
+  bool isConnected() const { return false; }
+  const PadState& state() const { return st_; }
+
+  bool consumeToggleRunning() { return false; }
+
+private:
+  PadState st_{};
+};
+#endif

@@ -1,8 +1,15 @@
 #include "config/Config.h"
-#include "control/ControllerInput.h"
+#include "control/AutoCommandSource.h"
+#include "control/SafetySupervisor.h"
+#include "control/SpeedController.h"
+#include "control/Targets.h"
 #include "hardware/Drive.h"
+#include "hardware/ImuEstimator.h"
+#include "hardware/Mpu6500.h"
 #include "hardware/Tsd20.h"
 #include <Arduino.h>
+#include <algorithm>
+#include <cmath>
 
 #include "../lib/common/Math.h"
 #include "../lib/common/Time.h"
@@ -15,26 +22,53 @@ static mc::ControlState g_state;
 static mc::Context g_ctx;
 
 static Drive drive;
+static Mpu6500 imu;
+static ImuEstimator imu_est;
 static Tsd20 tsd20;
-static ControllerInput pad;
+static AutoCommandSource cmd_source;
+static SafetySupervisor safety;
+static SpeedController speed_ctl;
 static mc::AsyncLogger alog;
 static mc::UartTx uart_tx;
 
+static TwoWire imu_wire(1);
 static HardwareSerial tsd_uart(1);
 
 static mc::proto::PacketReader reader;
 
-static mc::PeriodicTimer statusTimer(50);
+static mc::PeriodicTimer statusTimer(cfg::STATUS_INTERVAL_MS);
 static mc::PeriodicTimer logTimer(200);
+static mc::PeriodicTimer imuTimer(cfg::IMU_READ_INTERVAL_MS);
 static mc::PeriodicTimer tsdTimer(cfg::TSD20_READ_INTERVAL_MS);
 static mc::PeriodicTimer tsdInitTimer(cfg::TSD20_INIT_RETRY_MS);
 static uint16_t status_seq = 0;
+static uint16_t imu_seq = 0;
 
-static bool g_tsd_ready = false;
-static bool g_tsd_valid = false;
-static uint16_t g_tsd_mm = 0;
-static uint8_t g_tsd_fail_count = 0;
+static Tsd20State g_tsd_state{};
 static bool g_tsd_fail_logged = false;
+static uint32_t g_tsd_last_read_ms = 0;
+static uint16_t g_tsd_period_ms = 0;
+
+static bool g_imu_ready = false;
+static bool g_imu_valid = false;
+static uint32_t g_imu_last_ms = 0;
+static ImuSample g_imu_sample{};
+static int16_t g_last_cmd_speed_mm_s = 0;
+
+static bool g_abs_active = false;
+static float g_last_dt_s = 0.0f;
+
+static SafetyDiag g_safety_diag{};
+
+static float g_speed_diag_v_cmd = 0.0f;
+static float g_speed_diag_v_est = 0.0f;
+static float g_speed_diag_err = 0.0f;
+static float g_speed_diag_i = 0.0f;
+static int16_t g_speed_diag_pwm_cmd = 0;
+static int16_t g_speed_diag_pwm_ff = 0;
+static bool g_speed_diag_saturated = false;
+static bool g_speed_diag_active = false;
+static bool g_speed_diag_calib = false;
 
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
@@ -49,6 +83,16 @@ struct StatusPayload {
 	int16_t speed_mm_s_le;
 	int16_t steer_cdeg_le;
 	uint16_t age_ms_le;
+};
+
+struct ImuStatusPayload {
+	int16_t a_long_mm_s2_le;
+	int16_t v_est_mm_s_le;
+	uint16_t a_brake_cap_mm_s2_le;
+	int16_t yaw_dps_x10_le;
+	uint16_t age_ms_le;
+	uint8_t flags;
+	uint8_t reserved;
 };
 #pragma pack(pop)
 
@@ -102,6 +146,50 @@ static void sendStatus_(uint32_t now_ms) {
 	}
 }
 
+static void sendImuStatus_(uint32_t now_ms) {
+	if (!cfg::IMU_ENABLE)
+		return;
+
+	const ImuEstimate &st = imu_est.state();
+	const uint16_t age_ms =
+		g_imu_last_ms ? (uint16_t)mc::clamp< uint32_t >(now_ms - g_imu_last_ms,
+														0u, 0xFFFFu)
+					  : 0xFFFFu;
+
+	ImuStatusPayload p{};
+	const int a_long =
+		mc::clamp< int >((int)lroundf(st.a_long_mm_s2), -32768, 32767);
+	const int v_est =
+		mc::clamp< int >((int)lroundf(st.v_est_mm_s), -32768, 32767);
+	wr16((uint8_t *)&p.a_long_mm_s2_le, (uint16_t)(int16_t)a_long);
+	wr16((uint8_t *)&p.v_est_mm_s_le, (uint16_t)(int16_t)v_est);
+	wr16((uint8_t *)&p.a_brake_cap_mm_s2_le,
+		 (uint16_t)mc::clamp< int >((int)lroundf(st.a_brake_cap_mm_s2), 0,
+									0xFFFF));
+	const int yaw_x10 = (int)lroundf(st.gz_dps * 10.0f);
+	wr16((uint8_t *)&p.yaw_dps_x10_le,
+		 (uint16_t)(int16_t)mc::clamp< int >(yaw_x10, -32768, 32767));
+	wr16((uint8_t *)&p.age_ms_le, age_ms);
+	uint8_t flags = 0;
+	if (g_imu_valid)
+		flags |= 1u << 0;
+	if (st.calibrated)
+		flags |= 1u << 1;
+	if (g_abs_active)
+		flags |= 1u << 2;
+	p.flags = flags;
+	p.reserved = 0;
+
+	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
+	size_t out_len = 0;
+	mc::proto::PacketWriter::build(out, sizeof(out), out_len,
+								   mc::proto::Type::IMU_STATUS, 0, imu_seq++,
+								   (const uint8_t *)&p, (uint16_t)sizeof(p));
+	if (g_ctx.tx) {
+		g_ctx.tx->enqueue(out, (uint16_t)out_len);
+	}
+}
+
 static void handleRx_(uint32_t now_ms) {
 	while (Serial2.available() > 0) {
 		uint8_t b = (uint8_t)Serial2.read();
@@ -120,47 +208,15 @@ static void handleRx_(uint32_t now_ms) {
 	}
 }
 
-static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode) {
-	if (!cfg::TSD20_ENABLE)
-		return speed_mm_s;
-	if (speed_mm_s <= 0)
-		return speed_mm_s;
-	if (!cfg::TSD20_CLAMP_IN_MANUAL && mode != mc::Mode::AUTO)
-		return speed_mm_s;
-	if (cfg::TSD20_REQUIRE_OK && !g_tsd_ready)
-		return 0;
-
-	if (!g_tsd_valid) {
-		if (g_tsd_fail_count >= cfg::TSD20_MAX_FAILS)
-			return 0;
-		return speed_mm_s;
-	}
-
-	const uint16_t stop_mm = cfg::TSD20_STOP_DISTANCE_MM;
-	const uint16_t slow_mm = cfg::TSD20_SLOWDOWN_DISTANCE_MM;
-	if (stop_mm == 0 || slow_mm == 0 || slow_mm <= stop_mm)
-		return speed_mm_s;
-	if (g_tsd_mm <= stop_mm)
-		return 0;
-	if (g_tsd_mm >= slow_mm)
-		return speed_mm_s;
-
-	const float k = (float)(g_tsd_mm - stop_mm) / (float)(slow_mm - stop_mm);
-	int16_t clamped = (int16_t)((float)speed_mm_s * k);
-	if (clamped < 0)
-		clamped = 0;
-	return clamped;
-}
-
 static void updateTsd20_(uint32_t now_ms) {
 	if (!cfg::TSD20_ENABLE)
 		return;
 
-	if (!g_tsd_ready && tsdInitTimer.due(now_ms)) {
-		g_tsd_ready = tsd20.begin(tsd_uart);
-		if (g_tsd_ready) {
+	if (!g_tsd_state.ready && tsdInitTimer.due(now_ms)) {
+		g_tsd_state.ready = tsd20.begin(tsd_uart);
+		if (g_tsd_state.ready) {
 			(void)tsd20.setLaser(true);
-			g_tsd_fail_count = 0;
+			g_tsd_state.fail_count = 0;
 			g_tsd_fail_logged = false;
 			alog.logf(mc::LogLevel::INFO, "tsd20",
 					  "init ok id=0x%02X swapped=%d", (unsigned)tsd20.id(),
@@ -173,27 +229,34 @@ static void updateTsd20_(uint32_t now_ms) {
 	if (!tsdTimer.due(now_ms))
 		return;
 
-	if (!g_tsd_ready) {
-		g_tsd_valid = false;
-		g_tsd_mm = 0;
+	if (!g_tsd_state.ready) {
+		g_tsd_state.valid = false;
+		g_tsd_state.mm = 0;
+		g_tsd_last_read_ms = 0;
+		g_tsd_period_ms = 0;
 		return;
 	}
 
 	uint16_t mm = 0;
 	if (tsd20.readDistanceMm(mm)) {
-		g_tsd_mm = mm;
-		g_tsd_valid = true;
-		g_tsd_fail_count = 0;
+		g_tsd_state.mm = mm;
+		g_tsd_state.valid = true;
+		g_tsd_state.fail_count = 0;
 		g_tsd_fail_logged = false;
+		if (g_tsd_last_read_ms != 0) {
+			const uint32_t dt = now_ms - g_tsd_last_read_ms;
+			g_tsd_period_ms = (uint16_t)mc::clamp< uint32_t >(dt, 0u, 0xFFFFu);
+		}
+		g_tsd_last_read_ms = now_ms;
 	} else {
-		if (g_tsd_fail_count < 0xFF)
-			g_tsd_fail_count++;
-		if (g_tsd_fail_count >= cfg::TSD20_MAX_FAILS) {
-			g_tsd_valid = false;
-			g_tsd_mm = 0;
+		if (g_tsd_state.fail_count < 0xFF)
+			g_tsd_state.fail_count++;
+		if (g_tsd_state.fail_count >= cfg::TSD20_MAX_FAILS) {
+			g_tsd_state.valid = false;
+			g_tsd_state.mm = 0;
 			if (!g_tsd_fail_logged) {
 				alog.logf(mc::LogLevel::WARN, "tsd20", "read failed (fails=%u)",
-						  (unsigned)g_tsd_fail_count);
+						  (unsigned)g_tsd_state.fail_count);
 				g_tsd_fail_logged = true;
 			}
 		}
@@ -201,51 +264,38 @@ static void updateTsd20_(uint32_t now_ms) {
 }
 
 static void applyTargets_(uint32_t now_ms, float dt_s) {
-	const bool cmd_fresh =
-		(g_state.cmd_expire_ms != 0) && (now_ms <= g_state.cmd_expire_ms);
-	if (g_state.mode == mc::Mode::MANUAL) {
-		pad.update();
-		if (pad.isConnected()) {
-			const PadState &st = pad.state();
-			int forward = st.rt;
-			int back = st.lt;
-			int v = forward - back;
-			int16_t speed_mm_s = (int16_t)mc::clamp< int >(
-				v * 2, -cfg::DRIVE_SPEED_MAX_MM_S, cfg::DRIVE_SPEED_MAX_MM_S);
-			speed_mm_s = clampSpeedWithTsd20_(speed_mm_s, g_state.mode);
+	const bool abs_allowed =
+		!g_state.killed && (g_state.mode == mc::Mode::AUTO);
+	const ImuEstimate &imu_state = imu_est.state();
+	const bool imu_calib = g_imu_valid && imu_state.calibrated;
+	const float v_est = g_imu_valid ? imu_state.v_est_mm_s : 0.0f;
+	const bool speed_active = !g_state.killed;
 
-			int16_t steer = 0;
-			if (st.dpad & DPAD_LEFT)
-				steer = +1500;
-			if (st.dpad & DPAD_RIGHT)
-				steer = -1500;
+	const AutoCommandResult desired = cmd_source.update(now_ms, g_state);
+	const SafetyResult safe =
+		safety.apply(now_ms, dt_s, desired.targets, g_state.mode, g_tsd_state,
+					 imu_state, g_imu_valid, abs_allowed, &g_safety_diag);
+	g_abs_active = safe.brake_mode;
+	g_last_cmd_speed_mm_s = safe.targets.speed_mm_s;
 
-			drive.setTargetMmS(speed_mm_s);
-			drive.setTargetSteerCdeg(steer);
-			drive.setTtlMs(100);
-			drive.setDistMm(0);
-		} else {
-			// AUTO_ACTIVE=false のときは UART setpoint を適用しない
-			drive.setTargetMmS(0);
-			drive.setTargetSteerCdeg(0);
-			drive.setTtlMs(100);
-			drive.setDistMm(0);
-		}
-	} else {
-		if (cmd_fresh) {
-			int16_t speed_mm_s =
-				clampSpeedWithTsd20_(g_state.target_speed_mm_s, g_state.mode);
-			drive.setTargetMmS(speed_mm_s);
-			drive.setTargetSteerCdeg(g_state.target_steer_cdeg);
-			drive.setTtlMs(g_state.target_ttl_ms);
-			drive.setDistMm(g_state.target_dist_mm);
-		} else {
-			drive.setTargetMmS(0);
-			drive.setTargetSteerCdeg(0);
-			drive.setTtlMs(100);
-			drive.setDistMm(0);
-		}
-	}
+	const SpeedControlOutput out = speed_ctl.update(
+		safe.targets.speed_mm_s, v_est, dt_s, imu_calib, speed_active);
+	g_speed_diag_v_cmd = (float)safe.targets.speed_mm_s;
+	g_speed_diag_v_est = v_est;
+	g_speed_diag_err = out.error_mm_s;
+	g_speed_diag_i = out.integrator;
+	g_speed_diag_pwm_cmd = out.pwm_cmd;
+	g_speed_diag_pwm_ff = out.pwm_ff;
+	g_speed_diag_saturated = out.saturated;
+	g_speed_diag_active = out.active;
+	g_speed_diag_calib = out.calibrated;
+
+	drive.setBrakeMode(g_abs_active);
+	drive.setTargetMmS(safe.targets.speed_mm_s, now_ms);
+	drive.setTargetPwm(out.pwm_cmd, now_ms);
+	drive.setTargetSteerCdeg(safe.targets.steer_cdeg, now_ms);
+	drive.setTtlMs(safe.targets.ttl_ms, now_ms);
+	drive.setDistMm(safe.targets.dist_mm, now_ms);
 
 	drive.tick(now_ms, dt_s, g_state.killed);
 }
@@ -264,7 +314,6 @@ void setup() {
 	g_ctx.log = &alog;
 	g_ctx.tx = &uart_tx;
 
-	pad.begin();
 	drive.begin();
 
 	uart_tx.begin(Serial2);
@@ -273,18 +322,34 @@ void setup() {
 	alog.logf(mc::LogLevel::INFO, "boot", "ESP32 up baud=%d",
 			  (int)cfg::SERIAL_BAUD);
 
-	g_tsd_ready = tsd20.begin(tsd_uart);
-	if (g_tsd_ready) {
+	g_tsd_state.ready = tsd20.begin(tsd_uart);
+	if (g_tsd_state.ready) {
 		(void)tsd20.setLaser(true);
-		alog.logf(mc::LogLevel::INFO, "tsd20", "init ok id=0x%02X swapped=%d",
-				  (unsigned)tsd20.id(), (int)tsd20.swapped());
+		g_tsd_state.fail_count = 0;
+		g_tsd_fail_logged = false;
+		alog.logf(mc::LogLevel::INFO, "tsd20",
+				  "init ok id=0x%02X swapped=%d freq_ack=%d iic_ack=%d",
+				  (unsigned)tsd20.id(), (int)tsd20.swapped(),
+				  (int)tsd20.freqAck(), (int)tsd20.iicAck());
 	} else {
 		alog.logf(mc::LogLevel::WARN, "tsd20", "init failed");
+	}
+
+	if (cfg::IMU_ENABLE) {
+		g_imu_ready = imu.begin(imu_wire);
+		if (g_imu_ready) {
+			imu_est.reset(millis());
+			alog.logf(mc::LogLevel::INFO, "imu", "init ok id=0x%02X",
+					  (unsigned)imu.id());
+		} else {
+			alog.logf(mc::LogLevel::WARN, "imu", "init failed");
+		}
 	}
 
 	uint32_t now = millis();
 	statusTimer.reset(now);
 	logTimer.reset(now);
+	imuTimer.reset(now);
 	tsdTimer.reset(now);
 	tsdInitTimer.reset(now);
 }
@@ -298,15 +363,31 @@ void loop() {
 	if (dt_s > 0.05f)
 		dt_s = 0.05f;
 	last_us = now_us;
+	g_last_dt_s = dt_s;
 
 	uint32_t now_ms = (uint32_t)millis();
 
 	handleRx_(now_ms);
 	updateTsd20_(now_ms);
+
+	if (cfg::IMU_ENABLE && g_imu_ready && imuTimer.due(now_ms)) {
+		ImuSample sample{};
+		if (imu.readSample(sample)) {
+			g_imu_sample = sample;
+			g_imu_valid = true;
+			g_imu_last_ms = now_ms;
+			imu_est.update(sample, now_ms, drive.appliedSpeedMmS(),
+						   g_last_cmd_speed_mm_s);
+		} else {
+			g_imu_valid = false;
+		}
+	}
+
 	applyTargets_(now_ms, dt_s);
 
 	if (statusTimer.due(now_ms)) {
 		sendStatus_(now_ms);
+		sendImuStatus_(now_ms);
 	}
 
 	if (logTimer.due(now_ms)) {
@@ -320,9 +401,68 @@ void loop() {
 				  (unsigned)drive.distMm(), (unsigned)alog.dropped());
 		if (cfg::TSD20_ENABLE) {
 			alog.logf(mc::LogLevel::INFO, "tsd20",
-					  "ready=%d valid=%d mm=%u fails=%u", (int)g_tsd_ready,
-					  (int)g_tsd_valid, (unsigned)g_tsd_mm,
-					  (unsigned)g_tsd_fail_count);
+					  "ready=%d valid=%d mm=%u fails=%u period=%ums "
+					  "ack(freq=%d iic=%d)",
+					  (int)g_tsd_state.ready, (int)g_tsd_state.valid,
+					  (unsigned)g_tsd_state.mm,
+					  (unsigned)g_tsd_state.fail_count,
+					  (unsigned)g_tsd_period_ms, (int)tsd20.freqAck(),
+					  (int)tsd20.iicAck());
+		}
+		if (cfg::IMU_ENABLE) {
+			const ImuEstimate &st = imu_est.state();
+			const uint32_t age =
+				g_imu_last_ms ? (uint32_t)(now_ms - g_imu_last_ms) : 0xFFFFu;
+			alog.logf(mc::LogLevel::INFO, "imu",
+					  "ready=%d valid=%d calib=%d age=%ums ax=%d ay=%d az=%d "
+					  "gx=%d gy=%d gz=%d a_long=%.1f a_lpf=%.1f a_fusion=%.1f "
+					  "v_est=%.1f a_brake=%.0f",
+					  (int)g_imu_ready, (int)g_imu_valid, (int)st.calibrated,
+					  (unsigned)age, (int)g_imu_sample.ax, (int)g_imu_sample.ay,
+					  (int)g_imu_sample.az, (int)g_imu_sample.gx,
+					  (int)g_imu_sample.gy, (int)g_imu_sample.gz,
+					  (double)st.a_long_mm_s2, (double)st.a_long_lpf_mm_s2,
+					  (double)st.a_long_fusion_mm_s2, (double)st.v_est_mm_s,
+					  (double)st.a_brake_cap_mm_s2);
+		}
+		alog.logf(mc::LogLevel::INFO, "speed_ctl",
+				  "active=%d calib=%d v_cmd=%.1f v_est=%.1f err=%.1f "
+				  "pwm_cmd=%d pwm_ff=%d i=%.1f sat=%d",
+				  (int)g_speed_diag_active, (int)g_speed_diag_calib,
+				  (double)g_speed_diag_v_cmd, (double)g_speed_diag_v_est,
+				  (double)g_speed_diag_err, (int)g_speed_diag_pwm_cmd,
+				  (int)g_speed_diag_pwm_ff, (double)g_speed_diag_i,
+				  (int)g_speed_diag_saturated);
+		if (cfg::TSD20_ENABLE) {
+			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
+					  "reason=%u clamp=%d margin=%.0f pred=%.0f steer=%.2f "
+					  "d_allow=%.0f d_travel=%.0f v_used=%.0f a_long=%.0f "
+					  "a_cap=%.0f tau=%.3f v_max=%.1f v_cap=%.1f",
+					  (unsigned)g_safety_diag.tsd.reason,
+					  (int)g_safety_diag.tsd.clamped,
+					  (double)g_safety_diag.tsd.margin_eff,
+					  (double)g_safety_diag.tsd.margin_pred,
+					  (double)g_safety_diag.tsd.steer_ratio,
+					  (double)g_safety_diag.tsd.d_allow,
+					  (double)g_safety_diag.tsd.d_travel,
+					  (double)g_safety_diag.tsd.v_est,
+					  (double)g_safety_diag.tsd.a_long,
+					  (double)g_safety_diag.tsd.a_cap,
+					  (double)g_safety_diag.tsd.tau,
+					  (double)g_safety_diag.tsd.v_max,
+					  (double)g_safety_diag.tsd.v_cap);
+		}
+		if (cfg::ABS_ENABLE) {
+			alog.logf(mc::LogLevel::INFO, "abs",
+					  "reason=%u active=%d duty=%.2f v_cmd=%.1f v_est=%.1f "
+					  "a_tgt=%.0f a_cap=%.0f decel=%.0f dt=%.3f",
+					  (unsigned)g_safety_diag.abs.reason, (int)g_abs_active,
+					  (double)g_safety_diag.abs.duty,
+					  (double)g_safety_diag.abs.v_cmd,
+					  (double)g_safety_diag.abs.v_est,
+					  (double)g_safety_diag.abs.a_target,
+					  (double)g_safety_diag.abs.a_cap,
+					  (double)g_safety_diag.abs.decel, (double)g_last_dt_s);
 		}
 	}
 

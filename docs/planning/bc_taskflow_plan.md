@@ -45,8 +45,8 @@ ESP32 STATUS -> RPi -> VEHICLE_STATUS (IPC)
 - LIDAR_SCAN: `IPC_LIDAR_SCAN` / 5-20Hz / LidarScanChunkPayload + data
 - LIDAR_SUMMARY: `IPC_LIDAR_SUMMARY` / 10-50Hz / LidarSummaryPayload
 - IMU_SAMPLE: `IPC_IMU_SAMPLE` / 50-200Hz / ImuSamplePayload
-- DRIVE_CMD: `IPC_DRIVE_CMD` / 20-100Hz / DriveCmdPayload（steer_cdeg/speed_mm_s/ttl_ms）
-- VEHICLE_STATUS: `IPC_VEHICLE_STATUS` / 10-50Hz / VehicleStatusPayload
+- DRIVE_CMD: `IPC_DRIVE_CMD` / **100Hz（10ms）** / DriveCmdPayload（steer_cdeg/speed_mm_s/ttl_ms）
+- VEHICLE_STATUS: `IPC_VEHICLE_STATUS` / **100Hz（10ms）** / VehicleStatusPayload
 
 ## 実装計画（10日）
 
@@ -59,7 +59,7 @@ ESP32 STATUS -> RPi -> VEHICLE_STATUS (IPC)
 ### Day3-4: IPC連携 + ルールベース統合
 - `lidard` の IPC publish（SCAN/SUMMARY）
 - `racerd` v0: subscribe → FTG → DRIVE_CMD 生成
-- TTL/送信周期の固定（例: 20-50ms）
+- TTL/送信周期の固定（例: **10ms周期、ttl=20-30ms**）
 
 ### Day5-6: 安全系の強化
 - single-point LiDAR の停止条件（ESP32側が最優先）
@@ -109,7 +109,7 @@ LOG_RECORD/IPC topics
 ### 主要データ（v1想定 / IPC凍結）
 - LiDAR: `IPC_LIDAR_SCAN`（5-20Hz）or `IPC_LIDAR_SUMMARY`（10-50Hz）
 - コマンド: DRIVE / MODE_SET / KILL（RPi↔ESP32プロトコル）
-- 状態: `IPC_VEHICLE_STATUS`（10-50Hz）/ `IPC_IMU_SAMPLE`（50-200Hz）
+- 状態: `IPC_VEHICLE_STATUS`（**100Hz（10ms）**）/ `IPC_IMU_SAMPLE`（50-200Hz）
 
 ## 実装計画（10日）
 

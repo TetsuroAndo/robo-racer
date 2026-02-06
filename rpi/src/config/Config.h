@@ -3,6 +3,12 @@
 #include <cstddef>
 #include <stdint.h>
 
+#if defined(__has_include)
+#if __has_include("mc_config/vehicle_limits.h")
+#include "mc_config/vehicle_limits.h"
+#endif
+#endif
+
 namespace cfg {
 // clang-format off
 
@@ -35,11 +41,7 @@ static constexpr uint32_t STATUS_DEAD_MS         = 300;
 
 // 送信値のスケール/上限（ESP32側の単位に合わせる）
 // speed: RPi内部は旧PWM相当(-255..255) → ESP32はmm/s
-static constexpr int SPEED_INPUT_LIMIT           = 255;
-static constexpr int SPEED_MM_S_MAX              = 13889; // 50km/h
 // steer: degree → centi-degree
-static constexpr int STEER_CDEG_SCALE            = 100;
-static constexpr int STEER_CDEG_MAX              = 2500;
 
 // 受信バッファ
 static constexpr size_t UART_READ_BUF_SIZE       = 256;
@@ -78,6 +80,15 @@ static constexpr float FTG_CAR_WIDTH_M         = 0.20f; // 20cm
 static constexpr float FTG_MARGIN_M            = 0.03f; // 必要なら調整
 static constexpr float FTG_CORRIDOR_LOOKAHEAD_M = 0.60f;
 
+// 予測マージン（IMUの速度/加速度で安全側へ補正）
+static constexpr bool FTG_PREDICT_ENABLE       = true;
+static constexpr uint16_t FTG_PREDICT_LATENCY_MS = 80;
+static constexpr int FTG_PREDICT_MARGIN_MAX_MM = 500;
+static constexpr int FTG_PREDICT_BRAKE_MM_S2   = 6000;
+static constexpr int FTG_PREDICT_BRAKE_MIN_MM_S2 = 1500;
+static constexpr int FTG_PREDICT_BRAKE_MAX_MM_S2 = 12000;
+static constexpr int FTG_PREDICT_ACCEL_MAX_MM_S2 = 8000;
+
 // 障害物判定
 static constexpr int FTG_NEAR_OBSTACLE_MM      = 100;  // 10cm以内でブロック
 static constexpr int FTG_WARN_OBSTACLE_MM      = 200;  // テレメトリ警告用
@@ -95,14 +106,18 @@ static constexpr float FTG_SPEED_K_M           = 0.10f; // 立ち上がり（最
 static constexpr int FTG_COST_SAFE_MM            = 500;   // ここから回避を開始
 static constexpr int FTG_JERK_RELAX_MM           = 300;   // 近距離でジャーク抑制を緩める
 static constexpr float FTG_COST_W_OBS            = 8.0f;
-static constexpr float FTG_COST_W_TURN           = 0.2f;
-static constexpr float FTG_COST_W_DELTA          = 0.6f;
+static constexpr float FTG_COST_W_TURN           = 0.05f;
+static constexpr float FTG_COST_W_DELTA          = 0.3f;
 static constexpr float FTG_COST_BETA             = 4.0f;  // soft-argminの鋭さ
 static constexpr float FTG_STEER_SLEW_DEG_PER_S  = 120.0f;
 static constexpr int FTG_SPEED_WARN_CAP          = 39;    // warn時の速度上限(入力スケール)
-
-// 物理上限
-static constexpr int STEER_ANGLE_MAX_DEG       = 30;   // サーボの物理的上限
+static constexpr uint16_t FTG_IMU_MAX_AGE_MS     = 200;
+static constexpr float FTG_YAW_BIAS_DEG          = 0.0f;
+static constexpr float FTG_YAW_BIAS_REF_DPS      = 90.0f;
+static constexpr float FTG_STEER_TIME_REF_S      = 0.10f;
+static constexpr float FTG_SERVO_TIME_60DEG_S    = 0.14f; // DS3218 6.8V
+static constexpr float FTG_SERVO_DEG_PER_S       = 60.0f / FTG_SERVO_TIME_60DEG_S;
+static constexpr float FTG_SERVO_LOAD_SCALE      = 1.5f;
 
 //------------------------------------------------------------------------------
 // Telemetry（観測/可視化）

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "MotionState.h"
+#include "Tsd20State.h"
 #include "config/Config.h"
 #include <array>
 #include <mc/ipc/UdsSeqPacket.hpp>
@@ -18,12 +20,15 @@ public:
 	void sendAutoMode(bool enable);
 	void sendKill();
 	void poll();
+	bool motion(MotionState &out) const;
+	bool tsd20(Tsd20State &out) const;
 
 private:
 	void _init(const char* sock_path);
 	void sendHeartbeatIfDue();
 	void handleFrame(const mc::proto::Frame& frame);
 	void handleStatus(const mc::proto::StatusPayload& payload);
+	void handleImuStatus(const mc::proto::ImuStatusPayload& payload);
 	void handleAck(uint16_t seq);
 	void trackPending(uint16_t seq, const uint8_t* data, uint16_t len);
 	void checkPending();
@@ -35,11 +40,17 @@ private:
 	uint32_t last_status_log_ms_ = 0;
 	uint32_t last_status_ms_ = 0;
 	uint32_t last_hb_ms_ = 0;
+	uint32_t last_drive_send_ms_ = 0;
+	uint32_t worst_drive_gap_ms_ = 0;
 	mc::proto::StatusPayload last_status_{};
 	bool has_status_ = false;
 	bool status_stale_ = false;
 	bool auto_enabled_ = false;
 	TelemetryEmitter* telemetry_ = nullptr;
+	MotionState motion_{};
+	bool has_motion_ = false;
+	Tsd20State tsd20_{};
+	bool has_tsd20_ = false;
 
 	struct PendingTx {
 		uint32_t deadline_ms;

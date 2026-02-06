@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(ROBO_RACER_TSAN "Enable ThreadSanitizer" OFF)
 
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../shared/config/include)
+
 if(ROBO_RACER_TSAN)
 	if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 		add_compile_options(-fsanitize=thread -fno-omit-frame-pointer -g)

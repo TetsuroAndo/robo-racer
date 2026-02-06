@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LidarReceiver.h"
+#include "MotionState.h"
 #include "Telemetry.h"
 #include <cstdint>
 #include <string>
@@ -22,7 +23,8 @@ public:
 					float lastSteerAngle,
 					uint64_t tick,
 					uint64_t scan_id,
-					const std::string &run_id) const;
+					const std::string &run_id,
+					const MotionState *motion) const;
 
 private:
 	TelemetryEmitter *telemetry_;

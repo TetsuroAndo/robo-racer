@@ -1,0 +1,12 @@
+{
+  "name": "mc_config_shared",
+  "version": "0.1.0",
+  "description": "Shared vehicle configuration for firmware and RPi",
+  "keywords": "config, steer, limits",
+  "authors": [
+    { "name": "TOYOTA42 team" }
+  ],
+  "license": "MIT",
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"]
+}

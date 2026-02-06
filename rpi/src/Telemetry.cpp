@@ -294,9 +294,13 @@ void TelemetryEmitter::pushEvent_(EventCategory category, Severity severity,
 void TelemetryEmitter::emitJson_(const TelemetrySample &s) {
 	std::ostringstream telemetry;
 	StatusCache status;
+	MotionCache motion;
+	Tsd20Cache tsd20;
 	{
 		std::lock_guard< std::mutex > lk(metrics_mtx_);
 		status = status_;
+		motion = motion_;
+		tsd20 = tsd20_;
 	}
 	telemetry << std::fixed << std::setprecision(2);
 	telemetry << "{\"t_us\":" << s.ts_us << ",\"type\":\"telemetry\""
@@ -386,6 +390,33 @@ void TelemetryEmitter::emitJson_(const TelemetrySample &s) {
 		telemetry << ",\"esp_status\":null";
 	}
 
+	if (motion.valid) {
+		telemetry << ",\"imu\":{\"valid\":" << (motion.valid ? 1 : 0)
+				  << ",\"calib\":" << (motion.calibrated ? 1 : 0)
+				  << ",\"abs\":" << (motion.abs_active ? 1 : 0)
+				  << ",\"a_long_mm_s2\":" << motion.a_long_mm_s2
+				  << ",\"v_est_mm_s\":" << motion.v_est_mm_s
+				  << ",\"yaw_dps\":" << motion.yaw_dps
+				  << ",\"a_brake_cap_mm_s2\":" << motion.a_brake_cap_mm_s2
+				  << ",\"age_ms\":" << motion.age_ms << "}";
+	} else {
+		telemetry << ",\"imu\":null";
+	}
+
+	if (tsd20.valid) {
+		const uint64_t now_us = mc::core::Time::us();
+		const uint32_t age_ms = (now_us > tsd20.ts_us)
+									? (uint32_t)((now_us - tsd20.ts_us) / 1000)
+									: 0;
+		telemetry << ",\"tsd20\":{\"ready\":" << (tsd20.ready ? 1 : 0)
+				  << ",\"valid\":" << (tsd20.sensor_valid ? 1 : 0)
+				  << ",\"mm\":" << tsd20.mm << ",\"fails\":" << tsd20.fails
+				  << ",\"period_ms\":" << tsd20.period_ms
+				  << ",\"age_ms\":" << age_ms << "}";
+	} else {
+		telemetry << ",\"tsd20\":null";
+	}
+
 	telemetry << "}";
 	MC_LOGI("telemetry", telemetry.str());
 }
@@ -424,14 +455,18 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 
 	MetricsCache metrics;
 	StatusCache status;
+	MotionCache motion;
+	Tsd20Cache tsd20;
 	{
 		std::lock_guard< std::mutex > lk(metrics_mtx_);
 		metrics = metrics_;
 		status = status_;
+		motion = motion_;
+		tsd20 = tsd20_;
 	}
 
 	int path_mm = s.path_obst_mm;
-	if (path_mm < 0 || path_mm >= (std::numeric_limits< int >::max() / 2)) {
+	if (path_mm <= 0 || path_mm >= (std::numeric_limits< int >::max() / 2)) {
 		path_mm = cfg::TELEMETRY_DIST_BAR_MAX_MM;
 	}
 	if (path_mm > cfg::TELEMETRY_DIST_BAR_MAX_MM)
@@ -479,10 +514,12 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	}
 
 	Severity dist_sev = Severity::Safe;
-	if (s.path_obst_mm <= cfg::FTG_NEAR_OBSTACLE_MM) {
-		dist_sev = Severity::Crit;
-	} else if (s.path_obst_mm < cfg::FTG_WARN_OBSTACLE_MM) {
-		dist_sev = Severity::Warn;
+	if (s.path_obst_mm > 0) {
+		if (s.path_obst_mm <= cfg::FTG_NEAR_OBSTACLE_MM) {
+			dist_sev = Severity::Crit;
+		} else if (s.path_obst_mm < cfg::FTG_WARN_OBSTACLE_MM) {
+			dist_sev = Severity::Warn;
+		}
 	}
 
 	Severity map_sev = Severity::Safe;
@@ -742,6 +779,9 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		   << std::hex << status.faults << std::dec << " age=" << status.age_ms
 		   << "ms";
 	}
+	if (motion.valid) {
+		l5 << " abs=" << (motion.abs_active ? 1 : 0);
+	}
 
 	std::ostringstream l6;
 	l6 << "path_obst=" << s.path_obst_mm
@@ -786,6 +826,54 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	if (metrics.valid) {
 		l8 << "  MEM " << (metrics.mem_used_kb / 1024.0f) << "/"
 		   << (metrics.mem_total_kb / 1024.0f) << "MB";
+	}
+
+	const float cmd_mm_s = (float)s.limited_speed *
+						   (float)mc_config::SPEED_MAX_MM_S /
+						   (float)mc_config::SPEED_INPUT_LIMIT;
+	const float cmd_kmh = cmd_mm_s * 0.0036f;
+	std::ostringstream l10;
+	l10 << std::fixed << std::setprecision(1);
+	l10 << "speed cmd=" << (int)std::lround(cmd_mm_s) << "mm/s(" << cmd_kmh
+		<< "km/h)";
+	if (status.valid) {
+		const float act_kmh = (float)status.speed_mm_s * 0.0036f;
+		l10 << " act=" << status.speed_mm_s << "mm/s(" << act_kmh << "km/h)";
+	} else {
+		l10 << " act=NA";
+	}
+	if (motion.valid) {
+		const float est_kmh = (float)motion.v_est_mm_s * 0.0036f;
+		l10 << " est=" << motion.v_est_mm_s << "mm/s(" << est_kmh << "km/h)";
+	} else {
+		l10 << " est=NA";
+	}
+
+	uint64_t tsd20_age_ms = 0;
+	bool tsd20_age_valid = false;
+	if (tsd20.valid && tsd20.ts_us > 0 && s.ts_us >= tsd20.ts_us) {
+		tsd20_age_ms = (s.ts_us - tsd20.ts_us) / 1000;
+		tsd20_age_valid = true;
+	}
+	std::ostringstream l11;
+	l11 << std::fixed << std::setprecision(1);
+	l11 << "imu ";
+	if (motion.valid) {
+		l11 << "v=" << motion.v_est_mm_s << "mm/s a=" << motion.a_long_mm_s2
+			<< "mm/s2 yaw=" << motion.yaw_dps
+			<< "dps cal=" << (motion.calibrated ? 1 : 0)
+			<< " age=" << motion.age_ms << "ms";
+	} else {
+		l11 << "NA";
+	}
+	l11 << " | tsd20 ";
+	if (tsd20.valid) {
+		l11 << "mm=" << tsd20.mm << " v=" << (tsd20.sensor_valid ? 1 : 0)
+			<< " r=" << (tsd20.ready ? 1 : 0);
+		if (tsd20_age_valid)
+			l11 << " age=" << tsd20_age_ms << "ms";
+	} else {
+		l11 << "NA";
 	}
 
 	auto sev_name = [](Severity s) {
@@ -976,7 +1064,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	};
 
 	const int frame_lines =
-		16 + (int)heat_rows.size() + (int)event_lines.size();
+		18 + (int)heat_rows.size() + (int)event_lines.size();
 	if (!ui_initialized_) {
 		std::cout << "\x1b[?25l"; // hide cursor
 		std::cout << top << "\n"
@@ -996,7 +1084,9 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 				  << line(l6.str()) << "\n"
 				  << line(l7.str()) << "\n"
 				  << line(l8.str()) << "\n"
-				  << line(l9.str()) << "\n";
+				  << line(l9.str()) << "\n"
+				  << line(l10.str()) << "\n"
+				  << line(l11.str()) << "\n";
 		for (const auto &ev : event_lines) {
 			std::cout << line(ev) << "\n";
 		}
@@ -1024,6 +1114,8 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		std::cout << "\x1b[2K\r" << line(l7.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l8.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l9.str()) << "\n";
+		std::cout << "\x1b[2K\r" << line(l10.str()) << "\n";
+		std::cout << "\x1b[2K\r" << line(l11.str()) << "\n";
 		for (const auto &ev : event_lines) {
 			std::cout << "\x1b[2K\r" << line(ev) << "\n";
 		}

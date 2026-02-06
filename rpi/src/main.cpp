@@ -1,3 +1,4 @@
+#include "MotionState.h"
 #include "Process.h"
 #include "Sender.h"
 #include "ShmLidarReceiver.h"
@@ -132,9 +133,13 @@ int main(int argc, char **argv) {
 		// 最新のLiDARデータを取得（共有メモリ経由）
 		if (lidarReceiver.getLatestData(lidarData)) {
 			const uint64_t scan_id = lidarReceiver.lastSeq();
+			sender.poll();
+			MotionState motion{};
+			const MotionState *motion_ptr =
+				sender.motion(motion) ? &motion : nullptr;
 			// データが利用可能
-			const ProcResult procResult =
-				process.proc(lidarData, lastSteerAngle, tick, scan_id, run_id);
+			const ProcResult procResult = process.proc(
+				lidarData, lastSteerAngle, tick, scan_id, run_id, motion_ptr);
 			sender.send(procResult.speed, procResult.angle);
 
 			// 次のループのために今回のステアリング角度を保存

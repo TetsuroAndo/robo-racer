@@ -1,6 +1,7 @@
 #include "comm/UartTx.h"
 #include "comm/registry.h"
 #include "config/Config.h"
+#include "mc_config/vehicle_limits.h"
 #include <mc/proto/Proto.hpp>
 
 #include "log/AsyncLogger.h"
@@ -127,7 +128,11 @@ static void test_ack_for_drive_and_state() {
 			  << " speed=" << t.st.target_speed_mm_s << "\n";
 	assert(t.st.last_seq == 0x20);
 	assert(t.st.target_steer_cdeg == 100);
+#if MC_ENABLE_MANUAL
 	assert(t.st.target_speed_mm_s == -200);
+#else
+	assert(t.st.target_speed_mm_s == 0);
+#endif
 
 	const auto &frames = mc::test::frames();
 	std::cout << "\tTX frames=" << frames.size() << " (expect 1 ACK)\n";
@@ -184,8 +189,13 @@ static void test_mode_len2_reason() {
 	mc::IHandler *h = mc::Registry::instance().get(f.type());
 	assert(h != nullptr);
 	h->onFrame(f, t.ctx, 0);
+#if MC_ENABLE_MANUAL
 	std::cout << "\tEXPECT mode=MANUAL(0) ACTUAL=" << (int)t.st.mode << "\n";
 	assert((int)t.st.mode == 0);
+#else
+	std::cout << "\tEXPECT mode=AUTO(1) ACTUAL=" << (int)t.st.mode << "\n";
+	assert((int)t.st.mode == 1);
+#endif
 }
 
 /**
@@ -306,13 +316,17 @@ static void test_drive_clamp() {
 	assert(h != nullptr);
 	h->onFrame(f, t.ctx, 1000);
 
-	std::cout << "\tEXPECT steer=" << cfg::STEER_ANGLE_MAX_CDEG
-			  << " speed=" << -cfg::DRIVE_SPEED_MAX_MM_S << " ttl=10\n";
+	std::cout << "\tEXPECT steer=" << mc_config::STEER_ANGLE_MAX_CDEG
+			  << " speed=" << -mc_config::SPEED_MAX_MM_S << " ttl=10\n";
 	std::cout << "\tACTUAL steer=" << t.st.target_steer_cdeg
 			  << " speed=" << t.st.target_speed_mm_s
 			  << " ttl=" << t.st.target_ttl_ms << "\n";
-	assert(t.st.target_steer_cdeg == cfg::STEER_ANGLE_MAX_CDEG);
-	assert(t.st.target_speed_mm_s == -cfg::DRIVE_SPEED_MAX_MM_S);
+	assert(t.st.target_steer_cdeg == mc_config::STEER_ANGLE_MAX_CDEG);
+#if MC_ENABLE_MANUAL
+	assert(t.st.target_speed_mm_s == -mc_config::SPEED_MAX_MM_S);
+#else
+	assert(t.st.target_speed_mm_s == 0);
+#endif
 	assert(t.st.target_ttl_ms == 10);
 }
 

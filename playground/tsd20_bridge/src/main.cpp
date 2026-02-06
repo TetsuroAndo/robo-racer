@@ -94,6 +94,8 @@ static bool tsd20SendChangeIICAtBaud(uint32_t baud, int rxPin, int txPin,
 
 	// Use same wires: RX must be on pin connected to TSD20 TX (Pin3),
 	// TX must be on pin connected to TSD20 RX (Pin4).
+	Wire.end();
+	delay(10);
 	TsdUart.end();
 	delay(20);
 	TsdUart.begin(baud, SERIAL_8N1, /*rx=*/rxPin, /*tx=*/txPin);
