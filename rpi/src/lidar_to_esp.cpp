@@ -7,16 +7,14 @@
 #include "Sender.h"
 #include "config/Config.h"
 #include "mc/core/Log.hpp"
+#include "mc/core/Signal.hpp"
 #include "mc/core/Time.hpp"
 
-#include <csignal>
 #include <cstdint>
 #include <iostream>
 #include <sstream>
 
 static volatile sig_atomic_t g_stop = 0;
-static void on_sig(int) { g_stop = 1; }
-static void show_cursor() { std::cout << "\x1b[?25h" << std::flush; }
 
 static std::string make_run_id() {
 	std::ostringstream oss;
@@ -26,9 +24,8 @@ static std::string make_run_id() {
 
 int run_lidar_to_esp(const char *lidar_dev, int lidar_baud,
 					 const char *esp_dev) {
-	signal(SIGINT, on_sig);
-	signal(SIGTERM, on_sig);
-	std::atexit(show_cursor);
+	mc::core::setup_signal_handlers(&g_stop);
+	mc::core::register_atexit_show_cursor();
 	mc::core::Logger::instance().setConsoleEnabled(false);
 
 	LidarReceiver lidarReceiver(lidar_dev, lidar_baud);

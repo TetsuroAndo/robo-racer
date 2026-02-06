@@ -33,14 +33,12 @@ private:
 	ImuEstimate _st{};
 	bool _calib_started = false;
 	uint32_t _calib_start_ms = 0;
-	int64_t _sum_ax = 0;
-	int64_t _sum_ay = 0;
-	int64_t _sum_az = 0;
 	int64_t _sum_gx = 0;
 	int64_t _sum_gy = 0;
 	int64_t _sum_gz = 0;
 	uint32_t _sum_n = 0;
 
+	// 現状はジャイロのみでバイアス推定を実施（加速度バイアスは0固定）
 	int32_t _bias_ax = 0;
 	int32_t _bias_ay = 0;
 	int32_t _bias_az = 0;

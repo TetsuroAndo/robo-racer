@@ -3,8 +3,9 @@
 #include "Sender.h"
 #include "ShmLidarReceiver.h"
 #include "config/Config.h"
-#include "lidar_to_esp.h"
 #include "mc/core/Log.hpp"
+#include "mc/core/Path.hpp"
+#include "mc/core/Signal.hpp"
 #include "mc/core/Time.hpp"
 #include <cerrno>
 #include <csignal>
@@ -18,12 +19,11 @@
 
 static volatile sig_atomic_t g_stop = 0;
 static volatile sig_atomic_t g_last_sig = 0;
+
 static void on_sig(int sig) {
 	g_last_sig = sig;
 	g_stop = 1;
 }
-
-static void show_cursor() { std::cout << "\x1b[?25h" << std::flush; }
 
 static std::string make_run_id() {
 	std::ostringstream oss;
@@ -31,23 +31,9 @@ static std::string make_run_id() {
 	return oss.str();
 }
 
-static void ensure_dir_for(const std::string &path) {
-	if (path.empty())
-		return;
-	const size_t pos = path.find_last_of('/');
-	if (pos == std::string::npos || pos == 0)
-		return;
-	const std::string dir = path.substr(0, pos);
-	const int rc = mkdir(dir.c_str(), 0755);
-	if (rc == 0 || errno == EEXIST)
-		return;
-	MC_LOGW("main", "mkdir failed for log dir: " + dir);
-}
-
 int main(int argc, char **argv) {
-	signal(SIGINT, on_sig);
-	signal(SIGTERM, on_sig);
-	std::atexit(show_cursor);
+	mc::core::setup_signal_handlers(&g_stop, on_sig);
+	mc::core::register_atexit_show_cursor();
 
 	std::string log_path = cfg::DEFAULT_PROCESS_LOG;
 	std::string metrics_log_path = cfg::DEFAULT_METRICSD_LOG;
@@ -98,7 +84,7 @@ int main(int argc, char **argv) {
 	auto &logger = mc::core::Logger::instance();
 	logger.setConsoleEnabled(false);
 	if (!log_path.empty()) {
-		ensure_dir_for(log_path);
+		mc::core::ensure_dir_for(log_path);
 		logger.addSink(std::make_shared< mc::core::FileSink >(log_path));
 	}
 

@@ -25,7 +25,7 @@ void ImuEstimator::reset(uint32_t now_ms) {
 	_st = ImuEstimate{};
 	_calib_started = false;
 	_calib_start_ms = now_ms;
-	_sum_ax = _sum_ay = _sum_az = _sum_gx = _sum_gy = _sum_gz = 0;
+	_sum_gx = _sum_gy = _sum_gz = 0;
 	_sum_n = 0;
 	_bias_ax = _bias_ay = _bias_az = _bias_gx = _bias_gy = _bias_gz = 0;
 	_zupt_ms = 0;
@@ -207,18 +207,16 @@ void ImuEstimator::updateBias_(const ImuSample &s, uint32_t now_ms) {
 	if (_sum_n == 0)
 		_calib_start_ms = now_ms;
 
-	_sum_ax += s.ax;
-	_sum_ay += s.ay;
-	_sum_az += s.az;
+	// ジャイロのバイアス推定用に累積（停止時は ~0 を期待）
 	_sum_gx += s.gx;
 	_sum_gy += s.gy;
 	_sum_gz += s.gz;
 	_sum_n += 1;
 
-	if ((now_ms - _calib_start_ms) >= cfg::IMU_CALIBRATION_MS) {
-		_bias_ax = (int32_t)(_sum_ax / (int64_t)_sum_n);
-		_bias_ay = (int32_t)(_sum_ay / (int64_t)_sum_n);
-		_bias_az = (int32_t)(_sum_az / (int64_t)_sum_n);
+	if ((now_ms - _calib_start_ms) >= cfg::IMU_CALIBRATION_MS && _sum_n >= 1) {
+		_bias_ax = 0;
+		_bias_ay = 0;
+		_bias_az = 0;
 		_bias_gx = (int32_t)(_sum_gx / (int64_t)_sum_n);
 		_bias_gy = (int32_t)(_sum_gy / (int64_t)_sum_n);
 		_bias_gz = (int32_t)(_sum_gz / (int64_t)_sum_n);

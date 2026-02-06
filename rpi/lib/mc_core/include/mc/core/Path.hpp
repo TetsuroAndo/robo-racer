@@ -50,4 +50,15 @@ inline std::string dir_of(const std::string &path) {
 	return path.substr(0, pos);
 }
 
+/** Create parent directory of path (e.g. for log file path). No-op if path has
+ * no parent. */
+inline void ensure_dir_for(const std::string &path) {
+	if (path.empty())
+		return;
+	const std::string dir = dir_of(path);
+	if (dir.empty())
+		return;
+	ensure_dir(dir);
+}
+
 } // namespace mc::core
