@@ -15,8 +15,8 @@
 | LIDAR_SCAN | `IPC_LIDAR_SCAN` | `LidarScanChunkPayload` + data | lidard -> consumers | 5-20Hz | 古いscan_idを破棄 |
 | LIDAR_SUMMARY | `IPC_LIDAR_SUMMARY` | `LidarSummaryPayload` | lidard/ftg -> consumers | 10-50Hz | 最新優先 |
 | IMU_SAMPLE | `IPC_IMU_SAMPLE` | `ImuSamplePayload` | imu -> consumers | 50-200Hz | 最新優先 |
-| DRIVE_CMD | `IPC_DRIVE_CMD` | `DriveCmdPayload` | racerd -> seriald | 20-100Hz | 最新優先 |
-| VEHICLE_STATUS | `IPC_VEHICLE_STATUS` | `VehicleStatusPayload` | seriald -> consumers | 10-50Hz | 最新優先 |
+| DRIVE_CMD | `IPC_DRIVE_CMD` | `DriveCmdPayload` | racerd -> seriald | **100Hz（10ms）** | 最新優先 |
+| VEHICLE_STATUS | `IPC_VEHICLE_STATUS` | `VehicleStatusPayload` | seriald -> consumers | **100Hz（10ms）** | 最新優先 |
 | METRICS | `IPC_METRICS` | `MetricsPayload` | metricsd -> consumers | 1-5Hz | 最新優先 |
 | LOG_RECORD | `IPC_LOG_RECORD` | `LogRecordPayload` | any -> logd | 1-100Hz | drop可（非同期） |
 
@@ -34,4 +34,3 @@
 - 未知のtypeは破棄（必要ならログ）
 - `payload_len` 不一致は破棄
 - v1で追加するpayload構造体のサイズを変えない
-

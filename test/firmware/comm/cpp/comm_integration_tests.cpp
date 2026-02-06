@@ -185,8 +185,13 @@ static void test_mode_len2_reason() {
 	mc::IHandler *h = mc::Registry::instance().get(f.type());
 	assert(h != nullptr);
 	h->onFrame(f, t.ctx, 0);
+#if MC_ENABLE_MANUAL
 	std::cout << "\tEXPECT mode=MANUAL(0) ACTUAL=" << (int)t.st.mode << "\n";
 	assert((int)t.st.mode == 0);
+#else
+	std::cout << "\tEXPECT mode=AUTO(1) ACTUAL=" << (int)t.st.mode << "\n";
+	assert((int)t.st.mode == 1);
+#endif
 }
 
 /**

@@ -2,6 +2,11 @@
 
 #include <stdint.h>
 
+// Build flag: disable MANUAL (pad) support in production by default.
+#ifndef MC_ENABLE_MANUAL
+#define MC_ENABLE_MANUAL 0
+#endif
+
 #if defined(__has_include)
 #if __has_include("mc_config/vehicle_limits.h")
 #include "mc_config/vehicle_limits.h"

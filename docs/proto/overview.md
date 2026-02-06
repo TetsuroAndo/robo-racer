@@ -15,6 +15,8 @@
 * **AUTO**：RPiからUARTで送られる自律制御コマンド。
 * **KILL**：緊急停止。**どのモードでも最優先**。解除は現状プロトコルでは行わない（再起動/ローカル操作）。
 
+> 本番ビルドでは `MC_ENABLE_MANUAL=0` を想定し、MANUAL/Bluepad32 を無効化する。MODE_SET は **AUTOのみ受理** する。
+
 ---
 
 # 2. システム方針（最重要）
@@ -134,6 +136,8 @@
 * `len == 1` のみ許可。`len != 1` は無視（or NACK）。
 * `reason` は v2 で追加する（例：`MODE_SET_EX` など）。
 
+> 本番ビルド（`MC_ENABLE_MANUAL=0`）では `mode=1`（AUTO）のみ受理し、`mode=0`（MANUAL）はエラー扱い。
+
 ---
 
 ### 3.5.2 `DRIVE` (type=0x01) payload（8 bytes）
@@ -146,6 +150,13 @@
 | `speed_mm_s`  | i16 | mm/s   | 目標速度（符号付き。車体/モータ都合で上限は実装側でクランプ） |
 | `ttl_ms`      | u16 | ms     | このコマンドの有効期限                                  |
 | `distance_mm` | u16 | mm     | 将来拡張用（0なら無視）                                 |
+
+**speed_mm_s の契約（前進のみ）**
+
+* 前進を正とし、本番運用では **`speed_mm_s >= 0` を前提**とする（負値は保証外）。
+* 範囲は `0 .. mc_config::SPEED_MAX_MM_S` にクランプ（現状 `5000 mm/s`）。
+* 物理一致の評価は IMU 校正済み・前進時のみ。許容誤差（暫定）は `|v_est - v_cmd| <= max(200 mm/s, 0.1 * v_cmd)`。
+* Slew（暫定）: コマンド生成側は `|dv/dt| <= cfg::TSD20_PREDICT_ACCEL_MAX_MM_S2`（現状 `8000 mm/s^2`）を上限に抑える。ESP32側は PWM レート制限のみ。
 
 **TTLの評価基準**
 
@@ -230,11 +241,11 @@
 
 ## 3.6 タイムアウト・周波数（推奨値）
 
-* RPi→ESP32 `DRIVE`：50〜200Hz
-* `ttl_ms`：制御周期の2〜3倍（例：送信100Hzなら ttl=30〜50ms）
+* RPi→ESP32 `DRIVE`：**100Hz（10ms）**
+* `ttl_ms`：制御周期の2〜3倍（例：送信100Hzなら ttl=20〜30ms）
 * `PING`：10〜50Hz
 * `hb_timeout_ms`（ESP32内部）：200ms（暫定）
-* `STATUS`：20Hz（必要なときだけ）
+* `STATUS` / `IMU_STATUS`：**100Hz（10ms）**
 
 ---
 

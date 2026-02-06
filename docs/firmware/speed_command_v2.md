@@ -44,6 +44,30 @@
 - 速度制御が入っても、既存の安全系（kill/TTL/TSD20 clamp/ABS）は優先される。
 - キャリブレーション未実施でも「完全に破綻しない」フェイルセーフを持つ（例：最低限の feedforward + ゲイン抑制）。
 
+### 2.1 `speed_mm_s` 契約（前進のみ）
+
+- 単位は **mm/s**、符号は **前進を正** とする。
+- 本番運用では **`speed_mm_s >= 0` を前提**とし、負値は保証外（閉ループ対象外）。
+- 範囲は `0 .. mc_config::SPEED_MAX_MM_S` にクランプ（現状 `5000 mm/s`）。
+- 物理一致の評価は **IMU 校正済み・前進時のみ**。`v_est_mm_s` が `speed_mm_s` に収束することを目標とする。
+- 許容誤差（暫定）: 定常時 `|v_est - v_cmd| <= max(200 mm/s, 0.1 * v_cmd)`。
+- Slew（暫定）: コマンド生成側は `|dv/dt| <= cfg::TSD20_PREDICT_ACCEL_MAX_MM_S2`（現状 `8000 mm/s^2`）を上限に抑える。ESP32側は PWM レート制限（`ENGINE_RATE_*`）のみ。
+
+### 2.2 IMU 推定 `v_est_mm_s` の前提と限界（要件の成立条件）
+
+- 校正（`ImuEstimate.calibrated`）は **静止時**の平均で決まる。判定は `IMU_CALIBRATION_MS` と `IMU_CALIB_MIN_SAMPLES` を満たし、かつ `IMU_CALIB_GYRO_DPS` / `IMU_CALIB_ACCEL_DEV_MM_S2` を超えないことが条件。
+- `a_long_mm_s2` は「重力成分の推定」を引いた前後加速度。`IMU_GRAVITY_TAU_MS` の LPF か `IMU_USE_FUSION` の線形加速度を使用。
+- 速度推定は **積分＋リーク＋ZUPT** のみで行う（エンコーダなし）。`v_est += a_long * dt`、`IMU_V_EST_LEAK_PER_S` によるリーク、ZUPT 条件成立（`|a_long| < IMU_ZUPT_A_LONG_MM_S2` かつ `|gz| < IMU_ZUPT_GZ_DPS` かつ `|applied_speed| < IMU_ZUPT_SPEED_MM_S` が `IMU_ZUPT_HOLD_MS` 継続）で `v_est=0`。
+- `v_est` は **0..IMU_V_EST_MAX_MM_S** にクリップ（負方向は 0 に潰れる）。
+- 低速域は誤差が出やすい前提のため、`SPEED_DEADBAND_MM_S` 未満では積分器を弱める/停止する。
+- よって **物理一致の評価は「IMU校正済み・前進・中速以上」**を前提に行う。
+
+### 2.3 物理一致の責務
+
+- 物理速度の一致は **ESP32 の SpeedController（FF+PI）** が担う。
+- `speed_mm_s` を `v_target` として受け、`v_est_mm_s` を用いて `pwm_cmd` を算出する。
+- 逆方向は `v_est` が負を持たないため **open-loop（FFのみ）** とする。
+
 ## 3. 提案アーキテクチャ（v2）
 
 ### 3.1 速度制御を `Drive` から分離して “SpeedController” を導入

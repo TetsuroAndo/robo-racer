@@ -20,10 +20,12 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 		d->reason = TSD_NONPOSITIVE;
 		return speed_mm_s;
 	}
+#if MC_ENABLE_MANUAL
 	if (!cfg::TSD20_CLAMP_IN_MANUAL && mode != mc::Mode::AUTO) {
 		d->reason = TSD_MANUAL_SKIP;
 		return speed_mm_s;
 	}
+#endif
 	if (cfg::TSD20_REQUIRE_OK && !tsd.ready) {
 		d->reason = TSD_NOT_READY;
 		return 0;
