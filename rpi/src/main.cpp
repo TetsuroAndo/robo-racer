@@ -126,7 +126,7 @@ int main(int argc, char **argv) {
 			// データが利用可能
 			const ProcResult procResult = process.proc(
 				lidarData, lastSteerAngle, tick, scan_id, run_id, motion_ptr);
-			sender.send(procResult.speed, procResult.angle);
+			sender.send(procResult.speed_mm_s, procResult.angle);
 
 			// 次のループのために今回のステアリング角度を保存
 			lastSteerAngle = procResult.angle;

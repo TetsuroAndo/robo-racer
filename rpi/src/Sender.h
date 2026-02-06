@@ -16,7 +16,8 @@ public:
 	explicit Sender(const char* sock_path, TelemetryEmitter* telemetry = nullptr);
 	~Sender();
 
-	void send(int speed, int angle);
+	// speed_mm_s: 物理速度(mm/s)。RPi内で段階値に変換しない。
+	void send(int speed_mm_s, int angle);
 	void sendAutoMode(bool enable);
 	void sendKill();
 	void poll();

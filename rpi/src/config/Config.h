@@ -38,7 +38,7 @@ static constexpr uint8_t ACK_MAX_RETRY           = 3;
 static constexpr uint32_t STATUS_DEAD_MS         = 300;
 
 // 送信値のスケール/上限（ESP32側の単位に合わせる）
-// speed: RPi内部は旧PWM相当(-255..255) → ESP32はmm/s
+// speed: RPi内部も mm/s（物理）で統一し、ESP32へそのまま送る
 // steer: degree → centi-degree
 
 // 受信バッファ

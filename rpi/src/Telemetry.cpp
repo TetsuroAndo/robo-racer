@@ -795,7 +795,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	const std::string sp_angle =
 		sparkline(spark_best_, -90.0f, 90.0f, cfg::TELEMETRY_SPARK_LEN);
 	const std::string sp_speed =
-		sparkline(spark_speed_, 0.0f, (float)cfg::FTG_SPEED_MAX,
+		sparkline(spark_speed_, 0.0f, (float)cfg::FTG_SPEED_MAX_MM_S,
 				  cfg::TELEMETRY_SPARK_LEN);
 	const std::string sp_dist =
 		sparkline(spark_dist_, 0.0f, (float)cfg::TELEMETRY_DIST_BAR_MAX_MM,
@@ -828,9 +828,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		   << (metrics.mem_total_kb / 1024.0f) << "MB";
 	}
 
-	const float cmd_mm_s = (float)s.limited_speed *
-						   (float)mc_config::SPEED_MAX_MM_S /
-						   (float)mc_config::SPEED_INPUT_LIMIT;
+	const float cmd_mm_s = (float)s.limited_speed;
 	const float cmd_kmh = cmd_mm_s * 0.0036f;
 	std::ostringstream l10;
 	l10 << std::fixed << std::setprecision(1);
