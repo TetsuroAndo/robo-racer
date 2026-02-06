@@ -79,7 +79,14 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 	else if (a > a_max)
 		a = a_max;
 
-	const float tau = (float)cfg::TSD20_LATENCY_MS / 1000.0f;
+	// ベースとなるシステム遅延（センサ内部＋配線遅延など）
+	const float tau_base = (float)cfg::TSD20_LATENCY_MS / 1000.0f;
+	// 実際の鮮度 (Age) を秒に変換し、ベース遅延に加算する。
+	float tau = tau_base;
+	if (tsd.valid && tsd.age_ms != 0xFFFFu) {
+		const float age_s = (float)tsd.age_ms / 1000.0f;
+		tau += age_s;
+	}
 	const float d_allow_base = (float)tsd.mm - base_margin;
 	float margin_pred = 0.0f;
 	if (cfg::TSD20_PREDICT_ENABLE && d_allow_base > 0.0f) {

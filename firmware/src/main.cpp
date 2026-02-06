@@ -38,6 +38,7 @@ static mc::proto::PacketReader reader;
 
 static mc::PeriodicTimer statusTimer(cfg::STATUS_INTERVAL_MS);
 static mc::PeriodicTimer logTimer(200);
+static mc::PeriodicTimer loopStatsTimer(1000);
 static mc::PeriodicTimer imuTimer(cfg::IMU_READ_INTERVAL_MS);
 static mc::PeriodicTimer tsdTimer(cfg::TSD20_READ_INTERVAL_MS);
 static mc::PeriodicTimer tsdInitTimer(cfg::TSD20_INIT_RETRY_MS);
@@ -58,6 +59,11 @@ static int16_t g_last_cmd_speed_mm_s = 0;
 
 static bool g_abs_active = false;
 static float g_last_dt_s = 0.0f;
+
+static float g_loop_dt_min_s = 0.0f;
+static float g_loop_dt_max_s = 0.0f;
+static float g_loop_dt_sum_s = 0.0f;
+static uint32_t g_loop_dt_count = 0;
 
 static SafetyDiag g_safety_diag{};
 
@@ -186,18 +192,10 @@ static void sendTsd20Status_(uint32_t now_ms) {
 	if (!cfg::TSD20_ENABLE)
 		return;
 
-	uint16_t age_ms = 0xFFFFu;
-	if (g_tsd_last_read_ms != 0) {
-		uint32_t age = now_ms - g_tsd_last_read_ms;
-		if (age > 0xFFFFu)
-			age = 0xFFFFu;
-		age_ms = (uint16_t)age;
-	}
-
 	mc::proto::Tsd20StatusPayload p{};
 	wr16((uint8_t *)&p.mm_le, g_tsd_state.mm);
 	wr16((uint8_t *)&p.period_ms_le, g_tsd_period_ms);
-	wr16((uint8_t *)&p.age_ms_le, age_ms);
+	wr16((uint8_t *)&p.age_ms_le, g_tsd_state.age_ms);
 	p.fail_count = g_tsd_state.fail_count;
 	uint8_t flags = 0;
 	if (g_tsd_state.ready)
@@ -258,6 +256,8 @@ static void updateTsd20_(uint32_t now_ms) {
 	if (!g_tsd_state.ready) {
 		g_tsd_state.valid = false;
 		g_tsd_state.mm = 0;
+		g_tsd_state.age_ms = 0xFFFFu;
+		g_tsd_state.period_ms = 0;
 		g_tsd_last_read_ms = 0;
 		g_tsd_period_ms = 0;
 		return;
@@ -272,8 +272,13 @@ static void updateTsd20_(uint32_t now_ms) {
 		if (g_tsd_last_read_ms != 0) {
 			const uint32_t dt = now_ms - g_tsd_last_read_ms;
 			g_tsd_period_ms = (uint16_t)mc::clamp< uint32_t >(dt, 0u, 0xFFFFu);
+			g_tsd_state.period_ms = g_tsd_period_ms;
+		} else {
+			g_tsd_period_ms = 0;
+			g_tsd_state.period_ms = 0;
 		}
 		g_tsd_last_read_ms = now_ms;
+		g_tsd_state.age_ms = 0;
 	} else {
 		if (g_tsd_state.fail_count < 0xFF)
 			g_tsd_state.fail_count++;
@@ -383,6 +388,7 @@ void setup() {
 	uint32_t now = millis();
 	statusTimer.reset(now);
 	logTimer.reset(now);
+	loopStatsTimer.reset(now);
 	imuTimer.reset(now);
 	tsdTimer.reset(now);
 	tsdInitTimer.reset(now);
@@ -399,10 +405,34 @@ void loop() {
 	last_us = now_us;
 	g_last_dt_s = dt_s;
 
+	// ループ周期統計の更新
+	if (g_loop_dt_count == 0) {
+		g_loop_dt_min_s = dt_s;
+		g_loop_dt_max_s = dt_s;
+		g_loop_dt_sum_s = dt_s;
+		g_loop_dt_count = 1;
+	} else {
+		if (dt_s < g_loop_dt_min_s)
+			g_loop_dt_min_s = dt_s;
+		if (dt_s > g_loop_dt_max_s)
+			g_loop_dt_max_s = dt_s;
+		g_loop_dt_sum_s += dt_s;
+		g_loop_dt_count++;
+	}
+
 	uint32_t now_ms = (uint32_t)millis();
 
 	handleRx_(now_ms);
 	updateTsd20_(now_ms);
+
+	// TSD20 のデータ鮮度: 直近の読み取り時刻からの経過時間を毎ループ更新する。
+	if (g_tsd_last_read_ms != 0) {
+		uint32_t age = now_ms - g_tsd_last_read_ms;
+		age = mc::clamp< uint32_t >(age, 0u, 0xFFFFu);
+		g_tsd_state.age_ms = (uint16_t)age;
+	} else {
+		g_tsd_state.age_ms = 0xFFFFu;
+	}
 
 	if (cfg::IMU_ENABLE && g_imu_ready && imuTimer.due(now_ms)) {
 		ImuSample sample{};
@@ -423,6 +453,19 @@ void loop() {
 		sendStatus_(now_ms);
 		sendImuStatus_(now_ms);
 		sendTsd20Status_(now_ms);
+	}
+
+	// 約1秒ごとにループ周期統計をログ出力
+	if (loopStatsTimer.due(now_ms) && g_loop_dt_count > 0) {
+		const float avg_s = g_loop_dt_sum_s / (float)g_loop_dt_count;
+		alog.logf(
+			mc::LogLevel::INFO, "loop", "dt_ms min=%.3f avg=%.3f max=%.3f n=%u",
+			(double)(g_loop_dt_min_s * 1000.0f), (double)(avg_s * 1000.0f),
+			(double)(g_loop_dt_max_s * 1000.0f), (unsigned)g_loop_dt_count);
+		g_loop_dt_min_s = 0.0f;
+		g_loop_dt_max_s = 0.0f;
+		g_loop_dt_sum_s = 0.0f;
+		g_loop_dt_count = 0;
 	}
 
 	if (logTimer.due(now_ms)) {
