@@ -455,6 +455,8 @@ int main(int argc, char **argv) {
 							const int16_t yaw_x10 = rd16s(p + 6);
 							const uint16_t age_ms = rd16u(p + 8);
 							const uint8_t flags = p[10];
+							const uint8_t reserved = p[11];
+							(void)reserved;
 							const bool valid = (flags & (1u << 0)) != 0;
 							const bool calibrated = (flags & (1u << 1)) != 0;
 							const bool abs_active = (flags & (1u << 2)) != 0;

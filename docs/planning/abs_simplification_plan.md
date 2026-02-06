@@ -14,7 +14,7 @@
 
 現在の ABS 発動条件は **IMU のみ** に依存している：
 
-```
+```text
 want_brake = (v_est > v_cmd + ABS_SPEED_MARGIN_MM_S)
 ```
 
@@ -102,7 +102,7 @@ want_brake = (v_est > v_cmd + ABS_SPEED_MARGIN_MM_S)
 
 ## 4. 簡略化後の擬似コード
 
-```
+```text
 apply():
   if (!ABS_ENABLE || !allow_abs) return speed_mm_s;
   if (!imu_valid || (REQUIRE_CALIB && !imu.calibrated)) return speed_mm_s;
