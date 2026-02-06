@@ -60,7 +60,10 @@ SpeedControlOutput SpeedController::update(int16_t v_target_mm_s,
 	}
 
 	float pwm = (float)out.pwm_ff + kp * out.error_mm_s + _i;
-	float pwm_sat = mc::clamp< float >(pwm, -255.0f, 255.0f);
+	// 前進・停止時は[0,255]、逆転時は[-255,0]。逆転はABSのみが指示する
+	const float pwm_lo = forward_target ? 0.0f : -255.0f;
+	const float pwm_hi = forward_target ? 255.0f : 0.0f;
+	float pwm_sat = mc::clamp< float >(pwm, pwm_lo, pwm_hi);
 	out.saturated = (pwm != pwm_sat);
 
 	if (out.saturated && allow_integrator) {
