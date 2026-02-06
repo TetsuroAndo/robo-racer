@@ -90,6 +90,8 @@ static constexpr int TSD20_PREDICT_ACCEL_MAX_MM_S2 = 8000;
 // Distance clamp (tune to your course)
 static constexpr uint16_t TSD20_STOP_DISTANCE_MM    = 500;
 static constexpr uint16_t TSD20_SLOWDOWN_DISTANCE_MM = 1000;
+// TSD20の距離サンプルとして「使用を許可する最大Age」。これを超えたら停止扱い。
+static constexpr uint16_t TSD20_MAX_AGE_MS          = 200;
 
 //------------------------------------------------------------------------------
 // 自動モードのハートビート監視タイムアウト

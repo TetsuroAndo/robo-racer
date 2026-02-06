@@ -15,6 +15,7 @@ struct Tsd20Diag {
 	float d_travel = 0.0f;
 	float v_est = 0.0f;
 	float a_long = 0.0f;
+	float age_ms = 0.0f;
 	float tau = 0.0f;
 	float v_max = 0.0f;
 	float v_cap = 0.0f;
@@ -34,6 +35,7 @@ public:
 		TSD_CLAMP = 6,
 		TSD_OK = 7,
 		TSD_STOP = 8,
+		TSD_AGE_STALE = 9,
 	};
 
 	int16_t limit(int16_t speed_mm_s, mc::Mode mode,

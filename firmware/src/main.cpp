@@ -49,7 +49,6 @@ static uint16_t tsd_seq = 0;
 static Tsd20State g_tsd_state{};
 static bool g_tsd_fail_logged = false;
 static uint32_t g_tsd_last_read_ms = 0;
-static uint16_t g_tsd_period_ms = 0;
 
 static bool g_imu_ready = false;
 static bool g_imu_valid = false;
@@ -194,7 +193,7 @@ static void sendTsd20Status_(uint32_t now_ms) {
 
 	mc::proto::Tsd20StatusPayload p{};
 	wr16((uint8_t *)&p.mm_le, g_tsd_state.mm);
-	wr16((uint8_t *)&p.period_ms_le, g_tsd_period_ms);
+	wr16((uint8_t *)&p.period_ms_le, g_tsd_state.period_ms);
 	wr16((uint8_t *)&p.age_ms_le, g_tsd_state.age_ms);
 	p.fail_count = g_tsd_state.fail_count;
 	uint8_t flags = 0;
@@ -259,7 +258,6 @@ static void updateTsd20_(uint32_t now_ms) {
 		g_tsd_state.age_ms = 0xFFFFu;
 		g_tsd_state.period_ms = 0;
 		g_tsd_last_read_ms = 0;
-		g_tsd_period_ms = 0;
 		return;
 	}
 
@@ -271,10 +269,9 @@ static void updateTsd20_(uint32_t now_ms) {
 		g_tsd_fail_logged = false;
 		if (g_tsd_last_read_ms != 0) {
 			const uint32_t dt = now_ms - g_tsd_last_read_ms;
-			g_tsd_period_ms = (uint16_t)mc::clamp< uint32_t >(dt, 0u, 0xFFFFu);
-			g_tsd_state.period_ms = g_tsd_period_ms;
+			g_tsd_state.period_ms =
+				(uint16_t)mc::clamp< uint32_t >(dt, 0u, 0xFFFFu);
 		} else {
-			g_tsd_period_ms = 0;
 			g_tsd_state.period_ms = 0;
 		}
 		g_tsd_last_read_ms = now_ms;
@@ -400,23 +397,24 @@ void loop() {
 	float dt_s = (float)(now_us - last_us) / 1e6f;
 	if (dt_s < 0.0f)
 		dt_s = 0.0f;
+	const float dt_raw_s = dt_s;
 	if (dt_s > 0.05f)
 		dt_s = 0.05f;
 	last_us = now_us;
 	g_last_dt_s = dt_s;
 
-	// ループ周期統計の更新
+	// ループ周期統計の更新（raw dt を使う）
 	if (g_loop_dt_count == 0) {
-		g_loop_dt_min_s = dt_s;
-		g_loop_dt_max_s = dt_s;
-		g_loop_dt_sum_s = dt_s;
+		g_loop_dt_min_s = dt_raw_s;
+		g_loop_dt_max_s = dt_raw_s;
+		g_loop_dt_sum_s = dt_raw_s;
 		g_loop_dt_count = 1;
 	} else {
-		if (dt_s < g_loop_dt_min_s)
-			g_loop_dt_min_s = dt_s;
-		if (dt_s > g_loop_dt_max_s)
-			g_loop_dt_max_s = dt_s;
-		g_loop_dt_sum_s += dt_s;
+		if (dt_raw_s < g_loop_dt_min_s)
+			g_loop_dt_min_s = dt_raw_s;
+		if (dt_raw_s > g_loop_dt_max_s)
+			g_loop_dt_max_s = dt_raw_s;
+		g_loop_dt_sum_s += dt_raw_s;
 		g_loop_dt_count++;
 	}
 
@@ -485,7 +483,7 @@ void loop() {
 					  (int)g_tsd_state.ready, (int)g_tsd_state.valid,
 					  (unsigned)g_tsd_state.mm,
 					  (unsigned)g_tsd_state.fail_count,
-					  (unsigned)g_tsd_period_ms, (int)tsd20.freqAck(),
+					  (unsigned)g_tsd_state.period_ms, (int)tsd20.freqAck(),
 					  (int)tsd20.iicAck());
 		}
 		if (cfg::IMU_ENABLE) {

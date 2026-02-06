@@ -38,6 +38,16 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 		return speed_mm_s;
 	}
 
+	if (tsd.age_ms != 0xFFFFu && tsd.age_ms > cfg::TSD20_MAX_AGE_MS) {
+		d->reason = TSD_AGE_STALE;
+		d->age_ms = (float)tsd.age_ms;
+		d->tau = 0.0f;
+		d->v_max = 0.0f;
+		d->v_cap = 0.0f;
+		d->clamped = true;
+		return 0;
+	}
+
 	if (cfg::TSD20_STOP_DISTANCE_MM > 0 &&
 		tsd.mm <= cfg::TSD20_STOP_DISTANCE_MM) {
 		d->reason = TSD_STOP;
@@ -83,10 +93,12 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 	const float tau_base = (float)cfg::TSD20_LATENCY_MS / 1000.0f;
 	// 実際の鮮度 (Age) を秒に変換し、ベース遅延に加算する。
 	float tau = tau_base;
-	if (tsd.valid && tsd.age_ms != 0xFFFFu) {
+	if (tsd.age_ms != 0xFFFFu) {
 		const float age_s = (float)tsd.age_ms / 1000.0f;
 		tau += age_s;
 	}
+	// age_ms は「未取得=-1」、それ以外はそのまま。
+	d->age_ms = (tsd.age_ms != 0xFFFFu) ? (float)tsd.age_ms : -1.0f;
 	const float d_allow_base = (float)tsd.mm - base_margin;
 	float margin_pred = 0.0f;
 	if (cfg::TSD20_PREDICT_ENABLE && d_allow_base > 0.0f) {
