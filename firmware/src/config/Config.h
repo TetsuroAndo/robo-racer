@@ -54,13 +54,13 @@ static constexpr bool TSD20_ALLOW_PIN_SWAP     = true;
 
 // Read/processing
 static constexpr bool TSD20_ENABLE              = true;
-static constexpr uint32_t TSD20_READ_INTERVAL_MS = 10;
+static constexpr uint32_t TSD20_READ_INTERVAL_MS = 5;   // 200Hz
 static constexpr uint32_t TSD20_INIT_RETRY_MS     = 2000;
 static constexpr uint8_t TSD20_MAX_FAILS         = 5;
 static constexpr bool TSD20_REQUIRE_OK           = true;
 static constexpr bool TSD20_CLAMP_IN_MANUAL      = false;
 static constexpr bool TSD20_SET_FREQ_ON_BOOT     = true;
-static constexpr uint16_t TSD20_TARGET_HZ        = 100;
+static constexpr uint16_t TSD20_TARGET_HZ        = 200;
 static constexpr uint16_t TSD20_MARGIN_MM        = 120; // base stop margin
 static constexpr uint16_t TSD20_MARGIN_MIN_MM    = 80;  // min for v_cap calc
 static constexpr uint16_t TSD20_MARGIN_RELAX_MM  = 40;  // relax at full steer
