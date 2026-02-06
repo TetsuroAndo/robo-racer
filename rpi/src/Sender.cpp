@@ -9,17 +9,8 @@
 #include <cstring>
 #include <sstream>
 #include <sys/socket.h>
-#include <time.h>
 
 namespace {
-uint32_t now_ms() {
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	const uint64_t ms = static_cast< uint64_t >(ts.tv_sec) * 1000ULL +
-						static_cast< uint64_t >(ts.tv_nsec) / 1000000ULL;
-	return static_cast< uint32_t >(ms & 0xFFFFFFFFu);
-}
-
 int16_t clamp_speed_input(int speed) {
 	if (speed > mc_config::SPEED_INPUT_LIMIT) {
 		speed = mc_config::SPEED_INPUT_LIMIT;
@@ -87,7 +78,7 @@ void Sender::send(int speed, int angle) {
 	if (!auto_enabled_) {
 		return;
 	}
-	const uint32_t send_ts = now_ms();
+	const uint32_t send_ts = mc::core::Time::ms();
 	if (last_drive_send_ms_ != 0) {
 		const uint32_t gap = send_ts - last_drive_send_ms_;
 		if (gap > worst_drive_gap_ms_) {
@@ -124,7 +115,7 @@ void Sender::send(int speed, int angle) {
 }
 
 void Sender::sendHeartbeatIfDue() {
-	const uint32_t now = now_ms();
+	const uint32_t now = mc::core::Time::ms();
 	if ((uint32_t)(now - last_hb_ms_) < cfg::HEARTBEAT_INTERVAL_MS) {
 		return;
 	}
@@ -253,10 +244,10 @@ void Sender::handleFrame(const mc::proto::Frame &frame) {
 void Sender::handleStatus(const mc::proto::StatusPayload &payload) {
 	last_status_ = payload;
 	has_status_ = true;
-	last_status_ms_ = now_ms();
+	last_status_ms_ = mc::core::Time::ms();
 	status_stale_ = false;
 
-	const uint32_t now = now_ms();
+	const uint32_t now = mc::core::Time::ms();
 	if ((uint32_t)(now - last_status_log_ms_) < cfg::STATUS_LOG_INTERVAL_MS) {
 		return;
 	}
@@ -316,7 +307,7 @@ void Sender::trackPending(uint16_t seq, const uint8_t *data, uint16_t len) {
 	if (len == 0 || len > mc::proto::MAX_FRAME_ENCODED)
 		return;
 	PendingTx p{};
-	p.deadline_ms = now_ms() + cfg::ACK_TIMEOUT_MS;
+	p.deadline_ms = mc::core::Time::ms() + cfg::ACK_TIMEOUT_MS;
 	p.retries = 0;
 	p.len = len;
 	memcpy(p.data.data(), data, len);
@@ -326,7 +317,7 @@ void Sender::trackPending(uint16_t seq, const uint8_t *data, uint16_t len) {
 void Sender::checkPending() {
 	if (pending_.empty())
 		return;
-	const uint32_t now = now_ms();
+	const uint32_t now = mc::core::Time::ms();
 	for (auto it = pending_.begin(); it != pending_.end();) {
 		PendingTx &p = it->second;
 		if ((int32_t)(now - p.deadline_ms) < 0) {
@@ -351,7 +342,7 @@ void Sender::checkPending() {
 void Sender::checkStatusLiveness() {
 	if (!has_status_)
 		return;
-	const uint32_t now = now_ms();
+	const uint32_t now = mc::core::Time::ms();
 	if ((uint32_t)(now - last_status_ms_) > cfg::STATUS_DEAD_MS) {
 		if (!status_stale_) {
 			status_stale_ = true;

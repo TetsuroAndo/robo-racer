@@ -1,11 +1,6 @@
 add_executable(lidar_received
   main.cpp
   LidarScanData.cpp
-  ../../src/Process.cpp
-  ../../src/Telemetry.cpp
-  ../../src/Sender.cpp
-  ../../src/LidarReceiver.cpp
-  ../../src/lidar_to_esp.cpp
 )
 
 target_include_directories(lidar_received PRIVATE
@@ -27,7 +22,6 @@ find_library(RPLIDAR_LIB sl_lidar_sdk PATHS ${RPLIDAR_LIB_DIR})
 
 target_link_libraries(lidar_received PRIVATE
   ${RPLIDAR_LIB}
-  mc_ipc
-  mc_proto
+  mc_core
   pthread
 )

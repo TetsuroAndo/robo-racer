@@ -227,10 +227,6 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 
 	const bool blocked = !(z > 0.0f);
 	float target_angle_f = blocked ? 0.0f : (angle_sum / z);
-	if (target_angle_f > mc_config::STEER_ANGLE_MAX_DEG)
-		target_angle_f = (float)mc_config::STEER_ANGLE_MAX_DEG;
-	else if (target_angle_f < -mc_config::STEER_ANGLE_MAX_DEG)
-		target_angle_f = (float)-mc_config::STEER_ANGLE_MAX_DEG;
 
 	const float max_delta = cfg::FTG_STEER_SLEW_DEG_PER_S * dt_s;
 	float applied_angle_f = target_angle_f;
@@ -241,10 +237,6 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		applied_angle_f = clamped_last - max_delta;
 
 	int out_angle = static_cast< int >(std::lround(applied_angle_f));
-	if (out_angle > mc_config::STEER_ANGLE_MAX_DEG)
-		out_angle = mc_config::STEER_ANGLE_MAX_DEG;
-	else if (out_angle < -mc_config::STEER_ANGLE_MAX_DEG)
-		out_angle = -mc_config::STEER_ANGLE_MAX_DEG;
 
 	int corridor_min_mm = 0;
 	if (blocked) {
@@ -267,6 +259,12 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			corridor_min_mm = best_dist;
 		}
 	}
+	// Single steer clamp (replaces redundant clamps at target and out_angle)
+	out_angle = static_cast< int >(
+		std::max(-mc_config::STEER_ANGLE_MAX_DEG,
+				 std::min(mc_config::STEER_ANGLE_MAX_DEG, (float)out_angle)));
+	applied_angle_f = (float)out_angle;
+
 	const bool warn =
 		(corridor_min_mm > 0) && (corridor_min_mm < cfg::FTG_WARN_OBSTACLE_MM);
 
