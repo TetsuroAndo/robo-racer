@@ -1,6 +1,8 @@
 #include "config/Config.h"
-#include "control/ControllerInput.h"
+#include "control/AutoCommandSource.h"
+#include "control/SafetySupervisor.h"
 #include "control/SpeedController.h"
+#include "control/Targets.h"
 #include "hardware/Drive.h"
 #include "hardware/ImuEstimator.h"
 #include "hardware/Mpu6500.h"
@@ -23,7 +25,8 @@ static Drive drive;
 static Mpu6500 imu;
 static ImuEstimator imu_est;
 static Tsd20 tsd20;
-static ControllerInput pad;
+static AutoCommandSource cmd_source;
+static SafetySupervisor safety;
 static SpeedController speed_ctl;
 static mc::AsyncLogger alog;
 static mc::UartTx uart_tx;
@@ -41,10 +44,7 @@ static mc::PeriodicTimer tsdInitTimer(cfg::TSD20_INIT_RETRY_MS);
 static uint16_t status_seq = 0;
 static uint16_t imu_seq = 0;
 
-static bool g_tsd_ready = false;
-static bool g_tsd_valid = false;
-static uint16_t g_tsd_mm = 0;
-static uint8_t g_tsd_fail_count = 0;
+static Tsd20State g_tsd_state{};
 static bool g_tsd_fail_logged = false;
 static uint32_t g_tsd_last_read_ms = 0;
 static uint16_t g_tsd_period_ms = 0;
@@ -56,49 +56,9 @@ static ImuSample g_imu_sample{};
 static int16_t g_last_cmd_speed_mm_s = 0;
 
 static bool g_abs_active = false;
-static uint32_t g_abs_cycle_ms = 0;
-static float g_abs_duty = 0.0f;
-static float g_abs_i = 0.0f;
-static uint32_t g_abs_hold_until_ms = 0;
 static float g_last_dt_s = 0.0f;
 
-static constexpr uint8_t TSD_DIAG_DISABLED = 0;
-static constexpr uint8_t TSD_DIAG_NONPOSITIVE = 1;
-static constexpr uint8_t TSD_DIAG_MANUAL_SKIP = 2;
-static constexpr uint8_t TSD_DIAG_NOT_READY = 3;
-static constexpr uint8_t TSD_DIAG_INVALID = 4;
-static constexpr uint8_t TSD_DIAG_MARGIN = 5;
-static constexpr uint8_t TSD_DIAG_CLAMP = 6;
-static constexpr uint8_t TSD_DIAG_OK = 7;
-static constexpr uint8_t TSD_DIAG_STOP = 8;
-
-static float g_tsd_diag_d_allow = 0.0f;
-static float g_tsd_diag_margin_eff = 0.0f;
-static float g_tsd_diag_margin_pred = 0.0f;
-static float g_tsd_diag_steer_ratio = 0.0f;
-static float g_tsd_diag_a_cap = 0.0f;
-static float g_tsd_diag_d_travel = 0.0f;
-static float g_tsd_diag_v_est = 0.0f;
-static float g_tsd_diag_a_long = 0.0f;
-static float g_tsd_diag_tau = 0.0f;
-static float g_tsd_diag_v_max = 0.0f;
-static float g_tsd_diag_v_cap = 0.0f;
-static bool g_tsd_diag_clamped = false;
-static uint8_t g_tsd_diag_reason = TSD_DIAG_DISABLED;
-
-static constexpr uint8_t ABS_DIAG_DISABLED = 0;
-static constexpr uint8_t ABS_DIAG_NO_IMU = 1;
-static constexpr uint8_t ABS_DIAG_NOT_CALIB = 2;
-static constexpr uint8_t ABS_DIAG_REVERSE = 3;
-static constexpr uint8_t ABS_DIAG_INACTIVE = 4;
-static constexpr uint8_t ABS_DIAG_ACTIVE = 5;
-
-static float g_abs_diag_v_cmd = 0.0f;
-static float g_abs_diag_v_est = 0.0f;
-static float g_abs_diag_a_target = 0.0f;
-static float g_abs_diag_a_cap = 0.0f;
-static float g_abs_diag_decel = 0.0f;
-static uint8_t g_abs_diag_reason = ABS_DIAG_DISABLED;
+static SafetyDiag g_safety_diag{};
 
 static float g_speed_diag_v_cmd = 0.0f;
 static float g_speed_diag_v_est = 0.0f;
@@ -248,284 +208,15 @@ static void handleRx_(uint32_t now_ms) {
 	}
 }
 
-static int16_t clampSpeedWithTsd20_(int16_t speed_mm_s, mc::Mode mode,
-									float a_brake_cap_mm_s2,
-									int16_t steer_cdeg) {
-	g_tsd_diag_reason = TSD_DIAG_DISABLED;
-	g_tsd_diag_clamped = false;
-	g_tsd_diag_d_allow = 0.0f;
-	g_tsd_diag_margin_eff = 0.0f;
-	g_tsd_diag_margin_pred = 0.0f;
-	g_tsd_diag_steer_ratio = 0.0f;
-	g_tsd_diag_a_cap = 0.0f;
-	g_tsd_diag_d_travel = 0.0f;
-	g_tsd_diag_v_est = 0.0f;
-	g_tsd_diag_a_long = 0.0f;
-	g_tsd_diag_tau = 0.0f;
-	g_tsd_diag_v_max = 0.0f;
-	g_tsd_diag_v_cap = 0.0f;
-
-	if (!cfg::TSD20_ENABLE)
-		return speed_mm_s;
-
-	if (speed_mm_s <= 0) {
-		g_tsd_diag_reason = TSD_DIAG_NONPOSITIVE;
-		return speed_mm_s;
-	}
-	if (!cfg::TSD20_CLAMP_IN_MANUAL && mode != mc::Mode::AUTO) {
-		g_tsd_diag_reason = TSD_DIAG_MANUAL_SKIP;
-		return speed_mm_s;
-	}
-	if (cfg::TSD20_REQUIRE_OK && !g_tsd_ready) {
-		g_tsd_diag_reason = TSD_DIAG_NOT_READY;
-		return 0;
-	}
-
-	if (!g_tsd_valid) {
-		g_tsd_diag_reason = TSD_DIAG_INVALID;
-		if (g_tsd_fail_count >= cfg::TSD20_MAX_FAILS)
-			return 0;
-		return speed_mm_s;
-	}
-
-	if (cfg::TSD20_STOP_DISTANCE_MM > 0 &&
-		g_tsd_mm <= cfg::TSD20_STOP_DISTANCE_MM) {
-		g_tsd_diag_reason = TSD_DIAG_STOP;
-		return 0;
-	}
-
-	if (g_tsd_mm <= cfg::TSD20_MARGIN_MM) {
-		g_tsd_diag_reason = TSD_DIAG_MARGIN;
-		return 0;
-	}
-
-	const float steer_abs = std::min((float)std::abs(steer_cdeg),
-									 (float)mc_config::STEER_ANGLE_MAX_CDEG);
-	const float steer_ratio =
-		(mc_config::STEER_ANGLE_MAX_CDEG > 0)
-			? (steer_abs / (float)mc_config::STEER_ANGLE_MAX_CDEG)
-			: 0.0f;
-	const float relax = (float)cfg::TSD20_MARGIN_RELAX_MM * steer_ratio;
-	float base_margin = (float)cfg::TSD20_MARGIN_MM - relax;
-	if (base_margin < (float)cfg::TSD20_MARGIN_MIN_MM)
-		base_margin = (float)cfg::TSD20_MARGIN_MIN_MM;
-	if (base_margin > (float)cfg::TSD20_MARGIN_MM)
-		base_margin = (float)cfg::TSD20_MARGIN_MM;
-
-	const bool imu_calibrated = g_imu_valid && imu_est.state().calibrated;
-	const float a_min = imu_calibrated ? (float)cfg::IMU_BRAKE_MIN_MM_S2
-									   : (float)cfg::IMU_BRAKE_MIN_UNCAL_MM_S2;
-	const float a_max = imu_calibrated ? (float)cfg::IMU_BRAKE_MAX_MM_S2
-									   : (float)cfg::IMU_BRAKE_MAX_UNCAL_MM_S2;
-	float a = 0.0f;
-	if (imu_calibrated && a_brake_cap_mm_s2 > 0.0f)
-		a = a_brake_cap_mm_s2;
-	if (a <= 0.0f) {
-		a = imu_calibrated ? (float)cfg::IMU_BRAKE_INIT_MM_S2
-						   : (float)cfg::IMU_BRAKE_INIT_UNCAL_MM_S2;
-	}
-	if (a < a_min)
-		a = a_min;
-	else if (a > a_max)
-		a = a_max;
-
-	const float tau = (float)cfg::TSD20_LATENCY_MS / 1000.0f;
-	const float d_allow_base = (float)g_tsd_mm - base_margin;
-	float margin_pred = 0.0f;
-	if (cfg::TSD20_PREDICT_ENABLE && d_allow_base > 0.0f) {
-		const ImuEstimate &st = imu_est.state();
-		if (g_imu_valid && st.calibrated) {
-			const float v_est = std::max(0.0f, st.v_est_mm_s);
-			const float v_cmd = std::max(0.0f, (float)speed_mm_s);
-			const float v_used = std::max(v_est, v_cmd);
-			const float a_long = st.a_long_mm_s2;
-			const float a_cap = std::max(
-				0.0f,
-				std::min(a_long, (float)cfg::TSD20_PREDICT_ACCEL_MAX_MM_S2));
-			const float d_travel = v_used * tau + 0.5f * a_cap * tau * tau;
-			margin_pred = d_travel;
-			if (margin_pred > (float)cfg::TSD20_PREDICT_MARGIN_MAX_MM)
-				margin_pred = (float)cfg::TSD20_PREDICT_MARGIN_MAX_MM;
-			g_tsd_diag_v_est = v_used;
-			g_tsd_diag_a_long = a_long;
-			g_tsd_diag_d_travel = d_travel;
-		}
-	}
-	const float margin_eff = base_margin + margin_pred;
-	const float d_allow = (float)g_tsd_mm - margin_eff;
-	const float term = a * tau;
-	const float disc = term * term + 2.0f * a * d_allow;
-	float v_max = (disc > 0.0f) ? (-term + std::sqrt(disc)) : 0.0f;
-	if (v_max < 0.0f)
-		v_max = 0.0f;
-
-	float v_cap = std::min(v_max, (float)mc_config::SPEED_MAX_MM_S);
-	const uint16_t stop_mm = cfg::TSD20_STOP_DISTANCE_MM;
-	const uint16_t slow_mm = cfg::TSD20_SLOWDOWN_DISTANCE_MM;
-	if (slow_mm > stop_mm && g_tsd_mm < slow_mm) {
-		const float ratio =
-			(float)(g_tsd_mm - stop_mm) / (float)(slow_mm - stop_mm);
-		const float slow = mc::clamp< float >(ratio, 0.0f, 1.0f);
-		v_cap *= slow;
-	}
-	g_tsd_diag_d_allow = d_allow;
-	g_tsd_diag_margin_eff = margin_eff;
-	g_tsd_diag_margin_pred = margin_pred;
-	g_tsd_diag_steer_ratio = steer_ratio;
-	g_tsd_diag_a_cap = a;
-	g_tsd_diag_tau = tau;
-	g_tsd_diag_v_max = v_max;
-	g_tsd_diag_v_cap = v_cap;
-	g_tsd_diag_clamped = ((float)speed_mm_s > v_cap);
-	g_tsd_diag_reason = g_tsd_diag_clamped ? TSD_DIAG_CLAMP : TSD_DIAG_OK;
-	if ((float)speed_mm_s > v_cap)
-		return (int16_t)std::lround(v_cap);
-	return speed_mm_s;
-}
-
-static void resetAbs_(uint32_t now_ms) {
-	g_abs_active = false;
-	g_abs_cycle_ms = now_ms;
-	g_abs_duty = 0.0f;
-	g_abs_i = 0.0f;
-	g_abs_hold_until_ms = 0;
-}
-
-static int16_t applyAbsBrake_(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
-							  bool allow_abs) {
-	g_abs_diag_reason = ABS_DIAG_DISABLED;
-	g_abs_diag_v_cmd = (float)speed_mm_s;
-	g_abs_diag_v_est = 0.0f;
-	g_abs_diag_a_target = 0.0f;
-	g_abs_diag_a_cap = 0.0f;
-	g_abs_diag_decel = 0.0f;
-
-	if (!cfg::ABS_ENABLE || !allow_abs) {
-		resetAbs_(now_ms);
-		return speed_mm_s;
-	}
-
-	if (!g_imu_valid) {
-		g_abs_diag_reason = ABS_DIAG_NO_IMU;
-		resetAbs_(now_ms);
-		return speed_mm_s;
-	}
-
-	const ImuEstimate &st = imu_est.state();
-	if (!st.calibrated) {
-		g_abs_diag_reason = ABS_DIAG_NOT_CALIB;
-		resetAbs_(now_ms);
-		return speed_mm_s;
-	}
-
-	if (speed_mm_s < 0) {
-		g_abs_diag_reason = ABS_DIAG_REVERSE;
-		resetAbs_(now_ms);
-		return speed_mm_s;
-	}
-
-	const float v_cmd = std::max(0.0f, (float)speed_mm_s);
-	const float v_est = std::max(0.0f, st.v_est_mm_s);
-	g_abs_diag_v_cmd = v_cmd;
-	g_abs_diag_v_est = v_est;
-	const float margin = (float)cfg::ABS_SPEED_MARGIN_MM_S;
-	const bool want_brake = (v_est > (v_cmd + margin));
-
-	if (want_brake) {
-		g_abs_hold_until_ms = now_ms + cfg::ABS_BRAKE_HOLD_MS;
-	}
-	const bool active =
-		want_brake || (g_abs_active && (g_abs_hold_until_ms != 0) &&
-					   (now_ms <= g_abs_hold_until_ms));
-
-	if (!active) {
-		g_abs_diag_reason = ABS_DIAG_INACTIVE;
-		resetAbs_(now_ms);
-		return speed_mm_s;
-	}
-
-	if (!g_abs_active) {
-		g_abs_active = true;
-		g_abs_cycle_ms = now_ms;
-		g_abs_duty = (float)cfg::ABS_DUTY_MIN / 100.0f;
-		g_abs_i = 0.0f;
-	}
-
-	float a_cap = st.a_brake_cap_mm_s2;
-	if (a_cap <= 0.0f)
-		a_cap = (float)cfg::IMU_BRAKE_INIT_MM_S2;
-	if (a_cap < (float)cfg::IMU_BRAKE_MIN_MM_S2)
-		a_cap = (float)cfg::IMU_BRAKE_MIN_MM_S2;
-	if (a_cap > (float)cfg::IMU_BRAKE_MAX_MM_S2)
-		a_cap = (float)cfg::IMU_BRAKE_MAX_MM_S2;
-
-	float dv = v_est - v_cmd;
-	if (dv < 0.0f)
-		dv = 0.0f;
-	float t_brake = (float)cfg::ABS_BRAKE_HOLD_MS / 1000.0f;
-	if (t_brake < 0.05f)
-		t_brake = 0.05f;
-	float a_target = (dv / t_brake) * cfg::ABS_A_TARGET_SCALE;
-	if (a_target > a_cap)
-		a_target = a_cap;
-	if (a_target < 0.0f)
-		a_target = 0.0f;
-
-	const float decel = std::max(0.0f, -st.a_long_mm_s2);
-	const float e = a_target - decel;
-	g_abs_diag_a_target = a_target;
-	g_abs_diag_a_cap = a_cap;
-	g_abs_diag_decel = decel;
-	g_abs_diag_reason = ABS_DIAG_ACTIVE;
-	g_abs_i += e * cfg::ABS_DUTY_KI * dt_s;
-	float duty = g_abs_duty + cfg::ABS_DUTY_KP * e + g_abs_i;
-
-	const float duty_min = (float)cfg::ABS_DUTY_MIN / 100.0f;
-	const float duty_max = (float)cfg::ABS_DUTY_MAX / 100.0f;
-	duty = mc::clamp< float >(duty, duty_min, duty_max);
-	g_abs_duty = duty;
-
-	if (cfg::ABS_PERIOD_MS == 0) {
-		return speed_mm_s;
-	}
-
-	const uint32_t period = cfg::ABS_PERIOD_MS;
-	if ((uint32_t)(now_ms - g_abs_cycle_ms) >= period) {
-		const uint32_t elapsed = (uint32_t)(now_ms - g_abs_cycle_ms);
-		g_abs_cycle_ms = now_ms - (elapsed % period);
-	}
-
-	const uint32_t phase = (uint32_t)(now_ms - g_abs_cycle_ms);
-	const uint32_t duty_ms = (uint32_t)lroundf((float)period * duty);
-	const bool reverse_on = (phase < duty_ms);
-
-	if (cfg::TSD20_ENABLE && g_tsd_valid) {
-		const uint16_t limit = (uint16_t)(cfg::TSD20_MARGIN_MM +
-										  cfg::ABS_REVERSE_DISABLE_MARGIN_MM);
-		if (g_tsd_mm <= limit) {
-			return 0;
-		}
-	}
-
-	const int max_mm_s = mc_config::SPEED_MAX_MM_S;
-	int reverse_mm_s = cfg::ABS_REVERSE_MM_S;
-	if (reverse_mm_s > max_mm_s)
-		reverse_mm_s = max_mm_s;
-	if (reverse_mm_s < 0)
-		reverse_mm_s = -reverse_mm_s;
-
-	return reverse_on ? (int16_t)(-reverse_mm_s) : 0;
-}
-
 static void updateTsd20_(uint32_t now_ms) {
 	if (!cfg::TSD20_ENABLE)
 		return;
 
-	if (!g_tsd_ready && tsdInitTimer.due(now_ms)) {
-		g_tsd_ready = tsd20.begin(tsd_uart);
-		if (g_tsd_ready) {
+	if (!g_tsd_state.ready && tsdInitTimer.due(now_ms)) {
+		g_tsd_state.ready = tsd20.begin(tsd_uart);
+		if (g_tsd_state.ready) {
 			(void)tsd20.setLaser(true);
-			g_tsd_fail_count = 0;
+			g_tsd_state.fail_count = 0;
 			g_tsd_fail_logged = false;
 			alog.logf(mc::LogLevel::INFO, "tsd20",
 					  "init ok id=0x%02X swapped=%d", (unsigned)tsd20.id(),
@@ -538,9 +229,9 @@ static void updateTsd20_(uint32_t now_ms) {
 	if (!tsdTimer.due(now_ms))
 		return;
 
-	if (!g_tsd_ready) {
-		g_tsd_valid = false;
-		g_tsd_mm = 0;
+	if (!g_tsd_state.ready) {
+		g_tsd_state.valid = false;
+		g_tsd_state.mm = 0;
 		g_tsd_last_read_ms = 0;
 		g_tsd_period_ms = 0;
 		return;
@@ -548,9 +239,9 @@ static void updateTsd20_(uint32_t now_ms) {
 
 	uint16_t mm = 0;
 	if (tsd20.readDistanceMm(mm)) {
-		g_tsd_mm = mm;
-		g_tsd_valid = true;
-		g_tsd_fail_count = 0;
+		g_tsd_state.mm = mm;
+		g_tsd_state.valid = true;
+		g_tsd_state.fail_count = 0;
 		g_tsd_fail_logged = false;
 		if (g_tsd_last_read_ms != 0) {
 			const uint32_t dt = now_ms - g_tsd_last_read_ms;
@@ -558,14 +249,14 @@ static void updateTsd20_(uint32_t now_ms) {
 		}
 		g_tsd_last_read_ms = now_ms;
 	} else {
-		if (g_tsd_fail_count < 0xFF)
-			g_tsd_fail_count++;
-		if (g_tsd_fail_count >= cfg::TSD20_MAX_FAILS) {
-			g_tsd_valid = false;
-			g_tsd_mm = 0;
+		if (g_tsd_state.fail_count < 0xFF)
+			g_tsd_state.fail_count++;
+		if (g_tsd_state.fail_count >= cfg::TSD20_MAX_FAILS) {
+			g_tsd_state.valid = false;
+			g_tsd_state.mm = 0;
 			if (!g_tsd_fail_logged) {
 				alog.logf(mc::LogLevel::WARN, "tsd20", "read failed (fails=%u)",
-						  (unsigned)g_tsd_fail_count);
+						  (unsigned)g_tsd_state.fail_count);
 				g_tsd_fail_logged = true;
 			}
 		}
@@ -573,100 +264,38 @@ static void updateTsd20_(uint32_t now_ms) {
 }
 
 static void applyTargets_(uint32_t now_ms, float dt_s) {
-	const bool cmd_fresh =
-		(g_state.cmd_expire_ms != 0) && (now_ms <= g_state.cmd_expire_ms);
 	const bool abs_allowed =
-		!g_state.killed &&
-		((cfg::ABS_ENABLE_IN_MANUAL && g_state.mode == mc::Mode::MANUAL) ||
-		 (g_state.mode == mc::Mode::AUTO));
+		!g_state.killed && (g_state.mode == mc::Mode::AUTO);
 	const ImuEstimate &imu_state = imu_est.state();
 	const bool imu_calib = g_imu_valid && imu_state.calibrated;
 	const float v_est = g_imu_valid ? imu_state.v_est_mm_s : 0.0f;
 	const bool speed_active = !g_state.killed;
 
-	const auto applySpeedControl = [&](int16_t speed_mm_s) -> int16_t {
-		const SpeedControlOutput out =
-			speed_ctl.update(speed_mm_s, v_est, dt_s, imu_calib, speed_active);
-		g_speed_diag_v_cmd = (float)speed_mm_s;
-		g_speed_diag_v_est = v_est;
-		g_speed_diag_err = out.error_mm_s;
-		g_speed_diag_i = out.integrator;
-		g_speed_diag_pwm_cmd = out.pwm_cmd;
-		g_speed_diag_pwm_ff = out.pwm_ff;
-		g_speed_diag_saturated = out.saturated;
-		g_speed_diag_active = out.active;
-		g_speed_diag_calib = out.calibrated;
-		return out.pwm_cmd;
-	};
+	const AutoCommandResult desired = cmd_source.update(now_ms, g_state);
+	const SafetyResult safe =
+		safety.apply(now_ms, dt_s, desired.targets, g_state.mode, g_tsd_state,
+					 imu_state, g_imu_valid, abs_allowed, &g_safety_diag);
+	g_abs_active = safe.brake_mode;
+	g_last_cmd_speed_mm_s = safe.targets.speed_mm_s;
 
-	if (g_state.mode == mc::Mode::MANUAL) {
-		pad.update();
-		if (pad.isConnected()) {
-			const PadState &st = pad.state();
-			int forward = st.rt;
-			int back = st.lt;
-			int v = forward - back;
-			int16_t speed_mm_s = (int16_t)mc::clamp< int >(
-				v * 2, -mc_config::SPEED_MAX_MM_S, mc_config::SPEED_MAX_MM_S);
+	const SpeedControlOutput out = speed_ctl.update(
+		safe.targets.speed_mm_s, v_est, dt_s, imu_calib, speed_active);
+	g_speed_diag_v_cmd = (float)safe.targets.speed_mm_s;
+	g_speed_diag_v_est = v_est;
+	g_speed_diag_err = out.error_mm_s;
+	g_speed_diag_i = out.integrator;
+	g_speed_diag_pwm_cmd = out.pwm_cmd;
+	g_speed_diag_pwm_ff = out.pwm_ff;
+	g_speed_diag_saturated = out.saturated;
+	g_speed_diag_active = out.active;
+	g_speed_diag_calib = out.calibrated;
 
-			int16_t steer = 0;
-			if (st.dpad & DPAD_LEFT)
-				steer = +1500;
-			if (st.dpad & DPAD_RIGHT)
-				steer = -1500;
-			speed_mm_s =
-				clampSpeedWithTsd20_(speed_mm_s, g_state.mode,
-									 imu_est.state().a_brake_cap_mm_s2, steer);
-
-			speed_mm_s = applyAbsBrake_(now_ms, dt_s, speed_mm_s, abs_allowed);
-			g_last_cmd_speed_mm_s = speed_mm_s;
-			const int16_t pwm_cmd = applySpeedControl(speed_mm_s);
-			drive.setBrakeMode(g_abs_active);
-			drive.setTargetMmS(speed_mm_s, now_ms);
-			drive.setTargetPwm(pwm_cmd, now_ms);
-			drive.setTargetSteerCdeg(steer, now_ms);
-			drive.setTtlMs(100, now_ms);
-			drive.setDistMm(0, now_ms);
-		} else {
-			// AUTO_ACTIVE=false のときは UART setpoint を適用しない
-			const int16_t speed_mm_s =
-				applyAbsBrake_(now_ms, dt_s, 0, abs_allowed);
-			g_last_cmd_speed_mm_s = speed_mm_s;
-			const int16_t pwm_cmd = applySpeedControl(speed_mm_s);
-			drive.setBrakeMode(g_abs_active);
-			drive.setTargetMmS(speed_mm_s, now_ms);
-			drive.setTargetPwm(pwm_cmd, now_ms);
-			drive.setTargetSteerCdeg(0, now_ms);
-			drive.setTtlMs(100, now_ms);
-			drive.setDistMm(0, now_ms);
-		}
-	} else {
-		if (cmd_fresh) {
-			int16_t speed_mm_s = clampSpeedWithTsd20_(
-				g_state.target_speed_mm_s, g_state.mode,
-				imu_est.state().a_brake_cap_mm_s2, g_state.target_steer_cdeg);
-			speed_mm_s = applyAbsBrake_(now_ms, dt_s, speed_mm_s, abs_allowed);
-			g_last_cmd_speed_mm_s = speed_mm_s;
-			const int16_t pwm_cmd = applySpeedControl(speed_mm_s);
-			drive.setBrakeMode(g_abs_active);
-			drive.setTargetMmS(speed_mm_s, now_ms);
-			drive.setTargetPwm(pwm_cmd, now_ms);
-			drive.setTargetSteerCdeg(g_state.target_steer_cdeg, now_ms);
-			drive.setTtlMs(g_state.target_ttl_ms, now_ms);
-			drive.setDistMm(g_state.target_dist_mm, now_ms);
-		} else {
-			const int16_t speed_mm_s =
-				applyAbsBrake_(now_ms, dt_s, 0, abs_allowed);
-			g_last_cmd_speed_mm_s = speed_mm_s;
-			const int16_t pwm_cmd = applySpeedControl(speed_mm_s);
-			drive.setBrakeMode(g_abs_active);
-			drive.setTargetMmS(speed_mm_s, now_ms);
-			drive.setTargetPwm(pwm_cmd, now_ms);
-			drive.setTargetSteerCdeg(0, now_ms);
-			drive.setTtlMs(100, now_ms);
-			drive.setDistMm(0, now_ms);
-		}
-	}
+	drive.setBrakeMode(g_abs_active);
+	drive.setTargetMmS(safe.targets.speed_mm_s, now_ms);
+	drive.setTargetPwm(out.pwm_cmd, now_ms);
+	drive.setTargetSteerCdeg(safe.targets.steer_cdeg, now_ms);
+	drive.setTtlMs(safe.targets.ttl_ms, now_ms);
+	drive.setDistMm(safe.targets.dist_mm, now_ms);
 
 	drive.tick(now_ms, dt_s, g_state.killed);
 }
@@ -685,7 +314,6 @@ void setup() {
 	g_ctx.log = &alog;
 	g_ctx.tx = &uart_tx;
 
-	pad.begin();
 	drive.begin();
 
 	uart_tx.begin(Serial2);
@@ -694,9 +322,11 @@ void setup() {
 	alog.logf(mc::LogLevel::INFO, "boot", "ESP32 up baud=%d",
 			  (int)cfg::SERIAL_BAUD);
 
-	g_tsd_ready = tsd20.begin(tsd_uart);
-	if (g_tsd_ready) {
+	g_tsd_state.ready = tsd20.begin(tsd_uart);
+	if (g_tsd_state.ready) {
 		(void)tsd20.setLaser(true);
+		g_tsd_state.fail_count = 0;
+		g_tsd_fail_logged = false;
 		alog.logf(mc::LogLevel::INFO, "tsd20",
 				  "init ok id=0x%02X swapped=%d freq_ack=%d iic_ack=%d",
 				  (unsigned)tsd20.id(), (int)tsd20.swapped(),
@@ -773,9 +403,11 @@ void loop() {
 			alog.logf(mc::LogLevel::INFO, "tsd20",
 					  "ready=%d valid=%d mm=%u fails=%u period=%ums "
 					  "ack(freq=%d iic=%d)",
-					  (int)g_tsd_ready, (int)g_tsd_valid, (unsigned)g_tsd_mm,
-					  (unsigned)g_tsd_fail_count, (unsigned)g_tsd_period_ms,
-					  (int)tsd20.freqAck(), (int)tsd20.iicAck());
+					  (int)g_tsd_state.ready, (int)g_tsd_state.valid,
+					  (unsigned)g_tsd_state.mm,
+					  (unsigned)g_tsd_state.fail_count,
+					  (unsigned)g_tsd_period_ms, (int)tsd20.freqAck(),
+					  (int)tsd20.iicAck());
 		}
 		if (cfg::IMU_ENABLE) {
 			const ImuEstimate &st = imu_est.state();
@@ -806,24 +438,31 @@ void loop() {
 					  "reason=%u clamp=%d margin=%.0f pred=%.0f steer=%.2f "
 					  "d_allow=%.0f d_travel=%.0f v_used=%.0f a_long=%.0f "
 					  "a_cap=%.0f tau=%.3f v_max=%.1f v_cap=%.1f",
-					  (unsigned)g_tsd_diag_reason, (int)g_tsd_diag_clamped,
-					  (double)g_tsd_diag_margin_eff,
-					  (double)g_tsd_diag_margin_pred,
-					  (double)g_tsd_diag_steer_ratio,
-					  (double)g_tsd_diag_d_allow, (double)g_tsd_diag_d_travel,
-					  (double)g_tsd_diag_v_est, (double)g_tsd_diag_a_long,
-					  (double)g_tsd_diag_a_cap, (double)g_tsd_diag_tau,
-					  (double)g_tsd_diag_v_max, (double)g_tsd_diag_v_cap);
+					  (unsigned)g_safety_diag.tsd.reason,
+					  (int)g_safety_diag.tsd.clamped,
+					  (double)g_safety_diag.tsd.margin_eff,
+					  (double)g_safety_diag.tsd.margin_pred,
+					  (double)g_safety_diag.tsd.steer_ratio,
+					  (double)g_safety_diag.tsd.d_allow,
+					  (double)g_safety_diag.tsd.d_travel,
+					  (double)g_safety_diag.tsd.v_est,
+					  (double)g_safety_diag.tsd.a_long,
+					  (double)g_safety_diag.tsd.a_cap,
+					  (double)g_safety_diag.tsd.tau,
+					  (double)g_safety_diag.tsd.v_max,
+					  (double)g_safety_diag.tsd.v_cap);
 		}
 		if (cfg::ABS_ENABLE) {
 			alog.logf(mc::LogLevel::INFO, "abs",
 					  "reason=%u active=%d duty=%.2f v_cmd=%.1f v_est=%.1f "
 					  "a_tgt=%.0f a_cap=%.0f decel=%.0f dt=%.3f",
-					  (unsigned)g_abs_diag_reason, (int)g_abs_active,
-					  (double)g_abs_duty, (double)g_abs_diag_v_cmd,
-					  (double)g_abs_diag_v_est, (double)g_abs_diag_a_target,
-					  (double)g_abs_diag_a_cap, (double)g_abs_diag_decel,
-					  (double)g_last_dt_s);
+					  (unsigned)g_safety_diag.abs.reason, (int)g_abs_active,
+					  (double)g_safety_diag.abs.duty,
+					  (double)g_safety_diag.abs.v_cmd,
+					  (double)g_safety_diag.abs.v_est,
+					  (double)g_safety_diag.abs.a_target,
+					  (double)g_safety_diag.abs.a_cap,
+					  (double)g_safety_diag.abs.decel, (double)g_last_dt_s);
 		}
 	}
 

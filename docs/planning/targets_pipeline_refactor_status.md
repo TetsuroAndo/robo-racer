@@ -15,10 +15,10 @@
 | 項目 | 状態 | 更新日 | メモ |
 | --- | --- | --- | --- |
 | 仕様確認（関連ドキュメント/現行実装） | 完了 | 2026-02-06 | docs/firmware/plan.md と main.cpp を確認 |
-| MANUAL分岐の削除 | 進行中 | 2026-02-06 | applyTargets_ から pad 経路を除去 |
-| Auto入力の分離（AutoCommandSource） | 未着手 | 2026-02-06 | cmd_fresh 判定を移動 |
-| TSD20制限のクラス化（Tsd20Limiter） | 未着手 | 2026-02-06 | 予測マージン含む |
-| ABS制動のクラス化（AbsController） | 未着手 | 2026-02-06 | 内部状態を保持 |
-| SafetySupervisor による配線 | 未着手 | 2026-02-06 | Desired→Safe の流れを固定 |
-| ログ/診断の移植 | 未着手 | 2026-02-06 | diag struct 化 |
-| main.cpp の簡素化 | 未着手 | 2026-02-06 | 5〜10行相当へ |
+| MANUAL分岐の削除 | 完了 | 2026-02-06 | applyTargets_ から pad 経路を除去 |
+| Auto入力の分離（AutoCommandSource） | 完了 | 2026-02-06 | cmd_fresh 判定を移動 |
+| TSD20制限のクラス化（Tsd20Limiter） | 完了 | 2026-02-06 | 予測マージン含む |
+| ABS制動のクラス化（AbsController） | 完了 | 2026-02-06 | 内部状態を保持 |
+| SafetySupervisor による配線 | 完了 | 2026-02-06 | Desired→Safe の流れを固定 |
+| ログ/診断の移植 | 完了 | 2026-02-06 | diag struct 化 |
+| main.cpp の簡素化 | 完了 | 2026-02-06 | 5〜10行相当へ |
