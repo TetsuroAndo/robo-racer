@@ -4,6 +4,7 @@
 #include "control/DecelController.h"
 #include "control/SafetySupervisor.h"
 #include "control/SpeedController.h"
+#include "control/StopLevel.h"
 #include "control/Targets.h"
 #include "hardware/Drive.h"
 #include "hardware/ImuEstimator.h"
@@ -91,6 +92,14 @@ static float g_decel_diag_u_ff = 0.0f;
 static float g_decel_diag_u_fb = 0.0f;
 static float g_decel_diag_u_i = 0.0f;
 static bool g_decel_diag_active = false;
+
+struct RevPulseState {
+	bool active = false;
+	bool phase_rev = false;
+	uint32_t phase_until_ms = 0;
+	uint32_t end_ms = 0;
+};
+static RevPulseState g_rev_pulse;
 
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
@@ -319,6 +328,7 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	const ImuEstimate &imu_state = imu_est.state();
 	const bool imu_calib = g_imu_valid && imu_state.calibrated;
 	const float v_est = g_imu_valid ? imu_state.v_est_mm_s : 0.0f;
+	const bool v_est_valid = g_imu_valid;
 	const bool speed_active = !g_state.killed;
 
 	const AutoCommandResult desired = cmd_source.update(now_ms, g_state);
@@ -357,20 +367,86 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	g_decel_diag_u_i = decel_out.u_i;
 	g_decel_diag_active = decel_out.active;
 
-	const BrakeControllerOutput brake_out = brake_ctl.update(
-		safe.stop_requested, safe.stop_level, g_tsd_state.mm, v_est, now_ms);
+	const BrakeControllerOutput brake_out =
+		brake_ctl.update(safe.stop_requested, safe.stop_level, g_tsd_state.mm,
+						 v_est, v_est_valid, now_ms);
 	g_brake_diag_stop_req = safe.stop_requested;
 	g_brake_diag_pwm = brake_out.brake_duty;
 	g_brake_diag_active = brake_out.active;
 
+	// 1) 推進PWMは「前進のみ」に限定（負PWMは通常経路で禁止）
 	int16_t pwm_cmd = out.pwm_cmd;
-	if (decel_out.active)
-		pwm_cmd = (pwm_cmd < decel_out.pwm_cmd) ? pwm_cmd : decel_out.pwm_cmd;
+	if (pwm_cmd < 0)
+		pwm_cmd = 0;
 
-	drive.setBrakeMode(g_abs_active || brake_out.active || decel_out.active);
+	// 2) DecelController(負PWM)は「ブレーキduty」へ変換して outputBrake
+	// に寄せる
+	uint8_t decel_brake_duty = 0;
+	bool decel_brake_active = false;
+	if (decel_out.active && decel_out.pwm_cmd < 0) {
+		const float u = -(float)decel_out.pwm_cmd;
+		const float r = (cfg::DECEL_PWM_MAX_BRAKE > 0)
+							? (u / (float)cfg::DECEL_PWM_MAX_BRAKE)
+							: 0.0f;
+		int duty = (int)lroundf(r * (float)cfg::BRAKE_PWM_MAX);
+		duty = mc::clamp< int >(duty, 0, cfg::BRAKE_PWM_MAX);
+		if (duty > 0 && duty < cfg::BRAKE_PWM_MIN)
+			duty = cfg::BRAKE_PWM_MIN;
+		decel_brake_duty = (uint8_t)duty;
+		decel_brake_active = (decel_brake_duty > 0);
+	}
+
+	uint8_t brake_duty =
+		(uint8_t)std::max< int >(brake_out.brake_duty, decel_brake_duty);
+	bool brake_active = (brake_out.active || decel_brake_active);
+	if (brake_active && brake_duty > 0 && brake_duty < cfg::BRAKE_PWM_MIN)
+		brake_duty = (uint8_t)cfg::BRAKE_PWM_MIN;
+
+	// 3) （オプション）非常時のみ「短い逆転パルス」を入れる
+	bool use_rev_pulse = false;
+	if (cfg::BRAKE_REV_PULSE_ENABLE) {
+		const bool arm = brake_active &&
+						 (safe.stop_level == StopLevel::STOP ||
+						  safe.stop_level == StopLevel::STALE) &&
+						 imu_calib &&
+						 (v_est > (float)cfg::BRAKE_REV_PULSE_V_START_MM_S);
+
+		if (!arm) {
+			g_rev_pulse.active = false;
+		} else {
+			if (!g_rev_pulse.active) {
+				g_rev_pulse.active = true;
+				g_rev_pulse.phase_rev = true;
+				g_rev_pulse.phase_until_ms =
+					now_ms + cfg::BRAKE_REV_PULSE_ON_MS;
+				g_rev_pulse.end_ms = now_ms + cfg::BRAKE_REV_PULSE_BUDGET_MS;
+			} else {
+				if ((int32_t)(now_ms - g_rev_pulse.end_ms) >= 0 ||
+					v_est < (float)cfg::BRAKE_REV_PULSE_V_END_MM_S) {
+					g_rev_pulse.active = false;
+				} else if ((int32_t)(now_ms - g_rev_pulse.phase_until_ms) >=
+						   0) {
+					g_rev_pulse.phase_rev = !g_rev_pulse.phase_rev;
+					g_rev_pulse.phase_until_ms =
+						now_ms + (g_rev_pulse.phase_rev
+									  ? cfg::BRAKE_REV_PULSE_ON_MS
+									  : cfg::BRAKE_REV_PULSE_OFF_MS);
+				}
+			}
+		}
+
+		if (g_rev_pulse.active && g_rev_pulse.phase_rev) {
+			use_rev_pulse = true;
+			pwm_cmd = -(int16_t)cfg::BRAKE_REV_PULSE_PWM;
+			brake_active = false;
+			brake_duty = 0;
+		}
+	}
+
+	drive.setBrakeMode(g_abs_active || brake_active || use_rev_pulse);
 	drive.setTargetMmS(safe.targets.speed_mm_s, now_ms);
 	drive.setTargetPwm(pwm_cmd, now_ms);
-	drive.setTargetBrake(brake_out.brake_duty, brake_out.active, now_ms);
+	drive.setTargetBrake(brake_duty, brake_active, now_ms);
 	drive.setTargetSteerCdeg(safe.targets.steer_cdeg, now_ms);
 	drive.setTtlMs(safe.targets.ttl_ms, now_ms);
 	drive.setDistMm(safe.targets.dist_mm, now_ms);

@@ -32,6 +32,8 @@ SafetyResult SafetySupervisor::apply(uint32_t now_ms, float dt_s,
 	out.targets.speed_mm_s = _abs.apply(now_ms, dt_s, out.targets.speed_mm_s,
 										abs_allowed && imu_ok_for_abs, imu,
 										imu_valid, tsd, &d->abs, &abs_active);
-	out.brake_mode = abs_active;
+	// TSD20 STOP/MARGIN/STALE でも brake_mode を true にし、Drive
+	// のブレーキ分岐に入る
+	out.brake_mode = abs_active || out.stop_requested;
 	return out;
 }

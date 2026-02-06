@@ -268,6 +268,18 @@ static constexpr uint8_t DRIVE_KILL_BRAKE_DUTY = 60;
 static_assert(DRIVE_KILL_BRAKE_DUTY <= BRAKE_PWM_MAX,
 			  "DRIVE_KILL_BRAKE_DUTY must be <= BRAKE_PWM_MAX");
 
+// 非常用：短い逆転パルスで減速（連続後退しない：総予算で打ち切る）
+static constexpr bool BRAKE_REV_PULSE_ENABLE = true;
+static constexpr uint8_t BRAKE_REV_PULSE_PWM = 128; // -128 を打つ（ENGINE_SPEED_LIMIT 以下）
+static constexpr uint16_t BRAKE_REV_PULSE_BUDGET_MS = 200;  // 総予算
+static constexpr uint16_t BRAKE_REV_PULSE_ON_MS = 25;       // 逆転ON
+static constexpr uint16_t BRAKE_REV_PULSE_OFF_MS = 25;      // 逆転OFF（ブレーキに戻る）
+static constexpr int BRAKE_REV_PULSE_V_START_MM_S = 2500;   // この速度以上で発動
+static constexpr int BRAKE_REV_PULSE_V_END_MM_S = 800;      // この速度未満で解除
+
+static_assert(BRAKE_REV_PULSE_PWM <= ENGINE_SPEED_LIMIT,
+			  "BRAKE_REV_PULSE_PWM must be <= ENGINE_SPEED_LIMIT");
+
 //------------------------------------------------------------------------------
 // 手動操作の上限（ゲームパッド）
 //------------------------------------------------------------------------------

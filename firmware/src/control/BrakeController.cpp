@@ -7,16 +7,17 @@
 BrakeControllerOutput BrakeController::update(bool stop_requested,
 											  StopLevel stop_level,
 											  uint16_t d_mm, float v_est_mm_s,
+											  bool v_est_valid,
 											  uint32_t now_ms) {
 	BrakeControllerOutput out{};
 	out.active = false;
 	out.brake_duty = 0;
 
-	// (B) 止まれ要求の時だけ負PWMを許可
-	// HOLD: STOP が一瞬途切れても BRAKE_HOLD_MS はブレーキ維持
 	bool effective_stop = stop_requested;
+
 	if (stop_requested) {
 		_last_stop_ms = now_ms;
+		_latched_level = stop_level;
 	} else {
 		if (_last_stop_ms != 0 &&
 			(uint32_t)(now_ms - _last_stop_ms) <= cfg::BRAKE_HOLD_MS) {
@@ -25,6 +26,7 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 			_stop_since_ms = 0;
 			_last_stop_ms = 0;
 			_brake_ramp = 0.0f;
+			_latched_level = StopLevel::NONE;
 			return out;
 		}
 	}
@@ -32,53 +34,46 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 	if (!effective_stop) {
 		_stop_since_ms = 0;
 		_brake_ramp = 0.0f;
+		_latched_level = StopLevel::NONE;
 		return out;
 	}
 
 	if (_stop_since_ms == 0)
 		_stop_since_ms = now_ms;
 
-	// (A) 動いてる時だけ負PWMを許可
-	if (v_est_mm_s <= (float)cfg::BRAKE_V_EPS_MM_S) {
-		_brake_ramp = 0.0f;
-		return out;
-	}
+	// NOTE: v_est が怪しい/無い状況でも「止めたい」ならブレーキは出す。
+	// ここで v_est を根拠にブレーキを止めると、IMU不調時に惰行して突っ込む。
+	(void)v_est_valid;
+	(void)d_mm;
+	(void)v_est_mm_s;
 
-	// (C) 壁が近いほど弱くする（後退開始を防ぐ）
-	// d_mm: 0..STOP_DIST -> pwm_max: 0..BRAKE_PWM_MAX。d_mm=0 ではブレーキ禁止
-	const uint16_t stop_dist =
-		(cfg::TSD20_STOP_DISTANCE_MM > 0) ? cfg::TSD20_STOP_DISTANCE_MM : 500u;
-	const float ratio = (stop_dist > 0 && d_mm < stop_dist)
-							? (float)d_mm / (float)stop_dist
-							: 1.0f;
-	int pwm_max_allowed = (int)lroundf((float)cfg::BRAKE_PWM_MAX *
-									   mc::clamp< float >(ratio, 0.0f, 1.0f));
-	// (D) STOP/MARGIN/STALE で duty 上限を段階化
-	// STALE のときは active=false（推力カットのみ、ブレーキは出さない）
-	if (stop_level == StopLevel::STALE) {
-		_stop_since_ms = 0;
-		_brake_ramp = 0.0f;
-		return out; // active=false, brake_duty=0
-	}
-	switch (stop_level) {
+	// stop_level は stop_requested が落ちた後も HOLD 中は NONE
+	// になり得るのでラッチを使う
+	const StopLevel level = stop_requested ? stop_level : _latched_level;
+
+	int pwm_max = 0;
+	switch (level) {
 	case StopLevel::STOP:
-		break; // そのまま（最大）
+		pwm_max = cfg::BRAKE_PWM_MAX;
+		break;
 	case StopLevel::MARGIN:
-		pwm_max_allowed = std::min(pwm_max_allowed, cfg::BRAKE_PWM_MAX / 2);
+		pwm_max = cfg::BRAKE_PWM_MAX / 2;
+		break;
+	case StopLevel::STALE:
+		// stale は "安全側に倒す"＝止める
+		pwm_max = cfg::BRAKE_PWM_MAX;
 		break;
 	default:
+		// HOLD で入ってきた場合など
+		pwm_max = cfg::BRAKE_PWM_MAX / 2;
 		break;
 	}
-	// 壁際（pwm_max_allowed < MIN）ではブレーキ出さない
-	const int pwm_max = (pwm_max_allowed < cfg::BRAKE_PWM_MIN)
-							? 0
-							: std::min(pwm_max_allowed, cfg::BRAKE_PWM_MAX);
-	if (pwm_max == 0) {
-		_brake_ramp = 0.0f;
-		return out;
-	}
 
-	// ランプアップ（BRAKE_RAMP_MS で目標値に到達）
+	// active にするなら最低 duty は確保する（0
+	// になると「近いほど効かない」を再発する）
+	if (pwm_max < cfg::BRAKE_PWM_MIN)
+		pwm_max = cfg::BRAKE_PWM_MIN;
+
 	const uint32_t elapsed_ms = now_ms - _stop_since_ms;
 	const float ramp_t = (cfg::BRAKE_RAMP_MS > 0)
 							 ? (float)elapsed_ms / (float)cfg::BRAKE_RAMP_MS

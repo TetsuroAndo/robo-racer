@@ -48,3 +48,8 @@
 2. **停止距離**：`tsd_mm` が十分あるタイミングで 0 指令を出した場合、`tsd_min` が MARGIN を割らないこと
 3. **後退抑止**：停止後に `pwm_cmd` が 0 へ戻り、`v_est` が負側へ行かないこと
 4. **既存安全系の優先**：kill / TTL / TSD20 clamp / ABS が従来通り動作すること
+
+## 関連改修（2026-02-07）
+
+DecelController の負 PWM は **ブレーキ duty に変換**され、通常経路では後退しない形に変更済み。
+詳細は `docs/planning/brake_dual_objective_plan.md` を参照。
