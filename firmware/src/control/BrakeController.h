@@ -14,6 +14,10 @@ struct BrakeControllerOutput {
 
 	// engine rate_down をブレーキ用にするか
 	bool brake_mode = false;
+
+	// デバッグ用（ログ可視化）
+	uint8_t phase = 0;       // 0=IDLE, 1=REV, 2=COAST
+	uint8_t pulse_count = 0;
 };
 
 class BrakeController {

@@ -82,6 +82,10 @@ static bool g_speed_diag_calib = false;
 static bool g_brake_diag_stop_req = false;
 static int16_t g_brake_diag_pwm = 0;
 static bool g_brake_diag_active = false;
+static uint8_t g_brake_diag_phase = 0;
+static uint8_t g_brake_diag_pulse_count = 0;
+static bool g_brake_diag_pwm_override = false;
+static int16_t g_brake_diag_pwm_cmd = 0;
 
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
@@ -340,6 +344,10 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	g_brake_diag_stop_req = safe.stop_requested;
 	g_brake_diag_pwm = brake_out.brake_duty;
 	g_brake_diag_active = brake_out.brake_active || brake_out.pwm_override;
+	g_brake_diag_phase = brake_out.phase;
+	g_brake_diag_pulse_count = brake_out.pulse_count;
+	g_brake_diag_pwm_override = brake_out.pwm_override;
+	g_brake_diag_pwm_cmd = brake_out.pwm_cmd;
 
 	// 1) 推進PWMは「前進のみ」に限定（負PWMは通常経路で禁止）
 	int16_t pwm_cmd = out.pwm_cmd;
@@ -541,10 +549,13 @@ void loop() {
 				  (int)g_speed_diag_pwm_ff, (double)g_speed_diag_i,
 				  (int)g_speed_diag_saturated);
 		alog.logf(mc::LogLevel::INFO, "brake",
-				  "stop_req=%d d_mm=%u v_est=%.1f pwm_speed=%d brake_duty=%u "
-				  "pwm_applied=%d applied_brake=%u v_cap=%.1f",
+				  "stop_req=%d d_mm=%u v_est=%.1f phase=%u pulse=%u "
+				  "pwm_ovr=%d pwm_cmd=%d brake_duty=%u pwm_app=%d app_brk=%u "
+				  "v_cap=%.1f",
 				  (int)g_brake_diag_stop_req, (unsigned)g_tsd_state.mm,
-				  (double)g_speed_diag_v_est, (int)g_speed_diag_pwm_cmd,
+				  (double)g_speed_diag_v_est, (unsigned)g_brake_diag_phase,
+				  (unsigned)g_brake_diag_pulse_count,
+				  (int)g_brake_diag_pwm_override, (int)g_brake_diag_pwm_cmd,
 				  (unsigned)g_brake_diag_pwm, (int)drive.appliedPwm(),
 				  (unsigned)drive.appliedBrakeDuty(),
 				  (double)g_safety_diag.tsd.v_cap);

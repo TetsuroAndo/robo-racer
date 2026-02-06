@@ -187,8 +187,8 @@ static constexpr uint32_t BRAKE_RAMP_MS = 150;
 // ブレーキ解除後の再加速抑制時間 [ms]。この間は推力PWMを0に抑える
 static constexpr uint32_t BRAKE_COOLDOWN_MS = 100;
 
-// 逆転パルスブレーキ（連続逆転は禁止）
-static constexpr int BRAKE_REV_PWM = 255; // 逆転PWM（符号はコード側で負にする）
+// 逆転パルスブレーキ（連続逆転は禁止）。ENGINE_SPEED_LIMIT に揃える
+static constexpr int BRAKE_REV_PWM = 128;
 static constexpr uint32_t BRAKE_REV_PULSE_MS = 200;   // 逆転する時間
 static constexpr uint32_t BRAKE_REV_COAST_MS = 60;    // パルス間の惰行
 static constexpr uint8_t BRAKE_REV_MAX_PULSES = 4;    // 最大パルス回数
@@ -238,6 +238,8 @@ static constexpr float ENGINE_RATE_DOWN        = 4000.0f;
 // ブレーキモード時の減速レート（Drive::setBrakeMode 時）
 static constexpr float ENGINE_RATE_DOWN_BRAKE = 4000.0f;
 static constexpr int ENGINE_SPEED_LIMIT        = 128;
+static_assert(BRAKE_REV_PWM <= ENGINE_SPEED_LIMIT,
+			  "BRAKE_REV_PWM must be <= ENGINE_SPEED_LIMIT");
 static constexpr uint32_t ENGINE_DEADTIME_US   = 800;
 // アクティブブレーキ（両PWM同時＝短絡制動）。false なら推力0のみ（惰行）
 static constexpr bool ENGINE_ACTIVE_BRAKE_ENABLE = true;
