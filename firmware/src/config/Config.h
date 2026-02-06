@@ -87,14 +87,6 @@ static constexpr uint32_t HEARTBEAT_TIMEOUT_MS = 200;
 // ウォッチドッグ
 static constexpr uint32_t DRIVE_TIMEOUT_MS     = 250;
 
-// 角度閾値
-static constexpr int DRIVE_FRONT_AREA_DEG      = 30;
-static constexpr int DRIVE_CURVE_AREA_DEG      = 70;
-static constexpr int FULL_CIRCLE_DEG           = 360;
-
-// その他
-static constexpr int DRIVE_AVE_DEG_NUM         = 1;
-
 //------------------------------------------------------------------------------
 // IMU (MPU-6500)
 //------------------------------------------------------------------------------
@@ -211,7 +203,6 @@ static constexpr int ENGINE_PWM_RES_BITS       = 8;
 static constexpr float ENGINE_RATE_UP          = 1600.0f;
 // 減速を速くしてブレーキ応答を改善（255→0 を約64msに短縮）
 static constexpr float ENGINE_RATE_DOWN        = 4000.0f;
-static constexpr int ENGINE_RAMP_DELAY_MS      = 10;
 static constexpr int ENGINE_SPEED_LIMIT        = 255;
 static constexpr uint32_t ENGINE_DEADTIME_US   = 800;
 
@@ -235,21 +226,14 @@ static constexpr uint32_t STATUS_INTERVAL_MS       = 10;
 
 // プロトコルトレース
 static constexpr bool PROTO_TRACE_ENABLE           = true;
-static constexpr bool PROTO_TRACE_VERBOSE          = false;
-static constexpr uint32_t PROTO_TRACE_SUMMARY_MS   = 1000;
 
 // ACKコード
 static constexpr uint8_t ACK_CODE_OK               = 0;
-static constexpr uint8_t ACK_CODE_VERSION_MISMATCH = 2;
-static constexpr uint8_t ACK_CODE_INVALID_PAYLOAD  = 3;
-static constexpr uint8_t ACK_CODE_UNHANDLED        = 4;
-static constexpr uint8_t ACK_CODE_INVALID_TTL      = 5;
 
 //------------------------------------------------------------------------------
 // Autoコマンド
 //------------------------------------------------------------------------------
 
-static constexpr uint8_t AUTO_CMD_SEQ_WINDOW = 128;
 static constexpr uint16_t AUTO_CMD_AGE_UNKNOWN_MS = 0xFFFF;
 
 // clang-format on

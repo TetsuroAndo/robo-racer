@@ -47,5 +47,3 @@ void Steer::setAngle(float angle) {
 	writePulseUs_(us);
 }
 void Steer::center() { setAngle(0.0f); }
-void Steer::left() { setAngle(mc_config::STEER_ANGLE_MIN_DEG); }
-void Steer::right() { setAngle(mc_config::STEER_ANGLE_MAX_DEG); }

@@ -18,14 +18,12 @@ namespace cfg {
 
 // デバイスパス
 static constexpr const char* DEFAULT_LIDAR_DEVICE = "/dev/ttyAMA2";
-static constexpr const char* DEFAULT_ESP_DEVICE   = "/dev/ttyAMA0";
 static constexpr const char* DEFAULT_SERIALD_SOCK = "/tmp/roboracer/seriald.sock";
 static constexpr const char* DEFAULT_PROCESS_LOG  = "./logs/process_telemetry.jsonl";
 static constexpr const char* DEFAULT_METRICSD_LOG = "./logs/metricsd.log";
 
 // ボーレート
 static constexpr int DEFAULT_LIDAR_BAUD = 460800;
-static constexpr int DEFAULT_ESP_BAUD   = 921600;
 
 //------------------------------------------------------------------------------
 // Sender（ESP32送信）
@@ -114,10 +112,6 @@ static constexpr int FTG_SPEED_WARN_CAP          = 39;    // warn時の速度上
 static constexpr uint16_t FTG_IMU_MAX_AGE_MS     = 200;
 static constexpr float FTG_YAW_BIAS_DEG          = 0.0f;
 static constexpr float FTG_YAW_BIAS_REF_DPS      = 90.0f;
-static constexpr float FTG_STEER_TIME_REF_S      = 0.10f;
-static constexpr float FTG_SERVO_TIME_60DEG_S    = 0.14f; // DS3218 6.8V
-static constexpr float FTG_SERVO_DEG_PER_S       = 60.0f / FTG_SERVO_TIME_60DEG_S;
-static constexpr float FTG_SERVO_LOAD_SCALE      = 1.5f;
 
 //------------------------------------------------------------------------------
 // Telemetry（観測/可視化）
