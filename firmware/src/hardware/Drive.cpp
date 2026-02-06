@@ -55,8 +55,7 @@ void Drive::tick(uint32_t now_ms, float dt_s, bool killed) {
 
 	// SlewRateLimiter expects per-second rates.
 	if (_brake_mode) {
-		_engine.setRateLimits(cfg::ENGINE_RATE_UP,
-							  (float)cfg::ENGINE_RATE_DOWN_BRAKE);
+		_engine.setRateLimits(cfg::ENGINE_RATE_UP, cfg::ENGINE_RATE_DOWN_BRAKE);
 	} else {
 		_engine.setRateLimits(cfg::ENGINE_RATE_UP, cfg::ENGINE_RATE_DOWN);
 	}

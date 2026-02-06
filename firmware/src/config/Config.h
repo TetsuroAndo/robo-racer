@@ -167,7 +167,7 @@ static constexpr bool ABS_ENABLE                = true;
 static constexpr bool ABS_ENABLE_IN_MANUAL      = false;
 static constexpr bool ABS_REQUIRE_CALIB         = true;
 static constexpr int ABS_SPEED_MARGIN_MM_S      = 150;
-static constexpr int ENGINE_RATE_DOWN_BRAKE      = 4000;
+static constexpr float ENGINE_RATE_DOWN_BRAKE    = 4000.0f;
 // TSD20がこの距離以下を検出したときのみABS発動（壁なし誤発動防止）
 static constexpr uint16_t ABS_TSD_TRIGGER_MM    = 320;
 // v_cmdがこれ以上なら発動しない（減速したい状況のみ）
