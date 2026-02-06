@@ -186,11 +186,22 @@ static constexpr int SPEED_MIN_FWD_VEST_MM_S   = 100;
 // 前進時の最小PWM（静止摩擦克服、デッドゾーン対策）
 static constexpr int SPEED_PWM_MIN_FORWARD     = 30;
 
-// Brake assist tuning (ABS brake_mode でのみ使用)
-// v_est がこの値より大きいときだけ負PWM(逆トルク)を許可
-static constexpr int SPEED_BRAKE_REV_ENABLE_VEST_MM_S = 600;
-// 許可する負PWMの最大（大きいほど強く止まるが、姿勢が乱れやすい）
-static constexpr int SPEED_BRAKE_REV_MAX_PWM = 80;
+//------------------------------------------------------------------------------
+// BrakeController（安全系 STOP 要求時のみ負PWMで減速）
+//------------------------------------------------------------------------------
+
+// これ以下で負PWM禁止（静止中の後退防止）
+static constexpr int BRAKE_V_EPS_MM_S = 150;
+// 負PWMの最大絶対値（IBT-2 でも強すぎないところから）
+static constexpr int BRAKE_PWM_MAX = 80;
+// 静摩擦を超える最低トルク（効かないなら上げる）
+static constexpr int BRAKE_PWM_MIN = 20;
+// STOP要求が一瞬途切れてもブレーキを保持する時間 [ms]
+static constexpr uint32_t BRAKE_HOLD_MS = 120;
+// 負PWMを一気に出さず滑らかに増やす時間 [ms]
+static constexpr uint32_t BRAKE_RAMP_MS = 150;
+// ブレーキ解除後の再加速抑制時間 [ms]。この間は推力PWMを0に抑える
+static constexpr uint32_t BRAKE_COOLDOWN_MS = 100;
 
 //------------------------------------------------------------------------------
 // ステアサーボ設定（DS3218想定）
@@ -234,6 +245,8 @@ static constexpr float ENGINE_RATE_UP          = 1600.0f;
 static constexpr float ENGINE_RATE_DOWN        = 4000.0f;
 static constexpr int ENGINE_SPEED_LIMIT        = 255;
 static constexpr uint32_t ENGINE_DEADTIME_US   = 800;
+// アクティブブレーキ（両PWM同時＝短絡制動）。false なら推力0のみ（惰行）
+static constexpr bool ENGINE_ACTIVE_BRAKE_ENABLE = true;
 
 //------------------------------------------------------------------------------
 // 手動操作の上限（ゲームパッド）

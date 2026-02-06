@@ -44,6 +44,7 @@ void Engine::setRateLimits(float rate_up, float rate_down) {
 }
 
 void Engine::control(float dt_s) {
+	_last_was_brake = false; // 推力モードに戻った
 	const uint32_t now_us = micros();
 	if (_dead_until_us != 0 && (int32_t)(now_us - _dead_until_us) < 0) {
 		if (_cur != 0) {
@@ -76,11 +77,29 @@ void Engine::control(float dt_s) {
 	}
 }
 
+void Engine::outputBrake(uint8_t duty) {
+	_cur = 0; // 次に control() に戻る際の初期状態
+	if (cfg::ENGINE_ACTIVE_BRAKE_ENABLE) {
+		// 推力PWM→ブレーキPWM
+		// の切替時のみデッドタイムを挿入（シュートスルー防止）
+		if (!_last_was_brake) {
+			applyPWM(0, 0);
+			delayMicroseconds(cfg::ENGINE_DEADTIME_US);
+		}
+		_last_was_brake = true;
+		applyPWM(duty, duty); // 両PWM同時＝短絡制動（逆回転ではない）
+	} else {
+		_last_was_brake = false;
+		applyPWM(0, 0); // フォールバック：惰行
+	}
+}
+
 void Engine::stop() {
 	_tgt = 0;
 	_cur = 0;
 	_last_dir = 0;
 	_dead_until_us = 0;
+	_last_was_brake = false;
 	_lim.reset(0.0f);
 	applyPWM(0, 0);
 }

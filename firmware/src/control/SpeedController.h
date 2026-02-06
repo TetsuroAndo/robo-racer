@@ -17,8 +17,7 @@ public:
 	void reset();
 
 	SpeedControlOutput update(int16_t v_target_mm_s, float v_est_mm_s,
-							  float dt_s, bool imu_calibrated, bool active,
-							  bool brake_mode);
+							  float dt_s, bool imu_calibrated, bool active);
 
 private:
 	float _i = 0.0f;

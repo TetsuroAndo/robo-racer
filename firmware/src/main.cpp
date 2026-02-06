@@ -1,5 +1,6 @@
 #include "config/Config.h"
 #include "control/AutoCommandSource.h"
+#include "control/BrakeController.h"
 #include "control/SafetySupervisor.h"
 #include "control/SpeedController.h"
 #include "control/Targets.h"
@@ -28,6 +29,7 @@ static Tsd20 tsd20;
 static AutoCommandSource cmd_source;
 static SafetySupervisor safety;
 static SpeedController speed_ctl;
+static BrakeController brake_ctl;
 static mc::AsyncLogger alog;
 static mc::UartTx uart_tx;
 
@@ -75,6 +77,10 @@ static int16_t g_speed_diag_pwm_ff = 0;
 static bool g_speed_diag_saturated = false;
 static bool g_speed_diag_active = false;
 static bool g_speed_diag_calib = false;
+
+static bool g_brake_diag_stop_req = false;
+static int16_t g_brake_diag_pwm = 0;
+static bool g_brake_diag_active = false;
 
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
@@ -314,9 +320,8 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	g_abs_active = safe.brake_mode;
 	g_last_cmd_speed_mm_s = safe.targets.speed_mm_s;
 
-	const SpeedControlOutput out =
-		speed_ctl.update(safe.targets.speed_mm_s, v_est, dt_s, imu_calib,
-						 speed_active, g_abs_active);
+	const SpeedControlOutput out = speed_ctl.update(
+		safe.targets.speed_mm_s, v_est, dt_s, imu_calib, speed_active);
 	g_speed_diag_v_cmd = (float)safe.targets.speed_mm_s;
 	g_speed_diag_v_est = v_est;
 	g_speed_diag_err = out.error_mm_s;
@@ -327,9 +332,16 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	g_speed_diag_active = out.active;
 	g_speed_diag_calib = out.calibrated;
 
-	drive.setBrakeMode(g_abs_active);
+	const BrakeControllerOutput brake_out = brake_ctl.update(
+		safe.stop_requested, safe.stop_level, g_tsd_state.mm, v_est, now_ms);
+	g_brake_diag_stop_req = safe.stop_requested;
+	g_brake_diag_pwm = brake_out.brake_duty;
+	g_brake_diag_active = brake_out.active;
+
+	drive.setBrakeMode(g_abs_active || brake_out.active);
 	drive.setTargetMmS(safe.targets.speed_mm_s, now_ms);
 	drive.setTargetPwm(out.pwm_cmd, now_ms);
+	drive.setTargetBrake(brake_out.brake_duty, brake_out.active);
 	drive.setTargetSteerCdeg(safe.targets.steer_cdeg, now_ms);
 	drive.setTtlMs(safe.targets.ttl_ms, now_ms);
 	drive.setDistMm(safe.targets.dist_mm, now_ms);
@@ -511,6 +523,14 @@ void loop() {
 				  (double)g_speed_diag_err, (int)g_speed_diag_pwm_cmd,
 				  (int)g_speed_diag_pwm_ff, (double)g_speed_diag_i,
 				  (int)g_speed_diag_saturated);
+		alog.logf(mc::LogLevel::INFO, "brake",
+				  "stop_req=%d d_mm=%u v_est=%.1f pwm_speed=%d brake_duty=%u "
+				  "pwm_applied=%d applied_brake=%u v_cap=%.1f",
+				  (int)g_brake_diag_stop_req, (unsigned)g_tsd_state.mm,
+				  (double)g_speed_diag_v_est, (int)g_speed_diag_pwm_cmd,
+				  (unsigned)g_brake_diag_pwm, (int)drive.appliedPwm(),
+				  (unsigned)drive.appliedBrakeDuty(),
+				  (double)g_safety_diag.tsd.v_cap);
 		if (cfg::TSD20_ENABLE) {
 			// tsd20 cap diagnostics, split into multiple short lines
 			// to avoid truncation while preserving all fields.

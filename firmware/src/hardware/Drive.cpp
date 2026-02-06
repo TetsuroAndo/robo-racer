@@ -18,6 +18,11 @@ void Drive::setTargetPwm(int16_t speed_pwm, uint32_t now_ms) {
 	_lastUpdateMs = now_ms;
 }
 
+void Drive::setTargetBrake(uint8_t brake_duty, bool active) {
+	_tgt_brake_duty = brake_duty;
+	_brake_active = active;
+}
+
 void Drive::setTargetSteerCdeg(int16_t steer_cdeg, uint32_t now_ms) {
 	_tgt_steer_cdeg = steer_cdeg;
 	_lastUpdateMs = now_ms;
@@ -46,21 +51,51 @@ void Drive::tick(uint32_t now_ms, float dt_s, bool killed) {
 	const bool expired = (age_ms > (uint32_t)_ttl_ms);
 
 	int16_t cmd_speed = (killed || expired) ? 0 : _tgt_speed_mm_s;
-	int16_t cmd_pwm = (killed || expired) ? 0 : _tgt_pwm;
 	int16_t cmd_steer = (killed || expired) ? 0 : _tgt_steer_cdeg;
 
-	_applied_speed_mm_s = cmd_speed;
-	_applied_pwm = cmd_pwm;
-	_applied_steer_cdeg = cmd_steer;
-
-	// SlewRateLimiter expects per-second rates.
-	if (_brake_mode) {
-		_engine.setRateLimits(cfg::ENGINE_RATE_UP, cfg::ENGINE_RATE_DOWN_BRAKE);
+	if (killed || expired) {
+		_applied_speed_mm_s = cmd_speed;
+		_applied_pwm = 0;
+		_applied_brake_duty = 0;
+		_applied_steer_cdeg = cmd_steer;
+		_brake_released_at_ms = 0;
+		_prev_brake_active = false;
+		_engine.setTarget(0);
+		_engine.control(dt_s);
+	} else if (_brake_active) {
+		_applied_speed_mm_s = cmd_speed;
+		_applied_pwm = 0;
+		_applied_brake_duty = _tgt_brake_duty;
+		_applied_steer_cdeg = cmd_steer;
+		_prev_brake_active = true;
+		_engine.outputBrake(
+			_tgt_brake_duty); // アクティブブレーキ（逆回転ではない）
 	} else {
-		_engine.setRateLimits(cfg::ENGINE_RATE_UP, cfg::ENGINE_RATE_DOWN);
+		// ブレーキ解除直後の再加速抑制（BRAKE_COOLDOWN_MS の間は推力0）
+		if (_prev_brake_active)
+			_brake_released_at_ms = now_ms;
+		const bool in_cooldown = _brake_released_at_ms != 0 &&
+								 (uint32_t)(now_ms - _brake_released_at_ms) <=
+									 cfg::BRAKE_COOLDOWN_MS;
+		const int16_t pwm_to_apply = in_cooldown ? 0 : _tgt_pwm;
+
+		_applied_speed_mm_s = cmd_speed;
+		_applied_pwm = pwm_to_apply;
+		_applied_brake_duty = 0;
+		_applied_steer_cdeg = cmd_steer;
+		if (_brake_mode) {
+			_engine.setRateLimits(cfg::ENGINE_RATE_UP,
+								  cfg::ENGINE_RATE_DOWN_BRAKE);
+		} else {
+			_engine.setRateLimits(cfg::ENGINE_RATE_UP, cfg::ENGINE_RATE_DOWN);
+		}
+		_engine.setTarget(pwm_to_apply);
+		_engine.control(dt_s);
+
+		if (!in_cooldown)
+			_brake_released_at_ms = 0;
+		_prev_brake_active = false;
 	}
-	_engine.setTarget(cmd_pwm);
-	_engine.control(dt_s);
 
 	_steer.setAngle(steerCdegToDeg_(cmd_steer));
 }
