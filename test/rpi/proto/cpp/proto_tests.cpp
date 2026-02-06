@@ -188,7 +188,7 @@ static void test_imu_status_roundtrip() {
 	p.a_long_mm_s2_le = mc::proto::host_to_le16((uint16_t)a_long);
 	p.v_est_mm_s_le = mc::proto::host_to_le16((uint16_t)v_est);
 	p.a_brake_cap_mm_s2_le = mc::proto::host_to_le16(a_brake_cap);
-	p.yaw_dps_x10_le = mc::proto::host_to_le16((uint16_t)yaw);
+	p.yaw_rate_dps_x10_le = mc::proto::host_to_le16((uint16_t)yaw);
 	p.age_ms_le = mc::proto::host_to_le16(age_ms);
 	p.flags = 0x03;	   // arbitrary payload flags (wire-tested via roundtrip)
 	p.reserved = 0x00; // must remain unchanged
@@ -226,7 +226,7 @@ static void test_imu_status_roundtrip() {
 	assert((int16_t)mc::proto::from_le16(p_out.a_long_mm_s2_le) == a_long);
 	assert((int16_t)mc::proto::from_le16(p_out.v_est_mm_s_le) == v_est);
 	assert(mc::proto::from_le16(p_out.a_brake_cap_mm_s2_le) == a_brake_cap);
-	assert((int16_t)mc::proto::from_le16(p_out.yaw_dps_x10_le) == yaw);
+	assert((int16_t)mc::proto::from_le16(p_out.yaw_rate_dps_x10_le) == yaw);
 	assert(mc::proto::from_le16(p_out.age_ms_le) == age_ms);
 	assert(p_out.flags == p.flags);
 	assert(p_out.reserved == p.reserved);

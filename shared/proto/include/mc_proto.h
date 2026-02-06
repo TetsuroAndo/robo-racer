@@ -104,7 +104,7 @@ struct ImuStatusPayload {
 	int16_t a_long_mm_s2_le;
 	int16_t v_est_mm_s_le;
 	uint16_t a_brake_cap_mm_s2_le;
-	int16_t yaw_dps_x10_le;
+	int16_t yaw_rate_dps_x10_le;
 	uint16_t age_ms_le;
 	uint8_t flags;
 	uint8_t reserved;

@@ -220,10 +220,17 @@
 
 ---
 
-## UART帯域の目安
+## UART帯域の目安 v1
 
-- **921600 bps**
-- 低重要度ログはサンプリング（STATUSは20Hz、LINK_STATは1Hz）。
+- **UART 921600 bps / 8N1**
+- 制御・状態系の代表的な送信レート（`docs/proto/overview.md` に準拠）:
+  - `DRIVE`: 100Hz（10ms）
+  - `STATUS`: 100Hz（10ms）
+  - `IMU_STATUS`: 100Hz（10ms）
+  - `TSD20_STATUS`: 100Hz（10ms）
+  - `PING`: 10〜50Hz
+- 低重要度ログ（`LOG` type 等）はサンプリング（間引き）し、帯域の大半を
+  **DRIVE/STATUS/IMU/TSD20** に確保する。
 
 ---
 

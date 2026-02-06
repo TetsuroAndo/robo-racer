@@ -159,7 +159,7 @@ static void sendImuStatus_(uint32_t now_ms) {
 		 (uint16_t)mc::clamp< int >((int)lroundf(st.a_brake_cap_mm_s2), 0,
 									0xFFFF));
 	const int yaw_x10 = (int)lroundf(st.gz_dps * 10.0f);
-	wr16((uint8_t *)&p.yaw_dps_x10_le,
+	wr16((uint8_t *)&p.yaw_rate_dps_x10_le,
 		 (uint16_t)(int16_t)mc::clamp< int >(yaw_x10, -32768, 32767));
 	wr16((uint8_t *)&p.age_ms_le, age_ms);
 	uint8_t flags = 0;
@@ -430,10 +430,11 @@ void loop() {
 			(g_state.mode == mc::Mode::MANUAL) ? "MANUAL" : "AUTO";
 		alog.logf(mc::LogLevel::INFO, "drive",
 				  "mode=%s killed=%d applied(speed=%dmm/s steer=%dcdeg "
-				  "ttl=%ums dist=%umm) drop=%u",
+				  "ttl=%ums dist=%umm) log_drop=%u uart_drop=%u",
 				  mode, (int)g_state.killed, (int)drive.appliedSpeedMmS(),
 				  (int)drive.appliedSteerCdeg(), (unsigned)drive.ttlMs(),
-				  (unsigned)drive.distMm(), (unsigned)alog.dropped());
+				  (unsigned)drive.distMm(), (unsigned)alog.dropped(),
+				  (unsigned)uart_tx.dropped());
 		if (cfg::TSD20_ENABLE) {
 			alog.logf(mc::LogLevel::INFO, "tsd20",
 					  "ready=%d valid=%d mm=%u fails=%u period=%ums "

@@ -311,7 +311,7 @@ void Sender::handleImuStatus(const mc::proto::ImuStatusPayload &payload) {
 	st.a_brake_cap_mm_s2 =
 		(uint16_t)mc::proto::from_le16(payload.a_brake_cap_mm_s2_le);
 	const int16_t yaw_x10 =
-		(int16_t)mc::proto::from_le16((uint16_t)payload.yaw_dps_x10_le);
+		(int16_t)mc::proto::from_le16((uint16_t)payload.yaw_rate_dps_x10_le);
 	st.yaw_dps = (float)yaw_x10 * 0.1f;
 	st.age_ms = mc::proto::from_le16(payload.age_ms_le);
 	st.ts_us = mc::core::Time::us();
