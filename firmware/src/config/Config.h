@@ -121,11 +121,8 @@ static constexpr int IMU_AXIS_MAP_Z             = 2;
 static constexpr int IMU_AXIS_SIGN_X            = 1;
 static constexpr int IMU_AXIS_SIGN_Y            = 1;
 static constexpr int IMU_AXIS_SIGN_Z            = 1;
-static constexpr uint32_t IMU_CALIBRATION_MS    = 800;
-static constexpr uint32_t IMU_CALIB_MIN_SAMPLES = 100;
-// 振動・バイアスでキャリブが完了しない場合に緩和
-static constexpr float IMU_CALIB_GYRO_DPS       = 12.0f;
-static constexpr int IMU_CALIB_ACCEL_DEV_MM_S2  = 5000;
+// 起動後この時間の全サンプル平均をバイアスとして使用（品質フィルタなし）
+static constexpr uint32_t IMU_CALIBRATION_MS    = 1500;
 static constexpr uint32_t IMU_ZUPT_HOLD_MS       = 200;
 static constexpr int IMU_ZUPT_A_LONG_MM_S2       = 200;  // 0.2 m/s^2
 static constexpr float IMU_ZUPT_GZ_DPS           = 5.0f;
@@ -151,8 +148,8 @@ static constexpr int IMU_BRAKE_CMD_DELTA_MM_S    = 200;
 
 static constexpr bool ABS_ENABLE                = true;
 static constexpr bool ABS_ENABLE_IN_MANUAL      = false;
-// false: キャリブ未完了でもABS有効（v_est精度は落ちるが動作する）
-static constexpr bool ABS_REQUIRE_CALIB         = false;
+// 簡素化したキャリブは1.5秒で完了するため true 推奨
+static constexpr bool ABS_REQUIRE_CALIB         = true;
 static constexpr uint32_t ABS_PERIOD_MS          = 20;
 static constexpr uint8_t ABS_DUTY_MIN            = 20;
 static constexpr uint8_t ABS_DUTY_MAX            = 80;

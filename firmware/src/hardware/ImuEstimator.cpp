@@ -202,38 +202,9 @@ void ImuEstimator::update(const ImuSample &s, uint32_t now_ms,
 void ImuEstimator::updateBias_(const ImuSample &s, uint32_t now_ms) {
 	if (_st.calibrated)
 		return;
-	const float accel_scale = accelScaleMmS2PerLsb_();
-	const float gyro_scale = gyroScaleDpsPerLsb_();
-	const float ax = (float)s.ax * accel_scale;
-	const float ay = (float)s.ay * accel_scale;
-	const float az = (float)s.az * accel_scale;
-	const float gx = (float)s.gx * gyro_scale;
-	const float gy = (float)s.gy * gyro_scale;
-	const float gz = (float)s.gz * gyro_scale;
-	const float a_norm = std::sqrt(ax * ax + ay * ay + az * az);
-	const float g_dev = std::fabs(a_norm - kG_mm_s2);
-	const float g_abs =
-		std::max(std::fabs(gx), std::max(std::fabs(gy), std::fabs(gz)));
-	if (g_abs > cfg::IMU_CALIB_GYRO_DPS ||
-		g_dev > cfg::IMU_CALIB_ACCEL_DEV_MM_S2) {
-		return;
-	}
 
 	if (_sum_n == 0)
 		_calib_start_ms = now_ms;
-
-	if ((now_ms - _calib_start_ms) > cfg::IMU_CALIBRATION_MS &&
-		_sum_n >= cfg::IMU_CALIB_MIN_SAMPLES) {
-		_bias_ax = (int32_t)(_sum_ax / (int64_t)_sum_n);
-		_bias_ay = (int32_t)(_sum_ay / (int64_t)_sum_n);
-		_bias_az = (int32_t)(_sum_az / (int64_t)_sum_n);
-		_bias_gx = (int32_t)(_sum_gx / (int64_t)_sum_n);
-		_bias_gy = (int32_t)(_sum_gy / (int64_t)_sum_n);
-		_bias_gz = (int32_t)(_sum_gz / (int64_t)_sum_n);
-		_st.calibrated = true;
-		_gravity_init = false;
-		return;
-	}
 
 	_sum_ax += s.ax;
 	_sum_ay += s.ay;
@@ -242,6 +213,17 @@ void ImuEstimator::updateBias_(const ImuSample &s, uint32_t now_ms) {
 	_sum_gy += s.gy;
 	_sum_gz += s.gz;
 	_sum_n += 1;
+
+	if ((now_ms - _calib_start_ms) >= cfg::IMU_CALIBRATION_MS && _sum_n >= 1) {
+		_bias_ax = (int32_t)(_sum_ax / (int64_t)_sum_n);
+		_bias_ay = (int32_t)(_sum_ay / (int64_t)_sum_n);
+		_bias_az = (int32_t)(_sum_az / (int64_t)_sum_n);
+		_bias_gx = (int32_t)(_sum_gx / (int64_t)_sum_n);
+		_bias_gy = (int32_t)(_sum_gy / (int64_t)_sum_n);
+		_bias_gz = (int32_t)(_sum_gz / (int64_t)_sum_n);
+		_st.calibrated = true;
+		_gravity_init = false;
+	}
 }
 
 float ImuEstimator::accelScaleMmS2PerLsb_() const {
