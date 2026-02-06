@@ -40,6 +40,8 @@ private:
 	uint32_t last_status_log_ms_ = 0;
 	uint32_t last_status_ms_ = 0;
 	uint32_t last_hb_ms_ = 0;
+	uint32_t last_drive_send_ms_ = 0;
+	uint32_t worst_drive_gap_ms_ = 0;
 	mc::proto::StatusPayload last_status_{};
 	bool has_status_ = false;
 	bool status_stale_ = false;

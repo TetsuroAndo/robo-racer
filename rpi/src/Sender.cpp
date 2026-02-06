@@ -87,6 +87,18 @@ void Sender::send(int speed, int angle) {
 	if (!auto_enabled_) {
 		return;
 	}
+	const uint32_t send_ts = now_ms();
+	if (last_drive_send_ms_ != 0) {
+		const uint32_t gap = send_ts - last_drive_send_ms_;
+		if (gap > worst_drive_gap_ms_) {
+			worst_drive_gap_ms_ = gap;
+			std::ostringstream ss;
+			ss << "DRIVE worst gap updated: last=" << gap
+			   << "ms worst=" << worst_drive_gap_ms_ << "ms";
+			MC_LOGI("sender", ss.str());
+		}
+	}
+	last_drive_send_ms_ = send_ts;
 
 	mc::proto::DrivePayload payload{};
 	payload.steer_cdeg =
