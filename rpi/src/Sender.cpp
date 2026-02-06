@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <limits>
 #include <sstream>
 #include <sys/socket.h>
@@ -188,8 +189,12 @@ void Sender::poll() {
 
 void Sender::_init(const char *sock_path) {
 	if (!ipc_.connect(sock_path)) {
-		MC_LOGE("sender",
-				std::string("Failed to connect seriald socket: ") + sock_path);
+		std::string msg =
+			std::string("robo-racer: Failed to connect seriald socket: ") +
+			sock_path +
+			" (is seriald running? check /tmp/roboracer/seriald.sock)";
+		MC_LOGE("sender", msg);
+		std::cerr << msg << "\n";
 		exit(1);
 	}
 
