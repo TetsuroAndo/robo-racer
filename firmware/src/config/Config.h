@@ -121,10 +121,11 @@ static constexpr int IMU_AXIS_MAP_Z             = 2;
 static constexpr int IMU_AXIS_SIGN_X            = 1;
 static constexpr int IMU_AXIS_SIGN_Y            = 1;
 static constexpr int IMU_AXIS_SIGN_Z            = 1;
-static constexpr uint32_t IMU_CALIBRATION_MS    = 1000;
-static constexpr uint32_t IMU_CALIB_MIN_SAMPLES = 200;
-static constexpr float IMU_CALIB_GYRO_DPS       = 6.0f;
-static constexpr int IMU_CALIB_ACCEL_DEV_MM_S2  = 3000;
+static constexpr uint32_t IMU_CALIBRATION_MS    = 800;
+static constexpr uint32_t IMU_CALIB_MIN_SAMPLES = 100;
+// 振動・バイアスでキャリブが完了しない場合に緩和
+static constexpr float IMU_CALIB_GYRO_DPS       = 12.0f;
+static constexpr int IMU_CALIB_ACCEL_DEV_MM_S2  = 5000;
 static constexpr uint32_t IMU_ZUPT_HOLD_MS       = 200;
 static constexpr int IMU_ZUPT_A_LONG_MM_S2       = 200;  // 0.2 m/s^2
 static constexpr float IMU_ZUPT_GZ_DPS           = 5.0f;
