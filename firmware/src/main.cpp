@@ -265,7 +265,9 @@ static void updateTsd20_(uint32_t now_ms) {
 
 static void applyTargets_(uint32_t now_ms, float dt_s) {
 	const bool abs_allowed =
-		!g_state.killed && (g_state.mode == mc::Mode::AUTO);
+		!g_state.killed &&
+		(cfg::ABS_ENABLE &&
+		 (g_state.mode == mc::Mode::AUTO || cfg::ABS_ENABLE_IN_MANUAL));
 	const ImuEstimate &imu_state = imu_est.state();
 	const bool imu_calib = g_imu_valid && imu_state.calibrated;
 	const float v_est = g_imu_valid ? imu_state.v_est_mm_s : 0.0f;

@@ -206,18 +206,17 @@ void ImuEstimator::updateBias_(const ImuSample &s, uint32_t now_ms) {
 	if (_sum_n == 0)
 		_calib_start_ms = now_ms;
 
-	_sum_ax += s.ax;
-	_sum_ay += s.ay;
-	_sum_az += s.az;
+	// Accumulate gyro samples for bias estimation (gyro should read ~0 at rest)
 	_sum_gx += s.gx;
 	_sum_gy += s.gy;
 	_sum_gz += s.gz;
 	_sum_n += 1;
 
 	if ((now_ms - _calib_start_ms) >= cfg::IMU_CALIBRATION_MS && _sum_n >= 1) {
-		_bias_ax = (int32_t)(_sum_ax / (int64_t)_sum_n);
-		_bias_ay = (int32_t)(_sum_ay / (int64_t)_sum_n);
-		_bias_az = (int32_t)(_sum_az / (int64_t)_sum_n);
+		// Only calibrate gyro bias (accelerometer bias = 0, keep gravity)
+		_bias_ax = 0;
+		_bias_ay = 0;
+		_bias_az = 0;
 		_bias_gx = (int32_t)(_sum_gx / (int64_t)_sum_n);
 		_bias_gy = (int32_t)(_sum_gy / (int64_t)_sum_n);
 		_bias_gz = (int32_t)(_sum_gz / (int64_t)_sum_n);
