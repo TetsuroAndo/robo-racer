@@ -494,12 +494,13 @@ void loop() {
 		}
 		if (cfg::ABS_ENABLE) {
 			alog.logf(mc::LogLevel::INFO, "abs",
-					  "reason=%u active=%d duty=%.2f v_cmd=%.1f v_est=%.1f "
-					  "a_tgt=%.0f a_cap=%.0f decel=%.0f dt=%.3f",
+					  "reason=%u active=%d duty=%.2f v_cmd=%.1f v_est=%.1f",
 					  (unsigned)g_safety_diag.abs.reason, (int)g_abs_active,
 					  (double)g_safety_diag.abs.duty,
 					  (double)g_safety_diag.abs.v_cmd,
-					  (double)g_safety_diag.abs.v_est,
+					  (double)g_safety_diag.abs.v_est);
+			alog.logf(mc::LogLevel::INFO, "abs",
+					  "a_tgt=%.0f a_cap=%.0f decel=%.0f dt=%.3f",
 					  (double)g_safety_diag.abs.a_target,
 					  (double)g_safety_diag.abs.a_cap,
 					  (double)g_safety_diag.abs.decel, (double)g_last_dt_s);
