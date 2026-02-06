@@ -206,6 +206,26 @@ void Sender::handleFrame(const mc::proto::Frame &frame) {
 		mc::proto::ImuStatusPayload payload{};
 		memcpy(&payload, frame.payload, sizeof(payload));
 		handleImuStatus(payload);
+	} else if (frame.type() == (uint8_t)mc::proto::Type::TSD20_STATUS &&
+			   frame.payload_len == sizeof(mc::proto::Tsd20StatusPayload)) {
+		mc::proto::Tsd20StatusPayload payload{};
+		memcpy(&payload, frame.payload, sizeof(payload));
+
+		Tsd20State st{};
+		st.valid = true;
+		st.ts_us = mc::core::Time::us();
+		const uint8_t flags = payload.flags;
+		st.ready = (flags & (1u << 0)) != 0;
+		st.sensor_valid = (flags & (1u << 1)) != 0;
+		st.mm = (int32_t)mc::proto::from_le16(payload.mm_le);
+		st.period_ms = (int32_t)mc::proto::from_le16(payload.period_ms_le);
+		st.fails = (int32_t)payload.fail_count;
+
+		tsd20_ = st;
+		has_tsd20_ = true;
+		if (telemetry_) {
+			telemetry_->updateTsd20(st);
+		}
 	} else if (frame.type() == (uint8_t)mc::proto::Type::LOG &&
 			   frame.payload_len >= 1) {
 		const uint8_t *p = frame.payload;

@@ -24,9 +24,11 @@ RPi↔ESP32間の通信を「安全優先・低遅延・拡張可能」に保つ
 - 0x10 `LOG`     : ESP32ログ（level + text）
 - 0x11 `STATUS`  : 状態通知
 - 0x12 `HILS_STATE` : HILS観測（既存）
+- 0x13 `IMU_STATUS` : IMU推定状態
+- 0x14 `TSD20_STATUS` : TSD20状態（固定長）
 - 0x80 `ACK`     : ACK応答
 
-> 本番ビルドでは `MC_ENABLE_MANUAL=0` を想定し、`MODE_SET` は **AUTOのみ受理** する。
+> 本番ビルドでは `MC_ENABLE_MANUAL=0` を想定し、`MODE_SET` は **AUTO(1) と AUTO_OFF(0) を受理**する（手動操作自体は提供しないが、運用上の「AUTO停止」を許可する）。
 
 ## 安全ポリシー（凍結）
 - **KILLは最優先**（どのモードでも即時停止、解除はローカル操作）

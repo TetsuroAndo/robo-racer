@@ -4,9 +4,12 @@ AutoCommandResult AutoCommandSource::update(uint32_t now_ms,
 											const mc::ControlState &st) const {
 	AutoCommandResult out{};
 	const bool auto_mode = (st.mode == mc::Mode::AUTO);
+	const bool hb_fresh = auto_mode && (st.last_hb_ms != 0) &&
+						  ((uint32_t)(now_ms - st.last_hb_ms) <=
+						   (uint32_t)cfg::HEARTBEAT_TIMEOUT_MS);
 	const bool cmd_fresh =
 		auto_mode && (st.cmd_expire_ms != 0) && (now_ms <= st.cmd_expire_ms);
-	if (cmd_fresh && !st.killed) {
+	if (cmd_fresh && hb_fresh && !st.killed) {
 		out.targets.speed_mm_s = st.target_speed_mm_s;
 		out.targets.steer_cdeg = st.target_steer_cdeg;
 		out.targets.ttl_ms = st.target_ttl_ms;

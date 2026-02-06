@@ -857,23 +857,26 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	}
 	std::ostringstream l11;
 	l11 << std::fixed << std::setprecision(1);
-	l11 << "imu ";
+	l11 << "IMU ";
 	if (motion.valid) {
-		l11 << "v=" << motion.v_est_mm_s << "mm/s a=" << motion.a_long_mm_s2
+		l11 << "v_est=" << motion.v_est_mm_s
+			<< "mm/s a_long=" << motion.a_long_mm_s2
 			<< "mm/s2 yaw=" << motion.yaw_dps
 			<< "dps cal=" << (motion.calibrated ? 1 : 0)
 			<< " age=" << motion.age_ms << "ms";
 	} else {
 		l11 << "NA";
 	}
-	l11 << " | tsd20 ";
+
+	std::ostringstream l12;
+	l12 << " | TSD20 ";
 	if (tsd20.valid) {
-		l11 << "mm=" << tsd20.mm << " v=" << (tsd20.sensor_valid ? 1 : 0)
+		l12 << "mm=" << tsd20.mm << " v=" << (tsd20.sensor_valid ? 1 : 0)
 			<< " r=" << (tsd20.ready ? 1 : 0);
 		if (tsd20_age_valid)
-			l11 << " age=" << tsd20_age_ms << "ms";
+			l12 << " age=" << tsd20_age_ms << "ms";
 	} else {
-		l11 << "NA";
+		l12 << "NA";
 	}
 
 	auto sev_name = [](Severity s) {
@@ -1086,7 +1089,8 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 				  << line(l8.str()) << "\n"
 				  << line(l9.str()) << "\n"
 				  << line(l10.str()) << "\n"
-				  << line(l11.str()) << "\n";
+				  << line(l11.str()) << "\n"
+				  << line(l12.str()) << "\n";
 		for (const auto &ev : event_lines) {
 			std::cout << line(ev) << "\n";
 		}
@@ -1116,6 +1120,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		std::cout << "\x1b[2K\r" << line(l9.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l10.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l11.str()) << "\n";
+		std::cout << "\x1b[2K\r" << line(l12.str()) << "\n";
 		for (const auto &ev : event_lines) {
 			std::cout << "\x1b[2K\r" << line(ev) << "\n";
 		}

@@ -34,18 +34,28 @@ public:
 						  (mode == 0 ? "MANUAL" : "AUTO"));
 		}
 #else
-		if (mode != 1) {
+		if (mode == 0) {
+			// manual無効ビルドでも「AUTO解除」を受理する。
+			// 手動操作は提供しないが、運用上は
+			// AUTO_OFF（=MANUAL相当）として停止側へ落とす。
+			ctx.st->mode = mc::Mode::MANUAL;
+			if (ctx.log) {
+				ctx.log->logf(mc::LogLevel::INFO, "proto",
+							  "RX MODE -> AUTO_OFF (manual disabled)");
+			}
+		} else if (mode == 1) {
+			ctx.st->mode = mc::Mode::AUTO;
+			if (ctx.log) {
+				ctx.log->logf(mc::LogLevel::INFO, "proto",
+							  "RX MODE -> AUTO (manual disabled)");
+			}
+		} else {
 			if (ctx.log) {
 				ctx.log->logf(mc::LogLevel::WARN, "proto",
 							  "RX MODE rejected (manual disabled) val=%u",
 							  (unsigned)mode);
 			}
 			return mc::Result::Fail(mc::Errc::Range, "mode disabled");
-		}
-		ctx.st->mode = mc::Mode::AUTO;
-		if (ctx.log) {
-			ctx.log->logf(mc::LogLevel::INFO, "proto",
-						  "RX MODE -> AUTO (manual disabled)");
 		}
 #endif
 		if (f.flags() & mc::proto::FLAG_ACK_REQ) {

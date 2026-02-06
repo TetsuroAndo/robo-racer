@@ -480,6 +480,26 @@ int main(int argc, char **argv) {
 										std::to_string(a_cap) +
 										" age_ms=" + std::to_string(age_ms));
 							}
+						} else if (f.type() ==
+									   (uint8_t)mc::proto::Type::TSD20_STATUS &&
+								   f.payload_len ==
+									   sizeof(mc::proto::Tsd20StatusPayload)) {
+							const uint8_t *p = f.payload;
+							const uint16_t mm = rd16u(p + 0);
+							const uint16_t period_ms = rd16u(p + 2);
+							const uint16_t age_ms = rd16u(p + 4);
+							const uint8_t fails = p[6];
+							const uint8_t flags = p[7];
+							const bool ready = (flags & (1u << 0)) != 0;
+							const bool valid = (flags & (1u << 1)) != 0;
+							logger.log(
+								mc::core::LogLevel::Info, "tsd20",
+								"ready=" + std::to_string(ready) +
+									" valid=" + std::to_string(valid) +
+									" mm=" + std::to_string(mm) +
+									" fails=" + std::to_string(fails) +
+									" period_ms=" + std::to_string(period_ms) +
+									" age_ms=" + std::to_string(age_ms));
 						} else {
 							logger.log(
 								mc::core::LogLevel::Debug, "seriald",

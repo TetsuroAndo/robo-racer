@@ -15,7 +15,7 @@
 * **AUTO**：RPiからUARTで送られる自律制御コマンド。
 * **KILL**：緊急停止。**どのモードでも最優先**。解除は現状プロトコルでは行わない（再起動/ローカル操作）。
 
-> 本番ビルドでは `MC_ENABLE_MANUAL=0` を想定し、MANUAL/Bluepad32 を無効化する。MODE_SET は **AUTOのみ受理** する。
+> 本番ビルドでは `MC_ENABLE_MANUAL=0` を想定し、MANUAL/Bluepad32 を無効化する。MODE_SET は **AUTO(1) と AUTO_OFF(0) を受理**する（手動操作は提供しない）。
 
 ---
 
@@ -112,6 +112,8 @@
 | 0x04 | `PING`           | RPi→ESP   | なし      | 生存確認（ACK応答）                |
 | 0x10 | `LOG`            | ESP→RPi   | 可変      | ログ（level + text）               |
 | 0x11 | `STATUS`         | ESP→RPi   | 固定      | 状態通知（任意）                  |
+| 0x13 | `IMU_STATUS`     | ESP→RPi   | 固定      | IMU推定状態                        |
+| 0x14 | `TSD20_STATUS`   | ESP→RPi   | 固定      | TSD20状態（固定長）                |
 | 0x80 | `ACK`            | ESP→RPi   | なし      | PING応答                          |
 
 ---
@@ -136,7 +138,7 @@
 * `len == 1` のみ許可。`len != 1` は無視（or NACK）。
 * `reason` は v2 で追加する（例：`MODE_SET_EX` など）。
 
-> 本番ビルド（`MC_ENABLE_MANUAL=0`）では `mode=1`（AUTO）のみ受理し、`mode=0`（MANUAL）はエラー扱い。
+> 本番ビルド（`MC_ENABLE_MANUAL=0`）では `mode=1`（AUTO）に加えて `mode=0` を **AUTO_OFF（=MANUAL相当だが手動操作は提供しない）**として受理する。
 
 ---
 

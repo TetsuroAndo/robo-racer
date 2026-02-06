@@ -43,6 +43,7 @@ static mc::PeriodicTimer tsdTimer(cfg::TSD20_READ_INTERVAL_MS);
 static mc::PeriodicTimer tsdInitTimer(cfg::TSD20_INIT_RETRY_MS);
 static uint16_t status_seq = 0;
 static uint16_t imu_seq = 0;
+static uint16_t tsd_seq = 0;
 
 static Tsd20State g_tsd_state{};
 static bool g_tsd_fail_logged = false;
@@ -95,6 +96,17 @@ struct ImuStatusPayload {
 	uint8_t reserved;
 };
 #pragma pack(pop)
+
+#pragma pack(push, 1)
+struct Tsd20StatusPayload {
+	uint16_t mm_le;
+	uint16_t period_ms_le;
+	uint16_t age_ms_le;
+	uint8_t fail_count;
+	uint8_t flags;
+};
+#pragma pack(pop)
+static_assert(sizeof(Tsd20StatusPayload) == 8, "Tsd20StatusPayload size");
 
 static void sendStatus_(uint32_t now_ms) {
 	const bool auto_active = (g_state.mode == mc::Mode::AUTO);
@@ -184,6 +196,40 @@ static void sendImuStatus_(uint32_t now_ms) {
 	size_t out_len = 0;
 	mc::proto::PacketWriter::build(out, sizeof(out), out_len,
 								   mc::proto::Type::IMU_STATUS, 0, imu_seq++,
+								   (const uint8_t *)&p, (uint16_t)sizeof(p));
+	if (g_ctx.tx) {
+		g_ctx.tx->enqueue(out, (uint16_t)out_len);
+	}
+}
+
+static void sendTsd20Status_(uint32_t now_ms) {
+	if (!cfg::TSD20_ENABLE)
+		return;
+
+	uint16_t age_ms = 0xFFFFu;
+	if (g_tsd_last_read_ms != 0) {
+		uint32_t age = now_ms - g_tsd_last_read_ms;
+		if (age > 0xFFFFu)
+			age = 0xFFFFu;
+		age_ms = (uint16_t)age;
+	}
+
+	Tsd20StatusPayload p{};
+	wr16((uint8_t *)&p.mm_le, g_tsd_state.mm);
+	wr16((uint8_t *)&p.period_ms_le, g_tsd_period_ms);
+	wr16((uint8_t *)&p.age_ms_le, age_ms);
+	p.fail_count = g_tsd_state.fail_count;
+	uint8_t flags = 0;
+	if (g_tsd_state.ready)
+		flags |= 1u << 0;
+	if (g_tsd_state.valid)
+		flags |= 1u << 1;
+	p.flags = flags;
+
+	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
+	size_t out_len = 0;
+	mc::proto::PacketWriter::build(out, sizeof(out), out_len,
+								   mc::proto::Type::TSD20_STATUS, 0, tsd_seq++,
 								   (const uint8_t *)&p, (uint16_t)sizeof(p));
 	if (g_ctx.tx) {
 		g_ctx.tx->enqueue(out, (uint16_t)out_len);
@@ -390,6 +436,7 @@ void loop() {
 	if (statusTimer.due(now_ms)) {
 		sendStatus_(now_ms);
 		sendImuStatus_(now_ms);
+		sendTsd20Status_(now_ms);
 	}
 
 	if (logTimer.due(now_ms)) {

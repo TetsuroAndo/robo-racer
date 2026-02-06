@@ -136,6 +136,9 @@ static constexpr uint32_t IMU_ZUPT_HOLD_MS       = 200;
 static constexpr int IMU_ZUPT_A_LONG_MM_S2       = 200;  // 0.2 m/s^2
 static constexpr float IMU_ZUPT_GZ_DPS           = 5.0f;
 static constexpr int IMU_ZUPT_SPEED_MM_S         = 100;
+// ZUPT のコマンド依存を弱めるため、推定速度が十分小さい場合は
+// applied_speed(=適用コマンド) が非0でも停止扱いを許可する。
+static constexpr int IMU_ZUPT_V_EST_MM_S         = 200;
 static constexpr float IMU_V_EST_LEAK_PER_S      = 0.2f;
 static constexpr int IMU_V_EST_MAX_MM_S          = mc_config::SPEED_MAX_MM_S;
 static constexpr uint32_t IMU_GRAVITY_TAU_MS     = 500;
