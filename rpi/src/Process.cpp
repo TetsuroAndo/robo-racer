@@ -15,6 +15,81 @@ struct CandidateScore {
 	int distance_mm{};
 	float score{};
 };
+
+static constexpr float kDegToRad = 0.01745329252f;
+
+// bins(1degごとの最短距離)から、舵角に応じた「円弧コリドー上の最短衝突距離」を作る
+static int
+steerAwareClearanceMm(const std::array< int32_t, cfg::FTG_BIN_COUNT > &bins,
+					  float steer_deg, float half_w_mm) {
+	const float steer = steer_deg * cfg::FTG_STEER_MODEL_SIGN;
+	const float abs_deg = std::fabs(steer);
+	int best = cfg::FTG_ARC_CLEARANCE_MAX_MM;
+
+	// ほぼ直進：矩形コリドー（|y|<=half_w, x>0）の最短x
+	if (abs_deg < cfg::FTG_ARC_STRAIGHT_DEG) {
+		for (int angle = cfg::FTG_ANGLE_MIN_DEG;
+			 angle <= cfg::FTG_ANGLE_MAX_DEG; ++angle) {
+			const int idx = angle - cfg::FTG_ANGLE_MIN_DEG;
+			const int32_t r_i = bins[(size_t)idx];
+			if (r_i <= 0)
+				continue;
+			const float th = (float)angle * kDegToRad;
+			const float r = (float)r_i;
+			const float x = r * std::cos(th);
+			const float y = r * std::sin(th);
+			if (x <= 0.0f)
+				continue;
+			if (std::fabs(y) <= half_w_mm) {
+				const int x_i = (int)std::lround(x);
+				if (x_i < best)
+					best = x_i;
+			}
+		}
+		return best;
+	}
+
+	// 円弧：R = L / tan(|δ|)
+	const float L_mm = cfg::FTG_WHEELBASE_M * 1000.0f;
+	const float delta = abs_deg * kDegToRad;
+	const float tan_d = std::tan(delta);
+	if (tan_d <= 1e-4f)
+		return best;
+	const float R = std::max(1.0f, L_mm / tan_d);
+
+	// 右旋回を左旋回フレームへミラー（yだけ符号反転）
+	const float sign = (steer >= 0.0f) ? 1.0f : -1.0f;
+
+	for (int angle = cfg::FTG_ANGLE_MIN_DEG; angle <= cfg::FTG_ANGLE_MAX_DEG;
+		 ++angle) {
+		const int idx = angle - cfg::FTG_ANGLE_MIN_DEG;
+		const int32_t r_i = bins[(size_t)idx];
+		if (r_i <= 0)
+			continue;
+		const float th = (float)angle * kDegToRad;
+		const float r = (float)r_i;
+		const float x = r * std::cos(th);
+		const float y = r * std::sin(th);
+		if (x <= 0.0f)
+			continue;
+
+		const float yL = y * sign;
+		// 円中心(0,R)からの距離 rho が [R-half_w, R+half_w]
+		// に入れば"掃引幅にいる"
+		const float rho = std::hypot(x, yL - R);
+		if (std::fabs(rho - R) > half_w_mm)
+			continue;
+
+		// 原点(0,0)から円弧に沿った距離 s = t*R,  t = atan2(x, R - yL)
+		const float t = std::atan2(x, (R - yL));
+		if (t < 0.0f)
+			continue;
+		const int s_i = (int)std::lround(t * R);
+		if (s_i < best)
+			best = s_i;
+	}
+	return best;
+}
 } // namespace
 
 Process::Process(TelemetryEmitter *telemetry) : telemetry_(telemetry) {}
@@ -349,8 +424,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		return ProcResult(0, 0);
 	}
 
-	const bool blocked = !found_gap;
-	float target_angle_f = blocked ? 0.0f : selected_target;
+	// gapが無い=即停止 はやめる（誤爆源）。舵は0へ戻すが、停止判定は
+	// steer-aware clearance に任せる。
+	float target_angle_f = found_gap ? selected_target : 0.0f;
 	// Safety: ensure target stays within steering limits even transiently.
 	target_angle_f = std::max(-max_steer, std::min(max_steer, target_angle_f));
 
@@ -365,24 +441,24 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	int out_angle = static_cast< int >(std::lround(applied_angle_f));
 
 	int corridor_min_mm = 0;
-	if (blocked) {
-		out_angle = 0;
-		applied_angle_f = 0.0f;
-		corridor_min_mm =
-			(min_corridor == std::numeric_limits< int32_t >::max())
-				? 0
-				: min_corridor;
-		best_angle = min_angle;
-		best_dist = corridor_min_mm;
-	} else {
+	{
 		const int out_idx = out_angle - cfg::FTG_ANGLE_MIN_DEG;
-		if (out_idx >= 0 && out_idx < cfg::FTG_BIN_COUNT) {
-			corridor_min_mm = corridor_min[(size_t)out_idx];
-		}
-		if (corridor_min_mm <= 0) {
-			out_angle = best_angle;
-			applied_angle_f = (float)best_angle;
-			corridor_min_mm = best_dist;
+		if (!found_gap) {
+			corridor_min_mm =
+				(min_corridor == std::numeric_limits< int32_t >::max())
+					? 0
+					: min_corridor;
+			best_angle = min_angle;
+			best_dist = corridor_min_mm;
+		} else {
+			if (out_idx >= 0 && out_idx < cfg::FTG_BIN_COUNT) {
+				corridor_min_mm = corridor_min[(size_t)out_idx];
+			}
+			if (corridor_min_mm <= 0) {
+				out_angle = best_angle;
+				applied_angle_f = (float)best_angle;
+				corridor_min_mm = best_dist;
+			}
 		}
 	}
 	// Single steer clamp (replaces redundant clamps at target and out_angle)
@@ -391,12 +467,35 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 				 std::min(mc_config::STEER_ANGLE_MAX_DEG, (float)out_angle)));
 	applied_angle_f = (float)out_angle;
 
-	const bool warn =
-		(corridor_min_mm > 0) && (corridor_min_mm < cfg::FTG_WARN_OBSTACLE_MM);
+	// steer-aware path clearance（「真横の壁」を無視できる）
+	int path_clearance_mm = corridor_min_mm; // fallback: 旧直線コリドー
+	if (cfg::FTG_ARC_CLEARANCE_ENABLE) {
+		const float half_w_mm =
+			(cfg::FTG_CAR_WIDTH_M * 0.5f + cfg::FTG_MARGIN_M) * 1000.0f;
+		const int c_now = steerAwareClearanceMm(bins, clamped_last, half_w_mm);
+		const int c_cmd =
+			steerAwareClearanceMm(bins, applied_angle_f, half_w_mm);
+		// "今の舵で当たる/指令舵で当たる"の最悪を採用（舵が遷移中でも安全側）
+		path_clearance_mm = std::min(c_now, c_cmd);
+		if (path_clearance_mm <= 0)
+			path_clearance_mm = std::max(c_now, c_cmd);
+		if (path_clearance_mm <= 0)
+			path_clearance_mm = corridor_min_mm;
+	}
+
+	const bool blocked = (path_clearance_mm > 0) &&
+						 (path_clearance_mm <= cfg::FTG_NEAR_OBSTACLE_MM);
+	const bool warn = (path_clearance_mm > 0) &&
+					  (path_clearance_mm < cfg::FTG_WARN_OBSTACLE_MM);
+
+	if (blocked) {
+		// STOP時でも舵は維持（次の再開で刺さりにくくする）
+		// out_speed は後段で blocked により 0 のまま
+	}
 
 	int out_speed = 0;
-	if (!blocked) {
-		int d_speed_mm = corridor_min_mm;
+	if (!blocked && path_clearance_mm > 0) {
+		int d_speed_mm = path_clearance_mm;
 		const int out_idx = out_angle - cfg::FTG_ANGLE_MIN_DEG;
 		if (out_idx >= 0 && out_idx < cfg::FTG_BIN_COUNT) {
 			const int smoothed_mm =
@@ -440,7 +539,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		const float slew = std::max(1.0f, cfg::FTG_STEER_SLEW_DEG_PER_S);
 		const float t_turn = std::fabs((float)out_angle - clamped_last) / slew;
 		const float avail_mm =
-			(float)std::max(0, corridor_min_mm - cfg::FTG_NEAR_OBSTACLE_MM);
+			(float)std::max(0, path_clearance_mm - cfg::FTG_NEAR_OBSTACLE_MM);
 		if (avail_mm > 0.0f && t_turn > 0.0f) {
 			const float v_turn =
 				avail_mm / (t_turn + cfg::FTG_TURN_CAP_LATENCY_S);
@@ -453,9 +552,13 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		if (warn) {
 			out_speed = std::min(out_speed, cfg::FTG_SPEED_WARN_CAP_MM_S);
 		}
+		if (!found_gap) {
+			// gapが取れてない時は慎重に（止まらず"じわ"前進）
+			out_speed = std::min(out_speed, cfg::FTG_NO_GAP_SPEED_CAP_MM_S);
+		}
 	}
-	if (!blocked && out_speed > 0 && has_brake_cap && corridor_min_mm > 0) {
-		int d_cap_mm = corridor_min_mm - cfg::FTG_NEAR_OBSTACLE_MM;
+	if (!blocked && out_speed > 0 && has_brake_cap && path_clearance_mm > 0) {
+		int d_cap_mm = path_clearance_mm - cfg::FTG_NEAR_OBSTACLE_MM;
 		if (d_cap_mm < 0)
 			d_cap_mm = 0;
 		float v_cap_mm_s = (a_brake_use > 0.0f)
@@ -537,7 +640,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 
 		std::string override_kind = "NONE";
 		std::string override_detail = "NONE";
-		if (corridor_min_mm <= cfg::FTG_NEAR_OBSTACLE_MM) {
+		if (path_clearance_mm <= cfg::FTG_NEAR_OBSTACLE_MM) {
 			override_kind = "STOP";
 			override_detail =
 				"STOP<=" + std::to_string(cfg::FTG_NEAR_OBSTACLE_MM) + "mm";
@@ -562,10 +665,14 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			0.0f, std::min(1.0f, (float)best_dist /
 									 (float)cfg::FTG_GAP_DEPTH_SAT_MM));
 		sample.best_delta_deg = best_delta;
-		sample.min_handle_angle_deg = 0.0f;
-		sample.min_handle_dist_mm = 0;
-		sample.path_obst_mm = corridor_min_mm;
-		sample.front_dist_mm = std::nullopt;
+		sample.min_handle_angle_deg = (float)min_angle;
+		sample.min_handle_dist_mm =
+			(min_corridor == std::numeric_limits< int32_t >::max())
+				? 0
+				: (int)min_corridor;
+		sample.path_obst_mm =
+			path_clearance_mm; // 実際の進行（円弧）に沿った距離
+		sample.front_dist_mm = corridor_min_mm; // 旧：直線コリドー（比較用）
 		sample.side_dist_mm = std::nullopt;
 		sample.base_speed = out_speed;
 		sample.limited_speed = out_speed;

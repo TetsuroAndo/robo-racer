@@ -205,16 +205,28 @@ static constexpr float FTG_STEER_SLEW_DEG_PER_S  = 120.0f;
 
 「10Hz + slew 制限」が主因であることをログで示すと説得力が上がる。
 
-### 2.5 速度決定（turn-cap 未実装）
+### 2.5 速度決定（turn-cap 実装済み）
 
-現状の速度制限は以下のみ（L271-314）：
+現状の速度制限は以下の通り：
 
 - `v_dist`: 距離に応じた指数飽和
 - `v_steer`: 舵角に応じた cos 減速
 - `warn` 時の `FTG_SPEED_WARN_CAP_MM_S` クランプ
 - `has_brake_cap` 時のブレーキ距離ベース cap
+- turn-cap: 舵が追いつくまでの時間に対する速度上限
 
-**舵が追いつくまでの時間**を考慮した速度上限はない。
+### 2.6 corridor_min の直線前提と「真横の壁で STOP」問題（根因分析）
+
+**原因の本質**:
+
+- 現状の `corridor_min` は「**ボディ前方から angle 方向に直進できる**」前提の“直線コリドー”判定である。
+- 実車（Ackermann/スリップ最小）では、舵角が付いている間の進行は **円弧（曲率）** である。
+- その結果、**曲がっていれば当たらない真横の壁**（外側の壁）まで `corridor_min` の角度窓（±n）に入ってしまい、`corridor_min_mm <= NEAR` になって STOP する。
+- さらに `blocked = !found_gap` なので、gap が切れた瞬間（狭い・ノイズ・width 判定過剰）に **即 out_speed=0** になる。
+
+**対策の方向性**:
+
+止まる/減速の判定だけでも **舵角を考慮した“円弧コリドー距離（path clearance）”** に置き換えるのが最も効く。Gap 選択自体は今のままでも、停止の誤爆が激減する。
 
 ---
 
@@ -329,6 +341,39 @@ if (avail_mm > 0.0f && t_turn > 0.0f) {
 
 **将来の詰め**: `FTG_TURN_CAP_LATENCY_S` に、LiDAR データ age・UART 遅延・ESP32 適用遅延を加算して安全側に倒す余地がある。
 
+### 3.4 steer-aware path clearance（円弧コリドー距離）
+
+**目的**: 「舵が付いているのに真横の壁を見て STOP」を解消し、gap 一瞬切断時の即停止を緩和する。
+
+**実装方針（最小改修で効く）**:
+
+1. `bins[angle]`（各 1deg の最短距離）から (x,y) を作る
+2. 舵角 δ に対して、車体中心の軌跡を「半径 R = L / tan(|δ|)」の円弧とみなし、その円弧の“掃引幅”（車幅/2 + margin）の中に入る点だけを衝突候補とする
+3. その候補のうち、円弧に沿った距離 s が最小のものを `path_clearance_mm` とする
+4. STOP/WARN/速度上限/ブレーキ cap は `path_clearance_mm` を使う
+5. gap が無いときも **即停止にせず**、`path_clearance_mm` が NEAR を超えていれば「低速で直進（舵 0 へ戻す）」にフォールバック（安全側に速度 cap）
+
+**アルゴリズム概要**:
+
+- **ほぼ直進**（|δ| < `FTG_ARC_STRAIGHT_DEG`）: 矩形コリドー（|y| ≤ half_w, x > 0）の最短 x を採用
+- **円弧**（|δ| ≥ 閾値）: R = L / tan(|δ|)、円中心 (0, R) からの距離 ρ が [R-half_w, R+half_w] に入る点のみを衝突候補とし、円弧に沿った距離 s = t×R（t = atan2(x, R-yL)）の最小値を `path_clearance_mm` とする
+- **blocked の再定義**: `blocked = (path_clearance_mm > 0) && (path_clearance_mm <= FTG_NEAR_OBSTACLE_MM)`（`!found_gap` による即停止を廃止）
+- **target_angle_f**: `found_gap ? selected_target : 0.0f`（gap 無し時は舵 0 へ戻すが、停止判定は path_clearance に任せる）
+- **gap 無し時の速度**: `FTG_NO_GAP_SPEED_CAP_MM_S` で cap（低速フォールバック）
+
+**左右反転の保険**: `FTG_STEER_MODEL_SIGN` を -1.0f にすると「別方向向いている」症状を補正できる。
+
+**実装の要点**:
+
+- `steerAwareClearanceMm(bins, steer_deg, half_w_mm)`: bins から (x,y) を計算し、舵角に応じた円弧/矩形コリドー内の最短衝突距離を返す
+- ほぼ直進時: 矩形コリドー（|y| ≤ half_w, x > 0）の最短 x
+- 円弧時: R = L/tan(|δ|)、掃引幅 [R-half_w, R+half_w] 内の点のみ、円弧距離 s = t×R の最小値
+- `path_clearance_mm = min(steerAwareClearanceMm(bins, clamped_last, ...), steerAwareClearanceMm(bins, applied_angle_f, ...))`（舵遷移中も安全側）
+- `blocked = (path_clearance_mm > 0) && (path_clearance_mm <= NEAR)`
+- `warn = (path_clearance_mm > 0) && (path_clearance_mm < WARN)`
+- 速度・ブレーキ cap はすべて `path_clearance_mm` を使用
+- `!found_gap` 時: `out_speed = min(out_speed, FTG_NO_GAP_SPEED_CAP_MM_S)` で低速フォールバック
+
 ---
 
 ## 4. パラメータ変更
@@ -351,6 +396,17 @@ if (avail_mm > 0.0f && t_turn > 0.0f) {
 | `FTG_GAP_MIN_WIDTH_DEG` | （新規） | 6 | 幅がこれ未満の gap は無視。細かい gap による蛇行を抑える |
 | `FTG_TURN_CAP_LATENCY_S` | （新規） | 0.08 | turn-cap 用の反応遅れ |
 
+**steer-aware path clearance 用（3.4 節）**:
+
+| 定数 | 現状 | 変更後 | 説明 |
+|------|------|--------|------|
+| `FTG_ARC_CLEARANCE_ENABLE` | （新規） | true | 円弧コリドー距離を有効化 |
+| `FTG_STEER_MODEL_SIGN` | （新規） | 1.0f | 左右逆なら -1.0f（「別方向向いている」症状の保険） |
+| `FTG_WHEELBASE_M` | （新規） | 0.257f | ホイールベース（TT-02 系なら 0.257m 付近、要実測推奨） |
+| `FTG_ARC_STRAIGHT_DEG` | （新規） | 2.0f | これ未満は直進矩形コリドーで判定 |
+| `FTG_ARC_CLEARANCE_MAX_MM` | （新規） | 12000 | クリアランスが取れないときの“十分遠い”扱い |
+| `FTG_NO_GAP_SPEED_CAP_MM_S` | （新規） | `FTG_SPEED_WARN_CAP_MM_S` | gap が見つからない時の速度上限（安全側に低め） |
+
 ### 4.2 削除・未使用化するパラメータ
 
 以下のコスト関数関連は gap 方式では使用しない（将来的に削除検討）:
@@ -359,7 +415,14 @@ if (avail_mm > 0.0f && t_turn > 0.0f) {
 
 ※ 初回パッチでは残置し、gap ロジックのみ置換。
 
-### 4.3 テレメトリ互換（candidates スコア）
+### 4.3 steer-aware の追加チューニング（必要なら）
+
+- `FTG_CAR_WIDTH_M`: “外形最大幅”に合わせる（過大だと狭路で止まりやすい）
+- `FTG_MARGIN_M`: 0.03 → 0.015 などにすると「通れるのに止まる」はさらに減る（ただし接触リスク増）
+- `FTG_WHEELBASE_M`: 実測推奨（ズレると円弧判定の精度が落ちる）
+- ログ（telemetry の `path_obst_mm` と `front_dist_mm`）を見て、左右反転が必要か（`FTG_STEER_MODEL_SIGN`）を判断
+
+### 4.4 テレメトリ互換（candidates スコア）
 
 テレメトリの `candidates` と `heat_bins` は、現行では `score = 1/(1+j)`（L357）で算出している。
 
@@ -382,6 +445,8 @@ if (avail_mm > 0.0f && t_turn > 0.0f) {
 
 改修後は `candidates` 用に **telemetry 専用スコア** `tele_score = clamp(d_mm / FTG_GAP_DEPTH_SAT_MM, 0, 1)` を使用する。`best_score` は gap スコアのまま出力するか、選択した gap の `tele_score` を出力する。
 
+**steer-aware テレメトリ**: `path_obst_mm` に円弧コリドー距離（`path_clearance_mm`）を出力し、`front_dist_mm` に旧直線コリドー（`corridor_min_mm`）を出力して比較用とする。
+
 ---
 
 ## 5. 実装の進め方（最短ルート）
@@ -392,6 +457,7 @@ if (avail_mm > 0.0f && t_turn > 0.0f) {
 | **1.5** | （必要なら）corridor_min が過小評価のままだと gap が「無い」判定になり得る。Phase 1 の後に改善が足りない場合の保険として、**内外非対称 corridor**（内側厳格/外側緩和）や **内側 side hard-stop** を検討 | 低 |
 | **2** | slew を 360deg/s に引き上げ | 高 |
 | **3** | turn-cap を追加（舵が追いつくまで減速） | 高 |
+| **3.5** | **steer-aware path clearance**（円弧コリドー距離）を導入し、「真横の壁で STOP」「gap 一瞬切断で即停止」を解消 | 高 |
 | **4** | （将来）`Process` を stateful にして updateScan/tick 分離（制御 100Hz） | 中 |
 
 ### 5.1 置換対象コードブロック一覧
@@ -404,6 +470,7 @@ if (avail_mm > 0.0f && t_turn > 0.0f) {
 | ブロック時スナップ | L250-261 付近 | slew 途中で一瞬 NEAR に落ちた場合、gap が安全なら `best_angle` へスナップする分岐を追加 |
 | 速度 turn-cap | L310 直後 | `out_speed` 算出後、`warn` チェック前に turn-cap ブロックを挿入 |
 | テレメトリ candidates | L345-363 | `jerk_weight`, `obs_cost`, `j` の代わりに `score = d_mm/FTG_GAP_DEPTH_SAT_MM` で candidates を構築 |
+| **steer-aware clearance** | （新規） | `steerAwareClearanceMm()` を追加。blocked/warn/速度/ブレーキ cap を `path_clearance_mm` に差し替え。`target_angle_f = found_gap ? selected_target : 0.0f`。gap 無し時は `FTG_NO_GAP_SPEED_CAP_MM_S` で cap。`path_obst_mm`/`front_dist_mm` をテレメトリに出力 |
 
 ### 5.2 依存ヘッダ
 
@@ -431,6 +498,8 @@ private:
 | 方向選択 | 「単に一番遠い 1 点」ではなく「広く深い空間（gap）」を狙うため、壁沿いでも挙動が安定 |
 | ステア追従 | `FTG_STEER_SLEW_DEG_PER_S=360` で 10Hz 更新でも舵が追いつく |
 | 刺さり抑制 | turn-cap により舵がまだ切れていないときに速度を落とし、刺さりを抑える |
+| **真横の壁で STOP** | steer-aware path clearance により円弧コリドー外の点を無視し、誤停止が激減 |
+| **gap 一瞬切断で即停止** | `blocked` を path_clearance ベースに変更し、gap 無し時は低速フォールバック（舵 0 へ戻す）で抜けられる |
 
 ---
 
@@ -442,7 +511,12 @@ private:
 - `steer_deg` と `raw_steer_deg` の差（slew でどれだけ削られているか）
 - `limited_speed` が turn-cap で落ちているか
 
-### 7.2 追加で根本対応（必要なら）
+### 7.2 steer-aware 実装後のログ確認
+
+- `path_obst_mm`（円弧コリドー距離）と `front_dist_mm`（旧直線コリドー）を比較し、曲がり中に `path_obst_mm` が `front_dist_mm` より大きくなっているか確認
+- まだ「真横の壁で STOP」する場合は `FTG_STEER_MODEL_SIGN = -1.0f` を試す（左右反転の補正）
+
+### 7.3 追加で根本対応（必要なら）
 
 今回のパッチは「10Hz でも追従できるようにする」方向。さらに詰めるなら:
 

@@ -78,6 +78,19 @@ static constexpr float FTG_CAR_WIDTH_M         = 0.20f; // 20cm
 static constexpr float FTG_MARGIN_M            = 0.03f; // 必要なら調整
 static constexpr float FTG_CORRIDOR_LOOKAHEAD_M = 0.60f;
 
+//------------------------------------------------------------------------------
+// Steer-aware clearance（Ackermannの円弧コリドーで「進行方向の衝突距離」を作る）
+//------------------------------------------------------------------------------
+static constexpr bool FTG_ARC_CLEARANCE_ENABLE = true;
+// out_angle（deg）と車体座標系の左右が逆なら -1.0f（「別方向向いている」症状の保険）
+static constexpr float FTG_STEER_MODEL_SIGN = 1.0f;
+// ホイールベース（要実測推奨）。TT-02系なら 0.257m 付近が多い
+static constexpr float FTG_WHEELBASE_M = 0.257f;
+// これ未満は直進矩形コリドー（|y|<=half_w）で判定
+static constexpr float FTG_ARC_STRAIGHT_DEG = 2.0f;
+// クリアランスが取れないときの"十分遠い"扱い（速度が上限に張り付く値でOK）
+static constexpr int FTG_ARC_CLEARANCE_MAX_MM = 12000;
+
 // 予測マージン（IMUの速度/加速度で安全側へ補正）
 static constexpr bool FTG_PREDICT_ENABLE       = true;
 static constexpr uint16_t FTG_PREDICT_LATENCY_MS = 80;
@@ -128,6 +141,8 @@ static constexpr float FTG_GAP_WEIGHT_GAMMA     = 2.0f;  // gap 内の角度重�
 static constexpr float FTG_TURN_CAP_LATENCY_S   = 0.08f; // turn-cap 用の反応遅れ
 static constexpr int FTG_SPEED_WARN_CAP_MM_S     =
 	(mc_config::SPEED_MAX_MM_S * 39) / mc_config::SPEED_INPUT_LIMIT;
+// gap が見つからない時に"それでも進めるなら"の速度上限（安全側に低め）
+static constexpr int FTG_NO_GAP_SPEED_CAP_MM_S = FTG_SPEED_WARN_CAP_MM_S;
 static constexpr uint16_t FTG_IMU_MAX_AGE_MS     = 200;
 static constexpr float FTG_YAW_BIAS_DEG          = 0.0f;
 static constexpr float FTG_YAW_BIAS_REF_DPS      = 90.0f;

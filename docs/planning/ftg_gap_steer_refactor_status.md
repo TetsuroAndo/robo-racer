@@ -16,6 +16,7 @@
 | 1.5 | （必要なら）内外非対称 corridor / 内側 side hard-stop | 保留 |
 | 2 | slew を 360deg/s に引き上げ | 完了 |
 | 3 | turn-cap を追加 | 完了 |
+| **3.5** | **steer-aware path clearance**（円弧コリドー距離） | 実装済 |
 | 4 | updateScan/tick 分離（制御 100Hz） | 保留 |
 
 ---
@@ -31,14 +32,28 @@
 | Phase 1.5: corridor 保険 | 保留 | - | 必要なら内外非対称 corridor / 内側 hard-stop |
 | Phase 2: slew 引き上げ | 完了 | 2026-02-07 | Config.h `FTG_STEER_SLEW_DEG_PER_S=360` |
 | Phase 3: turn-cap 実装 | 完了 | 2026-02-07 | 舵追従時間に応じた速度上限 |
+| Phase 3.5: steer-aware path clearance | 実装済 | 2026-02-07 | Config.h / Process.cpp に steerAwareClearanceMm、path_clearance_mm、FTG_NO_GAP_SPEED_CAP を追加 |
 | Phase 4: 制御分離 | 保留 | - | 必要に応じて検討 |
 | ビルド・単体テスト | 要確認 | - | 環境により `make rpi` が失敗する場合あり |
 | 実機検証 | 未着手 | - | テレメトリログ確認、刺さり/蛇行の観察 |
 
 ---
 
+## 根因分析（2026-02-07 追記）
+
+**「真横の壁で STOP」「gap 一瞬切断で即停止」の原因**:
+
+- `corridor_min` は「直進できる」前提の直線コリドー。実車（Ackermann）は円弧で進行するため、曲がっていれば当たらない真横の壁が角度窓に入り `corridor_min_mm <= NEAR` で STOP する
+- `blocked = !found_gap` により、gap が一瞬切れただけで即 `out_speed=0` になる
+
+**対策**: steer-aware path clearance（円弧コリドー距離）で停止/減速判定を置き換え。詳細は `ftg_gap_steer_refactor_plan.md` の 2.6 節・3.4 節を参照。
+
+---
+
 ## 次のアクション
 
-1. ~~計画書のパッチを `Config.h` および `Process.cpp` に適用~~ 完了
+1. ~~計画書のパッチを `Config.h` および `Process.cpp` に適用~~ 実装済（2026-02-07）
 2. `make rpi` でビルド確認（Linux/RPi 環境推奨）
 3. 実機または HILS でテレメトリログを取得し、`best_angle_deg` / `steer_deg` / `raw_steer_deg` / `limited_speed` を確認
+4. ~~**Phase 3.5**: steer-aware path clearance を `Config.h` および `Process.cpp` に実装~~ 完了
+5. steer-aware 実装後: `path_obst_mm` と `front_dist_mm` を比較し、曲がり中に `path_obst_mm` が `front_dist_mm` より大きくなっているか確認
