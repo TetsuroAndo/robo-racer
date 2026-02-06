@@ -74,6 +74,17 @@ int16_t AbsController::apply(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
 		return speed_mm_s;
 	}
 
+	// 障害物がかなり近く目標も低いときはABSスキップ（逆転で後退ループを防ぐ）
+	if (cfg::TSD20_ENABLE && tsd.valid) {
+		const uint16_t near_limit =
+			(uint16_t)(cfg::TSD20_MARGIN_MM + cfg::ABS_REVERSE_DISABLE_NEAR_MM);
+		if (tsd.mm <= near_limit && v_cmd <= (float)cfg::ABS_SKIP_V_CMD_MM_S) {
+			d->reason = ABS_INACTIVE;
+			reset(now_ms);
+			return speed_mm_s;
+		}
+	}
+
 	if (want_brake) {
 		_hold_until_ms = now_ms + cfg::ABS_BRAKE_HOLD_MS;
 	}
@@ -154,14 +165,21 @@ int16_t AbsController::apply(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
 
 	// 障害物が近いときは逆転強度を弱める（後退しすぎを防ぐがABSは維持）
 	if (cfg::TSD20_ENABLE && tsd.valid) {
+		const uint16_t near_limit =
+			(uint16_t)(cfg::TSD20_MARGIN_MM + cfg::ABS_REVERSE_DISABLE_NEAR_MM);
 		const uint16_t limit = (uint16_t)(cfg::TSD20_MARGIN_MM +
 										  cfg::ABS_REVERSE_DISABLE_MARGIN_MM);
-		if (tsd.mm <= limit) {
+		if (tsd.mm <= near_limit) {
+			reverse_mm_s = 0; // かなり近いときは逆転しない
+		} else if (tsd.mm <= limit) {
 			reverse_mm_s = reverse_mm_s / 2;
 			if (reverse_mm_s < 200)
 				reverse_mm_s = 200;
 		}
 	}
 
-	return reverse_on ? (int16_t)(-reverse_mm_s) : 0;
+	const int16_t out = reverse_on ? (int16_t)(-reverse_mm_s) : 0;
+	if (reverse_mm_s == 0 && active_out)
+		*active_out = false; // 逆転していないときはabs=0表示
+	return out;
 }

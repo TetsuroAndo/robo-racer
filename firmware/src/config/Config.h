@@ -160,11 +160,12 @@ static constexpr uint16_t ABS_BRAKE_HOLD_MS      = 200;
 static constexpr int ABS_REVERSE_MM_S           = 1200;
 static constexpr int ABS_SPEED_MARGIN_MM_S      = 150;
 static constexpr int ENGINE_RATE_DOWN_BRAKE      = 4000;
-// この距離以下では逆転強度を半減（後退しすぎを防ぐ、ABSは維持）
-static constexpr uint16_t ABS_REVERSE_DISABLE_MARGIN_MM = 400;
+static constexpr uint16_t ABS_REVERSE_DISABLE_MARGIN_MM = 150;
+// この距離以下では逆転しない（惰行のみ、後退しすぎ防止）
+static constexpr uint16_t ABS_REVERSE_DISABLE_NEAR_MM   = 200;
 // 徐行・停止目標かつ既に十分減速中ならABSをスキップ（逆転不要）
-static constexpr int ABS_SKIP_V_CMD_MM_S       = 400;
-static constexpr int ABS_SKIP_DECEL_MM_S2       = 2500;
+static constexpr int ABS_SKIP_V_CMD_MM_S       = 600;
+static constexpr int ABS_SKIP_DECEL_MM_S2       = 1500;
 
 //------------------------------------------------------------------------------
 // 速度制御（speed_mm_s -> PWM）
