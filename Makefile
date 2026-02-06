@@ -1,4 +1,5 @@
 OS			:= $(shell uname -s)
+ARCH		:= $(shell uname -m)
 USER		:= $(shell whoami)
 RM 			:= rm -rf
 
@@ -18,6 +19,21 @@ else
 ROS2_GUI_ENV :=
 endif
 
+ifeq ($(OS), Linux)
+  ifeq ($(ARCH), aarch64)
+    IS_RPI := $(shell if [ -f /proc/device-tree/model ] && grep -qi 'raspberry pi' /proc/device-tree/model; then echo 1; elif [ "$(USER)" = "pi" ]; then echo 1; elif [ -e /dev/ttyAMA0 ]; then echo 1; fi)
+    ifeq ($(IS_RPI),1)
+      ROS2_SERVICE ?= ros2-record
+    else
+      ROS2_SERVICE ?= ros2
+    endif
+  else
+    ROS2_SERVICE ?= ros2
+  endif
+else
+  ROS2_SERVICE ?= ros2
+endif
+
 # --- PATHS ---
 ROOT				:= .
 VENV				:= $(ROOT)/.venv
@@ -28,6 +44,8 @@ PIO_DIR				:= $(ROOT)/.pio
 PIO_ENV				?= esp32dev
 PIO_BUILD_DIR		:= $(PIO_DIR)/build/$(PIO_ENV)
 PIO_BUILD_SRC_DIR	:= $(PIO_BUILD_DIR)/src
+FIRMWARE_BIN		:= $(PIO_BUILD_DIR)/firmware.bin
+UPLOAD_STAMP		:= $(PIO_BUILD_DIR)/.last_upload
 
 FIRMWARE_DIR		:= $(ROOT)/firmware
 FIRMWARE_SRC_DIR	:= $(FIRMWARE_DIR)/src
@@ -50,6 +68,14 @@ RPLIDAR_INC			:= $(RPLIDAR_SDK_DIR)/sdk/include
 RPLIDAR_SRC			:= $(RPLIDAR_SDK_DIR)/sdk/src
 RPLIDAR_LIB			:= $(RPLIDAR_SDK_DIR)/output/$(OS)/Release
 RPLIDAR_SDK_MAKE	:= $(RPLIDAR_SDK_DIR)/Makefile
+
+# ================================
+# RPi bag fetch (scp)
+# ================================
+RPI_HOST			?=
+RPI_USER			?= pi
+RPI_SSH_PORT		?= 22
+BAG_DEST_DIR		?= $(ROOT)/training/data/bags
 
 # ================================
 # RPi build rules
@@ -82,7 +108,10 @@ PIO_RUN			:= $(PIO) run -j $(shell nproc)
 .PHONY: all
 
 all: pio rpi
-	@if [ "$(USER)" = "pi" ]; then $(MAKE) upload; fi
+	@if [ "$(IS_RPI)" = "1" ] && [ -f "$(FIRMWARE_BIN)" ]; then \
+		python3 -c 'import os,sys; fw,st=sys.argv[1],sys.argv[2]; fw_m=os.path.getmtime(fw) if os.path.exists(fw) else 0; st_m=os.path.getmtime(st) if os.path.exists(st) else 0; sys.exit(0 if fw_m>st_m else 1)' "$(FIRMWARE_BIN)" "$(UPLOAD_STAMP)" \
+		&& $(MAKE) upload || true; \
+	fi
 
 # === RPi build ===
 .PHONY: rpi c-rpi
@@ -100,6 +129,8 @@ pio:
 	$(PIO_RUN) $(PIO_ARG_ENV)
 upload:
 	$(PIO_RUN) $(PIO_ARG_UPLOAD)
+	@mkdir -p "$(PIO_BUILD_DIR)"
+	@touch "$(UPLOAD_STAMP)"
 monitor:
 	$(PIO) device monitor
 
@@ -136,7 +167,8 @@ $(LOG_DIR):
 # ================================
 .PHONY: test activate hils-build hils-local ros2-up ros2-shell ros2-build ros2-build-clean \
 	ros2-mc-bridge ros2-topic-echo \
-	ros2-rviz ros2-novnc ros2-bag-record ros2-bag-play ros2-session-up
+	ros2-rviz ros2-novnc ros2-bag-record ros2-bag-play ros2-bag-fetch ros2-session-up \
+	ros2-mapping
 
 hils-build:
 	$(CMAKE) -S $(ROOT)/rpi -B $(RPI_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
@@ -151,15 +183,15 @@ ros2-up:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml up -d
 
 ros2-shell:
-	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 bash
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm $(ROS2_SERVICE) bash
 
 ros2-build:
-	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm $(ROS2_SERVICE) \
 		bash /ws/tools/ros2/scripts/ros2_build.sh
 
 ros2-build-clean:
-	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
-		bash -lc "rm -rf /ws/rpi/ros2_ws/build /ws/rpi/ros2_ws/install /ws/rpi/ros2_ws/log && /ws/tools/ros2/scripts/ros2_build.sh"
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm $(ROS2_SERVICE) \
+		bash -lc "rm -rf /ws/rpi/ros2_ws/build /ws/rpi/ros2_ws/install /ws/rpi/ros2_ws/colcon_log && /ws/tools/ros2/scripts/ros2_build.sh"
 
 ros2-mc-bridge:
 	@if [ -z "$(HOST)" ]; then \
@@ -194,22 +226,53 @@ ros2-bag-record:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm \
 		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID -e NOTES -e RUN_NOTES \
 		-e WAIT_SEC -e REQUIRE_AT_LEAST_ONE \
-		ros2 \
+		$(ROS2_SERVICE) \
 		bash /ws/tools/ros2/scripts/bag_record.sh
 
 ros2-bag-play:
-	@if [ -z "$(BAG)" ]; then \
-		echo "Error: BAG パラメータが未設定です。例: make ros2-bag-play BAG=/path/to/bag"; \
+	@bash -lc "set -e; \
+		BAG=\"$(BAG)\"; \
+		if [ -n \"$(RPI_HOST)\" ]; then \
+			if [ -z \"$(RUN_ID)\" ] && [ -z \"$(SRC_PATH)\" ]; then \
+				echo \"Error: RUN_ID または SRC_PATH を指定してください。例: make ros2-bag-play RPI_HOST=100.102.92.54 RUN_ID=<run_id>\"; \
+				exit 1; \
+			fi; \
+			RPI_HOST=\"$(RPI_HOST)\" RPI_USER=\"$(RPI_USER)\" PORT=\"$(RPI_SSH_PORT)\" \
+				RUN_ID=\"$(RUN_ID)\" SRC_PATH=\"$(SRC_PATH)\" DEST_DIR=\"$(BAG_DEST_DIR)\" \
+				bash tools/ros2/scripts/bag_fetch.sh; \
+			if [ -z \"$$BAG\" ]; then \
+				if [ -n \"$(SRC_PATH)\" ]; then \
+					BAG=\"$(BAG_DEST_DIR)/$$(basename \"$(SRC_PATH)\")\"; \
+				else \
+					BAG=\"$(BAG_DEST_DIR)/$(RUN_ID)\"; \
+				fi; \
+			fi; \
+		fi; \
+		if [ -z \"$$BAG\" ]; then \
+			echo \"Error: BAG パラメータが未設定です。例: make ros2-bag-play BAG=/path/to/bag\"; \
+			exit 1; \
+		fi; \
+		docker compose -f tools/ros2/compose.yml run --rm $(ROS2_SERVICE) \
+			bash /ws/tools/ros2/scripts/bag_play.sh \"$$BAG\""
+
+ros2-bag-fetch:
+	@if [ -z "$(RPI_HOST)" ]; then \
+		echo "Error: RPI_HOST パラメータが未設定です。例: make ros2-bag-fetch RPI_HOST=100.102.92.54 RUN_ID=<run_id>"; \
 		exit 1; \
 	fi
-	docker compose -f tools/ros2/compose.yml run --rm ros2 \
-		bash /ws/tools/ros2/scripts/bag_play.sh $(BAG)
+	@if [ -z "$(RUN_ID)" ] && [ -z "$(SRC_PATH)" ]; then \
+		echo "Error: RUN_ID または SRC_PATH を指定してください。例: make ros2-bag-fetch RPI_HOST=100.102.92.54 RUN_ID=<run_id>"; \
+		exit 1; \
+	fi
+	RPI_HOST=$(RPI_HOST) RPI_USER=$(RPI_USER) PORT=$(RPI_SSH_PORT) \
+		RUN_ID=$(RUN_ID) SRC_PATH=$(SRC_PATH) DEST_DIR=$(BAG_DEST_DIR) \
+		bash tools/ros2/scripts/bag_fetch.sh
 
 ros2-session-up:
 	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm \
 		-e RUN_ID -e TOPICS -e PROFILE -e OUT_DIR -e PUBLISH_RUN_ID -e NOTES -e RUN_NOTES \
 		-e WAIT_SEC -e REQUIRE_AT_LEAST_ONE -e SESSION_CMD -e SESSION_WAIT_SEC \
-		ros2 \
+		$(ROS2_SERVICE) \
 		bash /ws/tools/ros2/scripts/session_up.sh
 
 test: $(PYTHON_LOCAL)
@@ -219,6 +282,16 @@ test: $(PYTHON_LOCAL)
 activate: $(PYTHON_LOCAL)
 	@bash -lc 'source "$(VENV)/bin/activate" && exec $$SHELL -l'
 
+
+ros2-mapping:
+	@echo "🚀 Starting mapping..."
+	$(ROS2_GUI_ENV) docker compose -f tools/ros2/compose.yml run --rm ros2 \
+		bash -lc "set -e; \
+		         source /opt/ros/humble/setup.bash; \
+		         /ws/tools/ros2/scripts/ros2_build.sh; \
+		         export AMENT_PREFIX_PATH=/ws/rpi/ros2_ws/install/race_manager:$$AMENT_PREFIX_PATH; \
+		         source /ws/rpi/ros2_ws/install/setup.bash; \
+		         ros2 launch race_manager mapping.launch.py"
 # ================================
 # Debugs
 # ================================
@@ -274,7 +347,11 @@ setuphooks:
 
 # Python setup target. Creates venv and installs base dependencies only.
 pysync: $(PYTHON_LOCAL)
-	@$(UV) sync --all-extras
+	if [ "$(IS_RPI)" = "1" ]; then \
+		$(UV) sync --no-dev; \
+	else \
+		$(UV) sync --all-extras; \
+	fi
 
 # Ensure the virtual environment exists
 $(PYTHON_LOCAL):
@@ -352,7 +429,9 @@ help:
 	@echo "  ros2-novnc       Launch RViz via noVNC (browser)"
 	@echo "  ros2-bag-record  Record rosbag via container"
 	@echo "  ros2-bag-play    Play rosbag via container (BAG=... required)"
+	@echo "  ros2-bag-fetch   Fetch rosbag from RPi via scp (RUN_ID=... required)"
 	@echo "  ros2-session-up  Start ROS2 session + bag record"
+	@echo "  ros2-mapping     Start mapping with SLAM Toolbox"
 	@echo ""
 	@echo "Debug Targets:"
 	@echo "  debug            Build debug"

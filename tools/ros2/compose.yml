@@ -25,6 +25,25 @@ services:
     stdin_open: true
     tty: true
 
+  ros2-record:
+    platform: linux/arm64
+    build:
+      context: ../..
+      dockerfile: tools/ros2/Dockerfile.record
+    image: robo-racer-ros2:humble-record
+    entrypoint: ["/usr/local/bin/ros2_entrypoint.sh"]
+    volumes:
+      - ../..:/ws
+      - /tmp/roboracer:/tmp/roboracer
+      - /dev/shm:/dev/shm
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-0}
+      - AMENT_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
+      - COLCON_PREFIX_PATH=/ws/rpi/ros2_ws/install:/opt/ros/humble
+    stdin_open: true
+    tty: true
+
   ros2-novnc:
     platform: linux/arm64
     build:
