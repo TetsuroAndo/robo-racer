@@ -160,7 +160,8 @@ static constexpr uint16_t ABS_BRAKE_HOLD_MS      = 200;
 static constexpr int ABS_REVERSE_MM_S           = 1200;
 static constexpr int ABS_SPEED_MARGIN_MM_S      = 150;
 static constexpr int ENGINE_RATE_DOWN_BRAKE      = 4000;
-static constexpr uint16_t ABS_REVERSE_DISABLE_MARGIN_MM = 150;
+// この距離以下では逆転せず惰行で停止（後退しすぎを防ぐ）
+static constexpr uint16_t ABS_REVERSE_DISABLE_MARGIN_MM = 600;
 
 //------------------------------------------------------------------------------
 // 速度制御（speed_mm_s -> PWM）
