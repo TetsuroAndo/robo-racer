@@ -257,7 +257,7 @@ static constexpr int ENGINE_PWM_RES_BITS       = 8;
 static constexpr float ENGINE_RATE_UP          = 1600.0f;
 // 減速を速くしてブレーキ応答を改善（255→0 を約64msに短縮）
 static constexpr float ENGINE_RATE_DOWN        = 4000.0f;
-static constexpr int ENGINE_SPEED_LIMIT        = 255;
+static constexpr int ENGINE_SPEED_LIMIT        = 128;
 static constexpr uint32_t ENGINE_DEADTIME_US   = 800;
 // アクティブブレーキ（両PWM同時＝短絡制動）。false なら推力0のみ（惰行）
 static constexpr bool ENGINE_ACTIVE_BRAKE_ENABLE = true;
