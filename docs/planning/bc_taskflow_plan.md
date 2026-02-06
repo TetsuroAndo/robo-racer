@@ -109,7 +109,7 @@ LOG_RECORD/IPC topics
 ### 主要データ（v1想定 / IPC凍結）
 - LiDAR: `IPC_LIDAR_SCAN`（5-20Hz）or `IPC_LIDAR_SUMMARY`（10-50Hz）
 - コマンド: DRIVE / MODE_SET / KILL（RPi↔ESP32プロトコル）
-- 状態: `IPC_VEHICLE_STATUS`（10-50Hz）/ `IPC_IMU_SAMPLE`（50-200Hz）
+- 状態: `IPC_VEHICLE_STATUS`（**100Hz（10ms）**）/ `IPC_IMU_SAMPLE`（50-200Hz）
 
 ## 実装計画（10日）
 

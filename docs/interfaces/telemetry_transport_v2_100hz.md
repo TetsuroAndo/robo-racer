@@ -2,7 +2,7 @@
 
 ## 0. 背景
 
-現状 ESP32 は `STATUS_INTERVAL_MS = 50`（=20Hz）で
+旧仕様では ESP32 は `STATUS_INTERVAL_MS = 50`（=20Hz）で
 
 - `STATUS`（速度/舵角/FAULT/age）
 - `IMU_STATUS`（a_long/v_est/yaw/flags/age）
@@ -14,7 +14,7 @@
 - 過渡の観測点が 20Hz だと粗い
 - RPi 側の制御・解析（プロット/同定）が遅れる
 
-よって **100Hz（10ms周期）**へ引き上げる。
+現在は **100Hz（10ms周期）**へ引き上げ済み。
 
 ## 1. 現状仕様（ワイヤ上のサイズ）
 
