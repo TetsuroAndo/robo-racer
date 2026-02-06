@@ -11,3 +11,4 @@
 | serialdのIMUログ追加 | 完了 | 2026-02-06 | IMU_STATUSを解釈してstdoutへ出す |
 | TSD20ログのstdout出力 | 完了 | 2026-02-06 | ESP32 LOGのtsd20行をstdoutへ出す |
 | telemetry(IMU/TSD20)出力 | 完了 | 2026-02-06 | telemetry JSONにimu/tsd20を追加 |
+| UI表示(IMU/TSD20/速度) | 完了 | 2026-02-06 | テレメトリUIに速度(km/h,mm/s)とIMU/TSD20行を追加 |
