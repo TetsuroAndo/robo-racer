@@ -29,9 +29,6 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 	out.brake_duty = 0;
 	out.brake_active = false;
 	out.brake_mode = false;
-	out.rev_on_ms = _rev_on_ms;
-	out.pulse_count = _pulse_count;
-	out.pulse_limit = _pulse_limit;
 
 	bool effective_stop = stop_requested;
 
@@ -44,12 +41,20 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 			effective_stop = true;
 		} else {
 			reset_();
+			out.phase = 0;
+			out.rev_on_ms = _rev_on_ms;
+			out.pulse_count = _pulse_count;
+			out.pulse_limit = _pulse_limit;
 			return out;
 		}
 	}
 
 	if (!effective_stop) {
 		reset_();
+		out.phase = 0;
+		out.rev_on_ms = _rev_on_ms;
+		out.pulse_count = _pulse_count;
+		out.pulse_limit = _pulse_limit;
 		return out;
 	}
 
@@ -82,7 +87,9 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 		out.brake_duty = (uint8_t)cfg::BRAKE_PWM_MAX;
 		out.brake_mode = true;
 		out.phase = 0;
+		out.rev_on_ms = _rev_on_ms;
 		out.pulse_count = _pulse_count;
+		out.pulse_limit = _pulse_limit;
 		return out;
 	}
 
@@ -104,7 +111,9 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 		out.brake_duty = (uint8_t)pwm_clamped;
 		out.brake_mode = true;
 		out.phase = 0;
+		out.rev_on_ms = _rev_on_ms;
 		out.pulse_count = _pulse_count;
+		out.pulse_limit = _pulse_limit;
 		return out;
 	}
 
@@ -124,7 +133,9 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 		out.brake_duty = (uint8_t)pwm_clamped;
 		out.brake_mode = true;
 		out.phase = 0;
+		out.rev_on_ms = _rev_on_ms;
 		out.pulse_count = _pulse_count;
+		out.pulse_limit = _pulse_limit;
 		return out;
 	}
 
@@ -136,7 +147,9 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 		out.brake_duty = computeBrakeDuty();
 		out.brake_mode = true;
 		out.phase = 0;
+		out.rev_on_ms = _rev_on_ms;
 		out.pulse_count = _pulse_count;
+		out.pulse_limit = _pulse_limit;
 		return out;
 	}
 
@@ -165,26 +178,28 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 				std::max(0.001f, (float)_rev_on_ms_used * 0.001f);
 			const float a_eff = dv / t_rev_s;
 
-			const float d_eff = (float)std::max< int >(
-				1, (int)d_mm - (int)cfg::BRAKE_STOP_MARGIN_MM);
+			const int d_eff_i =
+				std::max< int >((int)cfg::BRAKE_STOP_MARGIN_MM,
+								(int)d_mm - (int)cfg::BRAKE_STOP_MARGIN_MM);
+			const float d_eff = (float)d_eff_i;
 			float a_req = (v_start * v_start) / (2.0f * d_eff);
 			float a_tgt = std::max(a_req, cfg::BRAKE_REV_A_TGT_FLOOR_MM_S2);
 			if (a_brake_cap_mm_s2 > 100.0f) {
 				a_tgt = std::min(a_tgt, a_brake_cap_mm_s2);
 			}
 
-			const float r = (a_tgt > 1.0f) ? (a_eff / a_tgt) : 1.0f;
-			if (r < cfg::BRAKE_REV_EFF_LOW) {
-				_rev_on_ms = (uint16_t)std::min< int >(
-					(int)_rev_on_ms + cfg::BRAKE_REV_ON_STEP_MS,
-					cfg::BRAKE_REV_ON_MAX_MS);
-			} else if (r > cfg::BRAKE_REV_EFF_HIGH) {
-				_rev_on_ms = (uint16_t)std::max< int >(
-					(int)_rev_on_ms - cfg::BRAKE_REV_ON_STEP_MS,
-					cfg::BRAKE_REV_ON_MIN_MS);
-			}
-
-			if ((int)lroundf(dv) >= cfg::BRAKE_REV_MIN_DV_MM_S) {
+			const int dv_i = (int)lroundf(dv);
+			if (dv_i >= cfg::BRAKE_REV_MIN_DV_MM_S) {
+				const float r = (a_tgt > 1.0f) ? (a_eff / a_tgt) : 1.0f;
+				if (r < cfg::BRAKE_REV_EFF_LOW) {
+					_rev_on_ms = (uint16_t)std::min< int >(
+						(int)_rev_on_ms + cfg::BRAKE_REV_ON_STEP_MS,
+						cfg::BRAKE_REV_ON_MAX_MS);
+				} else if (r > cfg::BRAKE_REV_EFF_HIGH) {
+					_rev_on_ms = (uint16_t)std::max< int >(
+						(int)_rev_on_ms - cfg::BRAKE_REV_ON_STEP_MS,
+						cfg::BRAKE_REV_ON_MIN_MS);
+				}
 				const float dv_need =
 					std::max(0.0f, v_end - (float)cfg::BRAKE_REV_EXIT_V_MM_S);
 				const int remain =
@@ -193,6 +208,7 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 				_pulse_limit = (uint8_t)mc::clamp< int >(
 					limit, 1, cfg::BRAKE_REV_MAX_PULSES);
 			} else {
+				// dv が見えない＝効き不明 → 最大許可寄りに倒す
 				_pulse_limit = cfg::BRAKE_REV_MAX_PULSES;
 			}
 
@@ -221,7 +237,9 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 			out.brake_duty = computeBrakeDuty();
 			out.brake_mode = true;
 			out.phase = 2;
+			out.rev_on_ms = _rev_on_ms;
 			out.pulse_count = _pulse_count;
+			out.pulse_limit = _pulse_limit;
 			return out;
 		}
 	}
@@ -231,6 +249,8 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 	out.brake_duty = computeBrakeDuty();
 	out.brake_mode = true;
 	out.phase = 0;
+	out.rev_on_ms = _rev_on_ms;
 	out.pulse_count = _pulse_count;
+	out.pulse_limit = _pulse_limit;
 	return out;
 }
