@@ -37,7 +37,7 @@ int16_t AbsController::apply(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
 		return speed_mm_s;
 	}
 
-	if (!imu.calibrated) {
+	if (cfg::ABS_REQUIRE_CALIB && !imu.calibrated) {
 		d->reason = ABS_NOT_CALIB;
 		reset(now_ms);
 		return speed_mm_s;

@@ -151,6 +151,8 @@ static constexpr int IMU_BRAKE_CMD_DELTA_MM_S    = 200;
 
 static constexpr bool ABS_ENABLE                = true;
 static constexpr bool ABS_ENABLE_IN_MANUAL      = false;
+// false: キャリブ未完了でもABS有効（v_est精度は落ちるが動作する）
+static constexpr bool ABS_REQUIRE_CALIB         = false;
 static constexpr uint32_t ABS_PERIOD_MS          = 20;
 static constexpr uint8_t ABS_DUTY_MIN            = 20;
 static constexpr uint8_t ABS_DUTY_MAX            = 80;
