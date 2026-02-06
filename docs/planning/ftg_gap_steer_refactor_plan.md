@@ -47,6 +47,8 @@
 
 `corridor_min[angle]` は各角度における「車幅+マージンを通過できる最小距離」として算出される。この部分は改修対象外。
 
+**補足**: 「通れるのに壁距離が近いから停止」という症状は、根が `corridor_min` の作り方（左右対称の最小化）にあるケースが多い。gap 化だけでも改善することはあるが、**corridor_min が過小評価のままだと gap 自体が「無い」判定になり得る**。Phase 1 の後に必要なら Phase 1.5 で内外非対称 corridor 等を検討する。
+
 ```125:155:rpi/src/Process.cpp
 	const int max_n = std::max(-cfg::FTG_ANGLE_MIN_DEG, cfg::FTG_ANGLE_MAX_DEG);
 	for (int angle = cfg::FTG_ANGLE_MIN_DEG; angle <= cfg::FTG_ANGLE_MAX_DEG;
@@ -191,6 +193,18 @@ static constexpr float FTG_STEER_SLEW_DEG_PER_S  = 120.0f;
 - 0→25deg に約 3tick ≒ **0.3 秒**
 - 5m/s で 0.3 秒 → **約 1.5m** 進んでから舵が届く → 「曲がる前に刺さる」
 
+**遅さの要因を分解すると**（レビューで「本当に slew だけが原因？」と言われたときの観測項目）:
+
+| 要因 | 計測・確認方法 |
+|------|----------------|
+| LiDAR 待ち | `t_receive`（`receive()` ブロック時間） |
+| Process 処理 | `t_proc`（`proc()` 内の処理時間） |
+| poll / send | `t_poll`, `t_send` |
+| UART 送信頻度 | Hz と ESP32 側の `STATUS age_ms`（適用遅延） |
+| slew の効き | `out_angle` と `lastSteerAngle` の差分推移（slew で削られている証拠） |
+
+「10Hz + slew 制限」が主因であることをログで示すと説得力が上がる。
+
 ### 2.5 速度決定（turn-cap 未実装）
 
 現状の速度制限は以下のみ（L271-314）：
@@ -217,17 +231,23 @@ static constexpr float FTG_STEER_SLEW_DEG_PER_S  = 120.0f;
 			continue;
 ```
 
-改修後は `free[angle] = (corridor_min[angle] > FTG_NEAR_OBSTACLE_MM)` として、NEAR を超える角度を「通行可能」とする。
+**注意**: `free = (corridor_min > NEAR)` だけだと、NEAR を超えた瞬間から gap に入るため、ノイズや一瞬の穴で **細かい gap が乱立** しやすく、蛇行の原因になる。
+
+**推奨**: `FTG_GAP_FREE_MM` を追加し、`free[angle] = (corridor_min[angle] >= FTG_GAP_FREE_MM)` とする。
+
+- 初期値: `FTG_WARN_OBSTACLE_MM` または `NEAR + 50mm` 程度が安定
 
 #### 3.1.2 連続区間（gap）抽出
 
 `free==true` が連続している区間を列挙（例: [-12..+8], [+20..+33]）。角度を `FTG_ANGLE_MIN_DEG` から `FTG_ANGLE_MAX_DEG` まで走査し、`free` の on/off 遷移で gap の開始・終了を検出する。
 
+**幅フィルタ**: `FTG_GAP_MIN_WIDTH_DEG` を追加し、`width < FTG_GAP_MIN_WIDTH_DEG` の gap は無視する。例: 6deg 以上のみ有効。細かい gap による蛇行を抑える。
+
 ```cpp
 bool in_gap = false;
 int gap_s = 0;
 for (int angle = FTG_ANGLE_MIN_DEG; angle <= FTG_ANGLE_MAX_DEG; ++angle) {
-    const bool free = (corridor_min[idx] > FTG_NEAR_OBSTACLE_MM);
+    const bool free = (corridor_min[idx] >= cfg::FTG_GAP_FREE_MM);
     if (free) {
         if (!in_gap) { in_gap = true; gap_s = angle; }
     } else {
@@ -235,6 +255,7 @@ for (int angle = FTG_ANGLE_MIN_DEG; angle <= FTG_ANGLE_MAX_DEG; ++angle) {
     }
 }
 if (in_gap) finalize_gap(gap_s, FTG_ANGLE_MAX_DEG);
+// finalize_gap 内で width < FTG_GAP_MIN_WIDTH_DEG ならスキップ
 ```
 
 #### 3.1.3 gap の「深さ」と「広さ」を測る（finalize_gap 内）
@@ -242,14 +263,15 @@ if (in_gap) finalize_gap(gap_s, FTG_ANGLE_MAX_DEG);
 `finalize_gap(s_deg, e_deg)` は各 gap に対して呼ばれる。処理の流れ：
 
 1. **width** = `e_deg - s_deg + 1`
-2. gap 内の `corridor_min` を `std::vector<int> ds` に収集
-3. **depth_mm** = `ds` をソートし、`(ds.size-1) * FTG_GAP_DEPTH_Q` 位置の分位点
-4. **peak_angle, peak_dist** = gap 内で最大距離の角度
-5. **target** = 距離重み付き中心: `w = max(0, d - NEAR)^GAMMA`, `target = sum(w*angle)/sum(w)`
-6. **depth_n** = `min(1, depth_mm / FTG_GAP_DEPTH_SAT_MM)`
-7. **width_n** = `min(1, width / FTG_GAP_WIDTH_REF_DEG)`
-8. **score** = `depth_n * (1 + FTG_GAP_WIDTH_WEIGHT * width_n) - pen`
-9. 最高スコアなら `selected_target`, `best_angle`, `best_dist` を更新
+2. `width < FTG_GAP_MIN_WIDTH_DEG` なら **スキップ**（細かい gap を無視）
+3. gap 内の `corridor_min` を `std::vector<int> ds` に収集
+4. **depth_mm** = `ds` をソートし、`(ds.size-1) * FTG_GAP_DEPTH_Q` 位置の分位点
+5. **peak_angle, peak_dist** = gap 内で最大距離の角度
+6. **target** = 距離重み付き中心: `w = max(0, d - NEAR)^GAMMA`, `target = sum(w*angle)/sum(w)`
+7. **depth_n** = `min(1, depth_mm / FTG_GAP_DEPTH_SAT_MM)`
+8. **width_n** = `min(1, width / FTG_GAP_WIDTH_REF_DEG)`
+9. **score** = `depth_n * (1 + FTG_GAP_WIDTH_WEIGHT * width_n) - pen`
+10. 最高スコアなら `selected_target`, `best_angle`, `best_dist` を更新
 
 | 指標 | 算出方法 | 狙い |
 |------|----------|------|
@@ -282,7 +304,7 @@ target = sum(w * angle) / sum(w)
 
 | 対策 | 変更箇所 | 内容 |
 |------|----------|------|
-| **slew 引き上げ** | `Config.h` L114 | `FTG_STEER_SLEW_DEG_PER_S` を 120 → 360。10Hz なら 36deg/tick → 25deg を 1tick で到達可能 |
+| **slew 引き上げ** | `Config.h` L114 | `FTG_STEER_SLEW_DEG_PER_S` を 120 → 360。10Hz なら 36deg/tick → 25deg を 1tick で到達可能。**注**: 360 はサーボ物理性能を超えないことを保証する値ではなく、RPi 側 slew をボトルネックにしないための値 |
 | **turn-cap** | `Process.cpp` 速度決定ブロック（L271 付近） | 舵角変更に必要な時間に対して、障害物までの距離から速度上限を作る |
 
 ### 3.3 速度側の turn-cap 式
@@ -305,6 +327,8 @@ if (avail_mm > 0.0f && t_turn > 0.0f) {
 - `t_turn = |delta_angle| / steer_slew`
 - `v_turn = (corridor_min - NEAR) / (t_turn + latency)`
 
+**将来の詰め**: `FTG_TURN_CAP_LATENCY_S` に、LiDAR データ age・UART 遅延・ESP32 適用遅延を加算して安全側に倒す余地がある。
+
 ---
 
 ## 4. パラメータ変更
@@ -323,6 +347,8 @@ if (avail_mm > 0.0f && t_turn > 0.0f) {
 | `FTG_GAP_TURN_PENALTY` | （新規） | 0.12 | \|angle\| への軽い罰 |
 | `FTG_GAP_DELTA_PENALTY` | （新規） | 0.18 | \|angle-last\| への軽い罰 |
 | `FTG_GAP_WEIGHT_GAMMA` | （新規） | 2.0 | gap 内の角度重み w=(d-NEAR)^gamma |
+| `FTG_GAP_FREE_MM` | （新規） | `FTG_WARN_OBSTACLE_MM` または `NEAR+50` | 通行可能判定の閾値。`free = corridor_min >= FTG_GAP_FREE_MM`。NEAR のみだと細かい gap が乱立し蛇行しやすい |
+| `FTG_GAP_MIN_WIDTH_DEG` | （新規） | 6 | 幅がこれ未満の gap は無視。細かい gap による蛇行を抑える |
 | `FTG_TURN_CAP_LATENCY_S` | （新規） | 0.08 | turn-cap 用の反応遅れ |
 
 ### 4.2 削除・未使用化するパラメータ
@@ -335,7 +361,15 @@ if (avail_mm > 0.0f && t_turn > 0.0f) {
 
 ### 4.3 テレメトリ互換（candidates スコア）
 
-テレメトリの `candidates` と `heat_bins` は、現行では `score = 1/(1+j)`（L357）で算出している。gap 方式では `best_j` を `1/score - 1` に載せ替え、`best_score` を `1/(1+best_j)` のまま出力することで互換を保つ。
+テレメトリの `candidates` と `heat_bins` は、現行では `score = 1/(1+j)`（L357）で算出している。
+
+**重要**: gap 方式の `score = base - pen` は **負になり得る**。そのため `best_j = 1/best_score - 1` のような変換は危険である（best_score が 0 付近や負になると無限大・符号反転で破綻する）。
+
+**推奨**: telemetry 用のスコアを **別定義** にする。
+
+- `tele_score = clamp(depth_mm / FTG_GAP_DEPTH_SAT_MM, 0..1)` を candidates 用に使用
+- `best_score` フィールドには gap スコアをそのまま入れる（互換不要なら）、または `tele_score` を入れる
+- `1/(1+j)` 形式を維持したい場合は、gap スコアを必ず正にする設計（例: `score = exp(k*(base-pen))`）が必要だが、シンプルさが落ちる
 
 ```351:358:rpi/src/Process.cpp
 		for (int angle = cfg::FTG_ANGLE_MIN_DEG;
@@ -346,7 +380,7 @@ if (avail_mm > 0.0f && t_turn > 0.0f) {
 			candidates.push_back(CandidateScore{(float)angle, d_mm, score});
 ```
 
-改修後は `candidates` 用に簡易スコア `score = d_mm / FTG_GAP_DEPTH_SAT_MM`（0..1 にクランプ）を使用する。
+改修後は `candidates` 用に **telemetry 専用スコア** `tele_score = clamp(d_mm / FTG_GAP_DEPTH_SAT_MM, 0, 1)` を使用する。`best_score` は gap スコアのまま出力するか、選択した gap の `tele_score` を出力する。
 
 ---
 
@@ -355,6 +389,7 @@ if (avail_mm > 0.0f && t_turn > 0.0f) {
 | Phase | 内容 | 優先度 |
 |-------|------|--------|
 | **1** | `proc()` の softmax/コスト選択部分を削除して gap 方式に置換（10Hz のまま） | 高 |
+| **1.5** | （必要なら）corridor_min が過小評価のままだと gap が「無い」判定になり得る。Phase 1 の後に改善が足りない場合の保険として、**内外非対称 corridor**（内側厳格/外側緩和）や **内側 side hard-stop** を検討 | 低 |
 | **2** | slew を 360deg/s に引き上げ | 高 |
 | **3** | turn-cap を追加（舵が追いつくまで減速） | 高 |
 | **4** | （将来）`Process` を stateful にして updateScan/tick 分離（制御 100Hz） | 中 |
@@ -364,8 +399,8 @@ if (avail_mm > 0.0f && t_turn > 0.0f) {
 | 対象 | 行範囲 | 内容 |
 |------|--------|------|
 | 角度選択ロジック | L156-216 | `obs_cost`, `jerk_weight`, for ループ（コスト計算・softmax）を gap 抽出・`finalize_gap` に置換 |
-| blocked/target 算出 | L224-227 | `z`, `angle_sum` を `found_gap`, `selected_target` に変更 |
-| best_j 互換 | （新規） | `best_score > 0` のとき `best_j = 1/best_score - 1` で telemetry 互換 |
+| blocked/target 算出 | L224-227 | `z`, `angle_sum` を `found_gap`, `selected_target` に変更。**blocked 時**: gap が無いときは `min_corridor`/`min_angle` を best とする。意図は「最悪方向（最小距離）を観測として残す」ことで、テレメトリや後段の判断に有用 |
+| telemetry スコア | （新規） | `tele_score = clamp(depth_mm/FTG_GAP_DEPTH_SAT_MM, 0, 1)` を candidates 用に使用。`best_j` 変換は行わない（gap スコアは負になり得るため危険） |
 | ブロック時スナップ | L250-261 付近 | slew 途中で一瞬 NEAR に落ちた場合、gap が安全なら `best_angle` へスナップする分岐を追加 |
 | 速度 turn-cap | L310 直後 | `out_speed` 算出後、`warn` チェック前に turn-cap ブロックを挿入 |
 | テレメトリ candidates | L345-363 | `jerk_weight`, `obs_cost`, `j` の代わりに `score = d_mm/FTG_GAP_DEPTH_SAT_MM` で candidates を構築 |

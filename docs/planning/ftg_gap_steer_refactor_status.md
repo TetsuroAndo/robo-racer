@@ -13,6 +13,7 @@
 | Phase | 内容 | 状態 |
 |-------|------|------|
 | 1 | proc() を gap 方式に置換 | 未着手 |
+| 1.5 | （必要なら）内外非対称 corridor / 内側 side hard-stop | 保留 |
 | 2 | slew を 360deg/s に引き上げ | 未着手 |
 | 3 | turn-cap を追加 | 未着手 |
 | 4 | updateScan/tick 分離（制御 100Hz） | 保留 |
@@ -24,8 +25,10 @@
 | 項目 | 状態 | 更新日 | メモ |
 | --- | --- | --- | --- |
 | 詳細改修計画書作成 | 完了 | 2026-02-07 | `ftg_gap_steer_refactor_plan.md` |
+| 計画書フィードバック反映 | 完了 | 2026-02-07 | best_score危険性、FTG_GAP_FREE_MM/MIN_WIDTH、Phase1.5、slew意図、blocked意図等 |
 | ステータスファイル作成 | 完了 | 2026-02-07 | 本ファイル |
 | Phase 1: gap 方式実装 | 未着手 | - | softmax/コスト削除、gap 抽出・スコアリング |
+| Phase 1.5: corridor 保険 | 保留 | - | 必要なら内外非対称 corridor / 内側 hard-stop |
 | Phase 2: slew 引き上げ | 未着手 | - | Config.h `FTG_STEER_SLEW_DEG_PER_S=360` |
 | Phase 3: turn-cap 実装 | 未着手 | - | 舵追従時間に応じた速度上限 |
 | Phase 4: 制御分離 | 保留 | - | 必要に応じて検討 |
