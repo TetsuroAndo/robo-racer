@@ -20,8 +20,9 @@ SafetyResult SafetySupervisor::apply(uint32_t now_ms, float dt_s,
 
 	// TSD20 が STOP/MARGIN/AGE_STALE で速度0にしたとき BrakeController 用に
 	// stop_requested（Tsd20Limiter 内で設定済み）
-	out.stop_requested = d->tsd.stop_requested;
-	out.stop_level = d->tsd.stop_level;
+	// diag が NULL の場合でも安全に動作するよう NULL チェック
+	out.stop_requested = (diag != nullptr) ? diag->tsd.stop_requested : false;
+	out.stop_level = (diag != nullptr) ? diag->tsd.stop_level : StopLevel::NONE;
 
 	// ABS は IMU が有効かつ、必要ならキャリブレーション完了時のみ許可する
 	const bool imu_ok_for_abs =
