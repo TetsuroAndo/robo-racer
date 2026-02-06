@@ -470,19 +470,23 @@ void loop() {
 				  (int)g_speed_diag_pwm_ff, (double)g_speed_diag_i,
 				  (int)g_speed_diag_saturated);
 		if (cfg::TSD20_ENABLE) {
+			// tsd20 cap diagnostics, split into multiple short lines
+			// to avoid truncation while preserving all fields.
 			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
-					  "reason=%u clamp=%d margin=%.0f pred=%.0f steer=%.2f "
-					  "d_allow=%.0f d_travel=%.0f v_used=%.0f a_long=%.0f "
-					  "a_cap=%.0f tau=%.3f v_max=%.1f v_cap=%.1f",
+					  "reason=%u clamp=%d margin=%.0f pred=%.0f steer=%.2f",
 					  (unsigned)g_safety_diag.tsd.reason,
 					  (int)g_safety_diag.tsd.clamped,
 					  (double)g_safety_diag.tsd.margin_eff,
 					  (double)g_safety_diag.tsd.margin_pred,
-					  (double)g_safety_diag.tsd.steer_ratio,
+					  (double)g_safety_diag.tsd.steer_ratio);
+			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
+					  "d_allow=%.0f d_travel=%.0f v_used=%.0f a_long=%.0f",
 					  (double)g_safety_diag.tsd.d_allow,
 					  (double)g_safety_diag.tsd.d_travel,
 					  (double)g_safety_diag.tsd.v_est,
-					  (double)g_safety_diag.tsd.a_long,
+					  (double)g_safety_diag.tsd.a_long);
+			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
+					  "a_cap=%.0f tau=%.3f v_max=%.1f v_cap=%.1f",
 					  (double)g_safety_diag.tsd.a_cap,
 					  (double)g_safety_diag.tsd.tau,
 					  (double)g_safety_diag.tsd.v_max,
