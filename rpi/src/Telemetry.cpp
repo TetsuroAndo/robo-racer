@@ -867,7 +867,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	}
 
 	std::ostringstream l12;
-	l12 << " | TSD20 ";
+	l12 << "TSD20 ";
 	if (tsd20.valid) {
 		l12 << "mm=" << tsd20.mm << " v=" << (tsd20.sensor_valid ? 1 : 0)
 			<< " r=" << (tsd20.ready ? 1 : 0);
