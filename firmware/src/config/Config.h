@@ -168,6 +168,8 @@ static constexpr float SPEED_KP_UNCAL          = 0.005f;
 static constexpr float SPEED_KI_UNCAL          = 0.0f;
 static constexpr int SPEED_I_CLAMP             = 120;
 static constexpr int SPEED_DEADBAND_MM_S       = 200;
+// 前進時の最小PWM（静止摩擦克服、デッドゾーン対策）
+static constexpr int SPEED_PWM_MIN_FORWARD     = 30;
 
 //------------------------------------------------------------------------------
 // ステアサーボ設定（DS3218想定）
