@@ -385,7 +385,9 @@ void TelemetryEmitter::emitJson_(const TelemetrySample &s) {
 				  << ",\"faults\":" << status.faults
 				  << ",\"speed_mm_s\":" << status.speed_mm_s
 				  << ",\"steer_cdeg\":" << status.steer_cdeg
-				  << ",\"age_ms\":" << status.age_ms << "}";
+				  << ",\"age_ms\":" << status.age_ms
+				  << ",\"log_drop\":" << status.log_drop
+				  << ",\"uart_drop\":" << status.uart_drop << "}";
 	} else {
 		telemetry << ",\"esp_status\":null";
 	}
@@ -599,6 +601,10 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	l1 << " | lvl=" << (level_ == TelemetryLevel::Full ? "full" : "basic");
 	if (hz > 0.0)
 		l1 << " hz=" << std::fixed << std::setprecision(1) << hz;
+	if (status.valid) {
+		l1 << " | drop(log=" << status.log_drop << " uart=" << status.uart_drop
+		   << ")";
+	}
 
 	const size_t frame_width = 102;
 	const size_t scale_w = TELEMETRY_COMPASS_BINS;

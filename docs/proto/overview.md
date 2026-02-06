@@ -109,6 +109,9 @@
   * ただし `PING` は **`ACK_REQ` に関係なく常に ACK を返す**（後方互換のため）。
 
 > MANUAL/AUTO は flags では表しません。理由：あなたの確定方針が「mode=AUTO時は手動無視」なので、入力の“出所”は ESP32 内部のソース（BT）と UART（RPi）で明確に分離でき、flags に混ぜると事故るためです。
+>
+> 補足: ここで説明している `flags` は、すべて**フレームヘッダの共通 `flags` フィールド**を指します。  
+> `ImuStatusPayload.flags` や `Tsd20StatusPayload.flags` など、payload 内の `flags` フィールドは type 固有の意味を持つ別のフラグであり、混同しないようにしてください。
 
 ---
 

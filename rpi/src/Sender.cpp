@@ -258,6 +258,15 @@ void Sender::handleFrame(const mc::proto::Frame &frame) {
 				if (telemetry_) {
 					telemetry_->updateTsd20(st);
 				}
+			} else if (msg.rfind("drive:", 0) == 0 && telemetry_) {
+				int log_drop = 0;
+				int uart_drop = 0;
+				if (parse_kv_int(msg, "log_drop", log_drop) ||
+					parse_kv_int(msg, "uart_drop", uart_drop)) {
+					telemetry_->updateDrops(
+						log_drop >= 0 ? (uint32_t)log_drop : 0u,
+						uart_drop >= 0 ? (uint32_t)uart_drop : 0u);
+				}
 			}
 		}
 	} else if (frame.type() == (uint8_t)mc::proto::Type::ACK &&
