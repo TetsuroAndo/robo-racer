@@ -93,6 +93,10 @@ static constexpr uint16_t TSD20_SLOWDOWN_DISTANCE_MM = 1000;
 // TSD20の距離サンプルとして「使用を許可する最大Age」。これを超えたら停止扱い。
 static constexpr uint16_t TSD20_MAX_AGE_MS          = 200;
 
+// TSD20が近距離のときの「PWMスケール上限」を距離で切る（ユーザ要望: 4m 未満 => 128）
+static constexpr uint16_t TSD20_NEAR_DISTANCE_MM = 4000;
+static constexpr uint8_t TSD20_NEAR_PWM_CAP     = 128;
+
 //------------------------------------------------------------------------------
 // 自動モードのハートビート監視タイムアウト
 //------------------------------------------------------------------------------
@@ -246,7 +250,7 @@ static constexpr float ENGINE_RATE_DOWN        = 4000.0f;
 // ブレーキモード時の減速レート（Drive::setBrakeMode 時）
 static constexpr float ENGINE_RATE_DOWN_BRAKE = 4000.0f;
 static constexpr int ENGINE_SPEED_LIMIT        = 128;
-static constexpr int BRAKE_REV_PWM             = ENGINE_SPEED_LIMIT;
+static constexpr int BRAKE_REV_PWM             = 255;
 static constexpr uint32_t ENGINE_DEADTIME_US   = 800;
 // アクティブブレーキ（両PWM同時＝短絡制動）。false なら推力0のみ（惰行）
 static constexpr bool ENGINE_ACTIVE_BRAKE_ENABLE = true;
@@ -256,6 +260,8 @@ static constexpr bool DRIVE_BRAKE_ON_KILLED = true;
 static constexpr uint8_t DRIVE_KILL_BRAKE_DUTY = 60;
 static_assert(DRIVE_KILL_BRAKE_DUTY <= BRAKE_PWM_MAX,
 			  "DRIVE_KILL_BRAKE_DUTY must be <= BRAKE_PWM_MAX");
+static_assert(TSD20_NEAR_PWM_CAP <= ENGINE_SPEED_LIMIT,
+			  "TSD20_NEAR_PWM_CAP must be <= ENGINE_SPEED_LIMIT");
 
 //------------------------------------------------------------------------------
 // 手動操作の上限（ゲームパッド）
