@@ -48,6 +48,7 @@
 
 - 単位は **mm/s**、符号は **前進を正** とする。
 - 本番運用では **`speed_mm_s >= 0` を前提**とし、負値は保証外（閉ループ対象外）。
+- 本番ビルド（`MC_ENABLE_MANUAL=0`）では **受理時に負値を 0 にクランプ**する。
 - 範囲は `0 .. mc_config::SPEED_MAX_MM_S` にクランプ（現状 `5000 mm/s`）。
 - 物理一致の評価は **IMU 校正済み・前進時のみ**。`v_est_mm_s` が `speed_mm_s` に収束することを目標とする。
 - 許容誤差（暫定）: 定常時 `|v_est - v_cmd| <= max(200 mm/s, 0.1 * v_cmd)`。
@@ -67,6 +68,15 @@
 - 物理速度の一致は **ESP32 の SpeedController（FF+PI）** が担う。
 - `speed_mm_s` を `v_target` として受け、`v_est_mm_s` を用いて `pwm_cmd` を算出する。
 - 逆方向は `v_est` が負を持たないため **open-loop（FFのみ）** とする。
+
+### 2.4 実装パス（ESP32）
+
+- `DRIVE` 受信で `target_*` を更新する（`firmware/src/comm/handlers/DriveHandler.cpp`）。
+- `main` で `AutoCommandSource` が `target_*` を読み出して `desired.targets` を作る（`firmware/src/control/AutoCommandSource.cpp`）。
+- `SafetySupervisor` が TSD20/ABS を通して `safe.targets.speed_mm_s` を確定する（`firmware/src/control/SafetySupervisor.cpp`）。
+- `SpeedController::update(v_target, v_est, dt, calib, active)` が `pwm_cmd` を算出する（`firmware/src/control/SpeedController.cpp`）。
+- `Drive` に `setTargetPwm/Steer/Ttl` を渡し、`Drive::tick()` が `Engine` に適用する（`firmware/src/hardware/Drive.cpp` と `firmware/src/main.cpp`）。
+- `v_est_mm_s` は IMU サンプル更新時に `ImuEstimator::update()` で計算され、`main` で `SpeedController` に渡される（`firmware/src/hardware/ImuEstimator.cpp` と `firmware/src/main.cpp`）。
 
 ## 3. 提案アーキテクチャ（v2）
 

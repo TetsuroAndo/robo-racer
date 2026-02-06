@@ -36,6 +36,10 @@ public:
 											   mc_config::STEER_ANGLE_MAX_CDEG);
 		speed_mm_s = (int16_t)mc::clamp< int >(
 			speed_mm_s, -mc_config::SPEED_MAX_MM_S, mc_config::SPEED_MAX_MM_S);
+#if !MC_ENABLE_MANUAL
+		if (speed_mm_s < 0)
+			speed_mm_s = 0;
+#endif
 		if (ttl_ms < 10)
 			ttl_ms = 10;
 		if (ttl_ms > 2000)
