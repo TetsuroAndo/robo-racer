@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MotionState.h"
+#include "Tsd20State.h"
 #include "config/Config.h"
 #include <array>
 #include <mc/ipc/UdsSeqPacket.hpp>
@@ -20,6 +21,7 @@ public:
 	void sendKill();
 	void poll();
 	bool motion(MotionState &out) const;
+	bool tsd20(Tsd20State &out) const;
 
 private:
 	void _init(const char* sock_path);
@@ -45,6 +47,8 @@ private:
 	TelemetryEmitter* telemetry_ = nullptr;
 	MotionState motion_{};
 	bool has_motion_ = false;
+	Tsd20State tsd20_{};
+	bool has_tsd20_ = false;
 
 	struct PendingTx {
 		uint32_t deadline_ms;

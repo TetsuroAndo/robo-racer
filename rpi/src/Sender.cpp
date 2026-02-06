@@ -38,6 +38,20 @@ int16_t clamp_cdeg(int32_t cdeg) {
 	return static_cast< int16_t >(cdeg);
 }
 
+bool parse_kv_int(const std::string &s, const char *key, int &out) {
+	const std::string needle = std::string(key) + "=";
+	const size_t pos = s.find(needle);
+	if (pos == std::string::npos)
+		return false;
+	const char *p = s.c_str() + pos + needle.size();
+	char *end = nullptr;
+	const long v = std::strtol(p, &end, 10);
+	if (end == p)
+		return false;
+	out = (int)v;
+	return true;
+}
+
 } // namespace
 
 Sender::Sender(const char *sock_path, TelemetryEmitter *telemetry)
@@ -56,6 +70,14 @@ bool Sender::motion(MotionState &out) const {
 		return false;
 	}
 	out = motion_;
+	return true;
+}
+
+bool Sender::tsd20(Tsd20State &out) const {
+	if (!has_tsd20_) {
+		return false;
+	}
+	out = tsd20_;
 	return true;
 }
 
@@ -176,6 +198,39 @@ void Sender::handleFrame(const mc::proto::Frame &frame) {
 		mc::proto::ImuStatusPayload payload{};
 		memcpy(&payload, frame.payload, sizeof(payload));
 		handleImuStatus(payload);
+	} else if (frame.type() == (uint8_t)mc::proto::Type::LOG &&
+			   frame.payload_len >= 1) {
+		const uint8_t *p = frame.payload;
+		if (frame.payload_len > 1) {
+			const char *msg_ptr = reinterpret_cast< const char * >(p + 1);
+			const size_t msg_len = frame.payload_len - 1;
+			std::string msg(msg_ptr, msg_len);
+			if (msg.rfind("tsd20:", 0) == 0) {
+				Tsd20State st{};
+				st.valid = true;
+				st.ts_us = mc::core::Time::us();
+				int ready = 0;
+				int valid = 0;
+				int mm = 0;
+				int fails = 0;
+				int period = 0;
+				if (parse_kv_int(msg, "ready", ready))
+					st.ready = (ready != 0);
+				if (parse_kv_int(msg, "valid", valid))
+					st.sensor_valid = (valid != 0);
+				if (parse_kv_int(msg, "mm", mm))
+					st.mm = mm;
+				if (parse_kv_int(msg, "fails", fails))
+					st.fails = fails;
+				if (parse_kv_int(msg, "period", period))
+					st.period_ms = period;
+				tsd20_ = st;
+				has_tsd20_ = true;
+				if (telemetry_) {
+					telemetry_->updateTsd20(st);
+				}
+			}
+		}
 	} else if (frame.type() == (uint8_t)mc::proto::Type::ACK &&
 			   frame.payload_len == 0) {
 		const uint16_t seq = frame.seq();
@@ -233,6 +288,9 @@ void Sender::handleImuStatus(const mc::proto::ImuStatusPayload &payload) {
 	st.ts_us = mc::core::Time::us();
 	motion_ = st;
 	has_motion_ = true;
+	if (telemetry_) {
+		telemetry_->updateMotion(st);
+	}
 }
 
 void Sender::handleAck(uint16_t seq) {

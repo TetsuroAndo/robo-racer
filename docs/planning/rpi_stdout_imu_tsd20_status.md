@@ -10,3 +10,4 @@
 | 関連資料の確認 | 完了 | 2026-02-06 | `docs/observability/logging_v1.md` / `docs/proto/protocol_logging_plan.md` を確認 |
 | serialdのIMUログ追加 | 完了 | 2026-02-06 | IMU_STATUSを解釈してstdoutへ出す |
 | TSD20ログのstdout出力 | 完了 | 2026-02-06 | ESP32 LOGのtsd20行をstdoutへ出す |
+| telemetry(IMU/TSD20)出力 | 完了 | 2026-02-06 | telemetry JSONにimu/tsd20を追加 |
