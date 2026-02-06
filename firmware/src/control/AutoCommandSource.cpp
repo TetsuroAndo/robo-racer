@@ -8,7 +8,8 @@ AutoCommandResult AutoCommandSource::update(uint32_t now_ms,
 						  ((uint32_t)(now_ms - st.last_hb_ms) <=
 						   (uint32_t)cfg::HEARTBEAT_TIMEOUT_MS);
 	const bool cmd_fresh =
-		auto_mode && (st.cmd_expire_ms != 0) && (now_ms <= st.cmd_expire_ms);
+		auto_mode && (st.last_cmd_ms != 0) &&
+		((uint32_t)(now_ms - st.last_cmd_ms) <= (uint32_t)st.target_ttl_ms);
 	if (cmd_fresh && hb_fresh && !st.killed) {
 		out.targets.speed_mm_s = st.target_speed_mm_s;
 		out.targets.steer_cdeg = st.target_steer_cdeg;

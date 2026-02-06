@@ -173,6 +173,123 @@ static void test_max_payload() {
 
 /**
  * @brief
+ *   IMU_STATUS payload encodes/decodes with fixed size/LE/header flags.
+ */
+static void test_imu_status_roundtrip() {
+	std::cout << "[TEST] imu_status_roundtrip\n";
+
+	// Build IMU_STATUS payload with known host-order values encoded as LE.
+	mc::proto::ImuStatusPayload p{};
+	const int16_t a_long = 1234;
+	const int16_t v_est = -567;
+	const uint16_t a_brake_cap = 890;
+	const int16_t yaw = -321;
+	const uint16_t age_ms = 42;
+	p.a_long_mm_s2_le = mc::proto::host_to_le16((uint16_t)a_long);
+	p.v_est_mm_s_le = mc::proto::host_to_le16((uint16_t)v_est);
+	p.a_brake_cap_mm_s2_le = mc::proto::host_to_le16(a_brake_cap);
+	p.yaw_dps_x10_le = mc::proto::host_to_le16((uint16_t)yaw);
+	p.age_ms_le = mc::proto::host_to_le16(age_ms);
+	p.flags = 0x03;	   // arbitrary payload flags (wire-tested via roundtrip)
+	p.reserved = 0x00; // must remain unchanged
+
+	uint8_t enc[mc::proto::MAX_FRAME_ENCODED];
+	size_t enc_len = 0;
+	const uint16_t seq = 0x1234;
+
+	const bool ok_build = mc::proto::PacketWriter::build(
+		enc, sizeof(enc), enc_len, mc::proto::Type::IMU_STATUS,
+		/*header flags=*/0, seq, reinterpret_cast< const uint8_t * >(&p),
+		(uint16_t)sizeof(p));
+	assert(ok_build);
+
+	mc::proto::Frame frame{};
+	std::array< uint8_t, mc::proto::MAX_FRAME_DECODED > decoded{};
+	const bool ok_dec = mc::proto::decode_one(enc, enc_len, frame, decoded);
+	assert(ok_dec);
+
+	// Header checks: type, seq, len, and header flags fixed to 0.
+	std::cout << "  type=" << (int)frame.type() << " len=" << frame.len()
+			  << " flags=" << (int)frame.flags() << " seq=" << frame.seq()
+			  << "\n";
+	assert(frame.type() == (uint8_t)mc::proto::Type::IMU_STATUS);
+	assert(frame.flags() == 0);
+	assert(frame.seq() == seq);
+	assert(frame.payload_len == sizeof(mc::proto::ImuStatusPayload));
+	assert(frame.len() == sizeof(mc::proto::ImuStatusPayload));
+
+	// Payload LE fields and flags roundtrip.
+	mc::proto::ImuStatusPayload p_out{};
+	assert(frame.payload_len == sizeof(p_out));
+	std::memcpy(&p_out, frame.payload, sizeof(p_out));
+
+	assert((int16_t)mc::proto::from_le16(p_out.a_long_mm_s2_le) == a_long);
+	assert((int16_t)mc::proto::from_le16(p_out.v_est_mm_s_le) == v_est);
+	assert(mc::proto::from_le16(p_out.a_brake_cap_mm_s2_le) == a_brake_cap);
+	assert((int16_t)mc::proto::from_le16(p_out.yaw_dps_x10_le) == yaw);
+	assert(mc::proto::from_le16(p_out.age_ms_le) == age_ms);
+	assert(p_out.flags == p.flags);
+	assert(p_out.reserved == p.reserved);
+}
+
+/**
+ * @brief
+ *   TSD20_STATUS payload encodes/decodes with fixed size/LE/header flags.
+ */
+static void test_tsd20_status_roundtrip() {
+	std::cout << "[TEST] tsd20_status_roundtrip\n";
+
+	mc::proto::Tsd20StatusPayload p{};
+	const uint16_t mm = 123;
+	const uint16_t period_ms = 50;
+	const uint16_t age_ms = 7;
+	const uint8_t fail_count = 2;
+	const uint8_t flags = 0x03; // arbitrary valid bits inside payload
+
+	p.mm_le = mc::proto::host_to_le16(mm);
+	p.period_ms_le = mc::proto::host_to_le16(period_ms);
+	p.age_ms_le = mc::proto::host_to_le16(age_ms);
+	p.fail_count = fail_count;
+	p.flags = flags;
+
+	uint8_t enc[mc::proto::MAX_FRAME_ENCODED];
+	size_t enc_len = 0;
+	const uint16_t seq = 0x0042;
+
+	const bool ok_build = mc::proto::PacketWriter::build(
+		enc, sizeof(enc), enc_len, mc::proto::Type::TSD20_STATUS,
+		/*header flags=*/0, seq, reinterpret_cast< const uint8_t * >(&p),
+		(uint16_t)sizeof(p));
+	assert(ok_build);
+
+	mc::proto::Frame frame{};
+	std::array< uint8_t, mc::proto::MAX_FRAME_DECODED > decoded{};
+	const bool ok_dec = mc::proto::decode_one(enc, enc_len, frame, decoded);
+	assert(ok_dec);
+
+	std::cout << "  type=" << (int)frame.type() << " len=" << frame.len()
+			  << " flags=" << (int)frame.flags() << " seq=" << frame.seq()
+			  << "\n";
+
+	assert(frame.type() == (uint8_t)mc::proto::Type::TSD20_STATUS);
+	assert(frame.flags() == 0);
+	assert(frame.seq() == seq);
+	assert(frame.payload_len == sizeof(mc::proto::Tsd20StatusPayload));
+	assert(frame.len() == sizeof(mc::proto::Tsd20StatusPayload));
+
+	mc::proto::Tsd20StatusPayload p_out{};
+	assert(frame.payload_len == sizeof(p_out));
+	std::memcpy(&p_out, frame.payload, sizeof(p_out));
+
+	assert(mc::proto::from_le16(p_out.mm_le) == mm);
+	assert(mc::proto::from_le16(p_out.period_ms_le) == period_ms);
+	assert(mc::proto::from_le16(p_out.age_ms_le) == age_ms);
+	assert(p_out.fail_count == fail_count);
+	assert(p_out.flags == flags);
+}
+
+/**
+ * @brief
  *   Back-to-back frames decode without losing sync.
  */
 static void test_back_to_back_frames() {
@@ -330,6 +447,8 @@ int main() {
 	test_cobs_encode_overflow();
 	test_min_frame_len0();
 	test_max_payload();
+	test_imu_status_roundtrip();
+	test_tsd20_status_roundtrip();
 	test_back_to_back_frames();
 	test_resync_after_bad_crc();
 	test_header_and_length_errors();
