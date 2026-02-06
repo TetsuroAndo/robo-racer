@@ -314,8 +314,9 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	g_abs_active = safe.brake_mode;
 	g_last_cmd_speed_mm_s = safe.targets.speed_mm_s;
 
-	const SpeedControlOutput out = speed_ctl.update(
-		safe.targets.speed_mm_s, v_est, dt_s, imu_calib, speed_active);
+	const SpeedControlOutput out =
+		speed_ctl.update(safe.targets.speed_mm_s, v_est, dt_s, imu_calib,
+						 speed_active, g_abs_active);
 	g_speed_diag_v_cmd = (float)safe.targets.speed_mm_s;
 	g_speed_diag_v_est = v_est;
 	g_speed_diag_err = out.error_mm_s;

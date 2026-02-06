@@ -18,7 +18,8 @@ int16_t SpeedController::speedToPwm_(int16_t v_target_mm_s) const {
 
 SpeedControlOutput SpeedController::update(int16_t v_target_mm_s,
 										   float v_est_mm_s, float dt_s,
-										   bool imu_calibrated, bool active) {
+										   bool imu_calibrated, bool active,
+										   bool brake_mode) {
 	SpeedControlOutput out{};
 	out.active = active;
 	out.calibrated = imu_calibrated;
@@ -61,8 +62,21 @@ SpeedControlOutput SpeedController::update(int16_t v_target_mm_s,
 
 	float pwm = (float)out.pwm_ff + kp * out.error_mm_s + _i;
 	// 前進・停止時は[0,255]、逆転時は[-255,0]。逆転はABSのみが指示する
-	const float pwm_lo = forward_target ? 0.0f : -255.0f;
-	const float pwm_hi = forward_target ? 255.0f : 0.0f;
+	float pwm_lo = forward_target ? 0.0f : -255.0f;
+	float pwm_hi = forward_target ? 255.0f : 0.0f;
+
+	// Brake assist: ABS制動中のみ限定的な逆トルクを許可
+	// - 高速域: 停止距離短縮のために負PWMを許可
+	// - 低速域: 停止後の後退・壁際での“バックしだす”を禁止
+	if (forward_target && brake_mode && v_target_mm_s == 0) {
+		const float v_enable = (float)cfg::SPEED_BRAKE_REV_ENABLE_VEST_MM_S;
+		if (v_est_mm_s > v_enable) {
+			pwm_lo = -(float)cfg::SPEED_BRAKE_REV_MAX_PWM;
+		} else {
+			pwm_lo = 0.0f; // 低速は逆トルク禁止
+		}
+	}
+
 	float pwm_sat = mc::clamp< float >(pwm, pwm_lo, pwm_hi);
 	// 前進目標かつ低速時は最小PWMを確保（静止摩擦克服）
 	if (forward_target && v_target_mm_s > 0 &&

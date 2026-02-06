@@ -186,6 +186,12 @@ static constexpr int SPEED_MIN_FWD_VEST_MM_S   = 100;
 // 前進時の最小PWM（静止摩擦克服、デッドゾーン対策）
 static constexpr int SPEED_PWM_MIN_FORWARD     = 30;
 
+// Brake assist tuning (ABS brake_mode でのみ使用)
+// v_est がこの値より大きいときだけ負PWM(逆トルク)を許可
+static constexpr int SPEED_BRAKE_REV_ENABLE_VEST_MM_S = 600;
+// 許可する負PWMの最大（大きいほど強く止まるが、姿勢が乱れやすい）
+static constexpr int SPEED_BRAKE_REV_MAX_PWM = 80;
+
 //------------------------------------------------------------------------------
 // ステアサーボ設定（DS3218想定）
 //------------------------------------------------------------------------------
