@@ -25,6 +25,7 @@ struct BrakeControllerOutput {
 	float a_eff_mm_s2 = 0.0f;
 	float a_tgt_mm_s2 = 0.0f;
 	float r_eff = 0.0f;
+	bool adapt_event = false;
 };
 
 class BrakeController {

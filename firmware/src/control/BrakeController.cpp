@@ -191,6 +191,7 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 				out.a_eff_mm_s2 = a_eff;
 				out.a_tgt_mm_s2 = a_tgt;
 				out.r_eff = r;
+				out.adapt_event = true;
 				if (r < cfg::BRAKE_REV_EFF_LOW) {
 					_rev_on_ms = (uint16_t)std::min< int >(
 						(int)_rev_on_ms + cfg::BRAKE_REV_ON_STEP_MS,
