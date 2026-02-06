@@ -195,6 +195,16 @@ static constexpr uint8_t BRAKE_REV_MAX_PULSES = 4;    // 最大パルス回数
 static constexpr int BRAKE_REV_MIN_V_MM_S = 900;     // これ以上速いときだけ逆転を許可
 static constexpr int BRAKE_REV_EXIT_V_MM_S = 350;    // これ未満になったら逆転禁止
 
+// 逆転パルス自動調整（IMU実測でON時間・パルス回数を適応）
+static constexpr uint16_t BRAKE_REV_ON_MIN_MS = 60;
+static constexpr uint16_t BRAKE_REV_ON_MAX_MS = 260;
+static constexpr uint16_t BRAKE_REV_ON_STEP_MS = 20;
+static constexpr uint16_t BRAKE_STOP_MARGIN_MM = 60;   // d_eff = max(60, d_mm - 60)
+static constexpr float BRAKE_REV_EFF_LOW = 0.70f;      // これ未満なら弱い→ON伸ばす
+static constexpr float BRAKE_REV_EFF_HIGH = 1.30f;    // これ超なら強い→ON縮める
+static constexpr int BRAKE_REV_MIN_DV_MM_S = 120;     // dv が小さすぎると推定不安定
+static constexpr float BRAKE_REV_A_TGT_FLOOR_MM_S2 = 4000.0f;  // a_tgt の下限
+
 //------------------------------------------------------------------------------
 // ステアサーボ設定（DS3218想定）
 //------------------------------------------------------------------------------

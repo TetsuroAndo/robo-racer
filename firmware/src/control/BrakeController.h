@@ -18,6 +18,8 @@ struct BrakeControllerOutput {
 	// デバッグ用（ログ可視化）
 	uint8_t phase = 0;       // 0=IDLE, 1=REV, 2=COAST
 	uint8_t pulse_count = 0;
+	uint8_t pulse_limit = 0;
+	uint16_t rev_on_ms = 0;
 };
 
 class BrakeController {
@@ -31,6 +33,10 @@ private:
 	Phase _phase = Phase::IDLE;
 	uint32_t _phase_until_ms = 0;
 	uint8_t _pulse_count = 0;
+	uint8_t _pulse_limit = 0;
+	uint16_t _rev_on_ms = 0;
+	uint16_t _rev_on_ms_used = 0;
+	float _rev_v_start = 0.0f;
 	uint32_t _stop_since_ms = 0;
 	uint32_t _last_stop_ms = 0;
 	float _brake_ramp = 0.0f;
