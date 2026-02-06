@@ -64,6 +64,15 @@ int16_t AbsController::apply(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
 
 	const float margin = (float)cfg::ABS_SPEED_MARGIN_MM_S;
 	const bool want_brake = (v_est > (v_cmd + margin));
+	const float decel = std::max(0.0f, -imu.a_long_mm_s2);
+
+	// 徐行・停止目標かつ既に十分減速中ならABS不要（逆転で後退しすぎを防ぐ）
+	if (want_brake && v_cmd <= (float)cfg::ABS_SKIP_V_CMD_MM_S &&
+		decel >= (float)cfg::ABS_SKIP_DECEL_MM_S2) {
+		d->reason = ABS_INACTIVE;
+		reset(now_ms);
+		return speed_mm_s;
+	}
 
 	if (want_brake) {
 		_hold_until_ms = now_ms + cfg::ABS_BRAKE_HOLD_MS;
@@ -104,7 +113,6 @@ int16_t AbsController::apply(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
 	if (a_target < 0.0f)
 		a_target = 0.0f;
 
-	const float decel = std::max(0.0f, -imu.a_long_mm_s2);
 	const float e = a_target - decel;
 	d->a_target = a_target;
 	d->a_cap = a_cap;
@@ -137,20 +145,23 @@ int16_t AbsController::apply(uint32_t now_ms, float dt_s, int16_t speed_mm_s,
 	const uint32_t duty_ms = (uint32_t)lroundf((float)period * duty);
 	const bool reverse_on = (phase < duty_ms);
 
-	if (cfg::TSD20_ENABLE && tsd.valid) {
-		const uint16_t limit = (uint16_t)(cfg::TSD20_MARGIN_MM +
-										  cfg::ABS_REVERSE_DISABLE_MARGIN_MM);
-		if (tsd.mm <= limit) {
-			return 0;
-		}
-	}
-
 	const int max_mm_s = mc_config::SPEED_MAX_MM_S;
 	int reverse_mm_s = cfg::ABS_REVERSE_MM_S;
 	if (reverse_mm_s > max_mm_s)
 		reverse_mm_s = max_mm_s;
 	if (reverse_mm_s < 0)
 		reverse_mm_s = -reverse_mm_s;
+
+	// 障害物が近いときは逆転強度を弱める（後退しすぎを防ぐがABSは維持）
+	if (cfg::TSD20_ENABLE && tsd.valid) {
+		const uint16_t limit = (uint16_t)(cfg::TSD20_MARGIN_MM +
+										  cfg::ABS_REVERSE_DISABLE_MARGIN_MM);
+		if (tsd.mm <= limit) {
+			reverse_mm_s = reverse_mm_s / 2;
+			if (reverse_mm_s < 200)
+				reverse_mm_s = 200;
+		}
+	}
 
 	return reverse_on ? (int16_t)(-reverse_mm_s) : 0;
 }
