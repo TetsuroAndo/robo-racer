@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cstdint>
-
 namespace mc_config {
 static constexpr float STEER_ANGLE_MIN_DEG = -25.0f;
 static constexpr float STEER_ANGLE_MAX_DEG = 25.0f;

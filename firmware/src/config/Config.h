@@ -10,8 +10,24 @@
 #if defined(__has_include)
 #if __has_include("mc_config/vehicle_limits.h")
 #include "mc_config/vehicle_limits.h"
+#define MC_HAS_VEHICLE_LIMITS 1
 #endif
 #endif
+
+#ifndef MC_HAS_VEHICLE_LIMITS
+namespace mc_config {
+static constexpr float STEER_ANGLE_MIN_DEG = -25.0f;
+static constexpr float STEER_ANGLE_MAX_DEG = 25.0f;
+static constexpr int STEER_ANGLE_MIN_CDEG = -2500;
+static constexpr int STEER_ANGLE_MAX_CDEG = 2500;
+static constexpr float STEER_CDEG_SCALE = 100.0f;
+static constexpr int SPEED_INPUT_LIMIT = 255;
+static constexpr int SPEED_MAX_MM_S = 5000;
+} // namespace mc_config
+#endif
+
+static_assert(mc_config::SPEED_MAX_MM_S > 0,
+			  "mc_config::SPEED_MAX_MM_S must be positive");
 
 namespace cfg {
 // clang-format off
@@ -103,6 +119,7 @@ static constexpr bool IMU_ENABLE                = true;
 static constexpr int IMU_SDA_PIN                = 21;
 static constexpr int IMU_SCL_PIN                = 22;
 static constexpr uint32_t IMU_I2C_HZ            = 400000;
+static constexpr uint32_t IMU_I2C_TIMEOUT_MS    = 20;
 static constexpr uint8_t IMU_I2C_ADDR           = 0x68;
 static constexpr uint8_t IMU_WHO_AM_I_0         = 0x70; // MPU-6500
 static constexpr uint8_t IMU_WHO_AM_I_1         = 0x68; // MPU-6050互換
@@ -168,6 +185,7 @@ static constexpr float SPEED_KP_UNCAL          = 0.005f;
 static constexpr float SPEED_KI_UNCAL          = 0.0f;
 static constexpr int SPEED_I_CLAMP             = 120;
 static constexpr int SPEED_DEADBAND_MM_S       = 200;
+static constexpr int SPEED_MIN_FWD_VEST_MM_S   = 100;
 // 前進時の最小PWM（静止摩擦克服、デッドゾーン対策）
 static constexpr int SPEED_PWM_MIN_FORWARD     = 30;
 

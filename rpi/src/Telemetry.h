@@ -242,5 +242,6 @@ inline void TelemetryEmitter::updateTsd20(const Tsd20State &tsd) {
 	tsd20_.mm = tsd.mm;
 	tsd20_.fails = tsd.fails;
 	tsd20_.period_ms = tsd.period_ms;
+	// TSD20 はセンサ生成時刻を保持し、更新時刻系 (status/motion) と区別する。
 	tsd20_.ts_us = tsd.ts_us;
 }

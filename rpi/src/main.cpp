@@ -1,3 +1,4 @@
+#include "MotionState.h"
 #include "Process.h"
 #include "Sender.h"
 #include "ShmLidarReceiver.h"

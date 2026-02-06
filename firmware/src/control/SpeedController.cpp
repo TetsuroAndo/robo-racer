@@ -65,8 +65,9 @@ SpeedControlOutput SpeedController::update(int16_t v_target_mm_s,
 	const float pwm_hi = forward_target ? 255.0f : 0.0f;
 	float pwm_sat = mc::clamp< float >(pwm, pwm_lo, pwm_hi);
 	// 前進目標かつ低速時は最小PWMを確保（静止摩擦克服）
-	if (forward_target && v_target_mm_s > 0 && v_est_mm_s < 100.0f &&
-		pwm_sat > 0.0f && pwm_sat < (float)cfg::SPEED_PWM_MIN_FORWARD) {
+	if (forward_target && v_target_mm_s > 0 &&
+		v_est_mm_s < (float)cfg::SPEED_MIN_FWD_VEST_MM_S && pwm_sat > 0.0f &&
+		pwm_sat < (float)cfg::SPEED_PWM_MIN_FORWARD) {
 		pwm_sat = (float)cfg::SPEED_PWM_MIN_FORWARD;
 	}
 	out.saturated = (pwm != pwm_sat);

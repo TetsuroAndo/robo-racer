@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <sstream>
 #include <sys/socket.h>
 #include <time.h>
@@ -48,7 +49,11 @@ bool parse_kv_int(const std::string &s, const char *key, int &out) {
 	const long v = std::strtol(p, &end, 10);
 	if (end == p)
 		return false;
-	out = (int)v;
+	if (v < std::numeric_limits< int >::min() ||
+		v > std::numeric_limits< int >::max()) {
+		return false;
+	}
+	out = static_cast< int >(v);
 	return true;
 }
 
