@@ -1,6 +1,7 @@
 #include "config/Config.h"
 #include "control/AutoCommandSource.h"
 #include "control/BrakeController.h"
+#include "control/DecelController.h"
 #include "control/SafetySupervisor.h"
 #include "control/SpeedController.h"
 #include "control/Targets.h"
@@ -29,6 +30,7 @@ static Tsd20 tsd20;
 static AutoCommandSource cmd_source;
 static SafetySupervisor safety;
 static SpeedController speed_ctl;
+static DecelController decel_ctl;
 static BrakeController brake_ctl;
 static mc::AsyncLogger alog;
 static mc::UartTx uart_tx;
@@ -81,6 +83,14 @@ static bool g_speed_diag_calib = false;
 static bool g_brake_diag_stop_req = false;
 static int16_t g_brake_diag_pwm = 0;
 static bool g_brake_diag_active = false;
+
+static int16_t g_decel_diag_pwm = 0;
+static float g_decel_diag_a_tgt = 0.0f;
+static float g_decel_diag_a_err = 0.0f;
+static float g_decel_diag_u_ff = 0.0f;
+static float g_decel_diag_u_fb = 0.0f;
+static float g_decel_diag_u_i = 0.0f;
+static bool g_decel_diag_active = false;
 
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
@@ -336,15 +346,30 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	g_speed_diag_active = out.active;
 	g_speed_diag_calib = out.calibrated;
 
+	const DecelControlOutput decel_out = decel_ctl.update(
+		safe.targets.speed_mm_s, v_est, imu_state.a_long_lpf_mm_s2,
+		imu_state.a_brake_cap_mm_s2, dt_s, imu_calib, speed_active);
+	g_decel_diag_pwm = decel_out.pwm_cmd;
+	g_decel_diag_a_tgt = decel_out.a_tgt_mm_s2;
+	g_decel_diag_a_err = decel_out.a_err_mm_s2;
+	g_decel_diag_u_ff = decel_out.u_ff;
+	g_decel_diag_u_fb = decel_out.u_fb;
+	g_decel_diag_u_i = decel_out.u_i;
+	g_decel_diag_active = decel_out.active;
+
 	const BrakeControllerOutput brake_out = brake_ctl.update(
 		safe.stop_requested, safe.stop_level, g_tsd_state.mm, v_est, now_ms);
 	g_brake_diag_stop_req = safe.stop_requested;
 	g_brake_diag_pwm = brake_out.brake_duty;
 	g_brake_diag_active = brake_out.active;
 
-	drive.setBrakeMode(g_abs_active || brake_out.active);
+	int16_t pwm_cmd = out.pwm_cmd;
+	if (decel_out.active)
+		pwm_cmd = (pwm_cmd < decel_out.pwm_cmd) ? pwm_cmd : decel_out.pwm_cmd;
+
+	drive.setBrakeMode(g_abs_active || brake_out.active || decel_out.active);
 	drive.setTargetMmS(safe.targets.speed_mm_s, now_ms);
-	drive.setTargetPwm(out.pwm_cmd, now_ms);
+	drive.setTargetPwm(pwm_cmd, now_ms);
 	drive.setTargetBrake(brake_out.brake_duty, brake_out.active, now_ms);
 	drive.setTargetSteerCdeg(safe.targets.steer_cdeg, now_ms);
 	drive.setTtlMs(safe.targets.ttl_ms, now_ms);
@@ -527,6 +552,14 @@ void loop() {
 				  (double)g_speed_diag_err, (int)g_speed_diag_pwm_cmd,
 				  (int)g_speed_diag_pwm_ff, (double)g_speed_diag_i,
 				  (int)g_speed_diag_saturated);
+		if (g_decel_diag_active) {
+			alog.logf(
+				mc::LogLevel::INFO, "decel_ctl",
+				"pwm=%d a_tgt=%.0f a_err=%.0f u_ff=%.1f u_fb=%.1f u_i=%.1f",
+				(int)g_decel_diag_pwm, (double)g_decel_diag_a_tgt,
+				(double)g_decel_diag_a_err, (double)g_decel_diag_u_ff,
+				(double)g_decel_diag_u_fb, (double)g_decel_diag_u_i);
+		}
 		alog.logf(mc::LogLevel::INFO, "brake",
 				  "stop_req=%d d_mm=%u v_est=%.1f pwm_speed=%d brake_duty=%u "
 				  "pwm_applied=%d applied_brake=%u v_cap=%.1f",

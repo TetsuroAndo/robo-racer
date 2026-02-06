@@ -187,6 +187,20 @@ static constexpr int SPEED_MIN_FWD_VEST_MM_S   = 100;
 static constexpr int SPEED_PWM_MIN_FORWARD     = 30;
 
 //------------------------------------------------------------------------------
+// DecelController（能動制動：減速局面で負PWMを許可）
+//------------------------------------------------------------------------------
+
+static constexpr float DECEL_TAU_S             = 0.25f;  // v_err/tau -> a_tgt
+static constexpr int   DECEL_V_ERR_DEADBAND_MM_S = 120;
+static constexpr int   DECEL_STOP_EPS_MM_S     = 120;    // これ以下でブレーキ解除
+static constexpr int   DECEL_PWM_MAX_BRAKE     = 200;    // brake PWM magnitude cap
+static constexpr float DECEL_KP                = 0.010f; // accel error -> pwm
+static constexpr float DECEL_KI                = 0.002f;
+static constexpr int   DECEL_A_MIN_MM_S2       = 1500;
+static constexpr int   DECEL_A_CAP_FLOOR_MM_S2 = 3000;
+static constexpr int   DECEL_A_CAP_MAX_MM_S2   = 12000;
+
+//------------------------------------------------------------------------------
 // BrakeController（安全系 STOP 要求時のみ負PWMで減速）
 //------------------------------------------------------------------------------
 
