@@ -1,6 +1,6 @@
 #pragma once
 
-#include "SafetySupervisor.h"
+#include "StopLevel.h"
 #include <stdint.h>
 
 struct BrakeControllerOutput {

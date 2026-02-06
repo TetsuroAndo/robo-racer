@@ -247,6 +247,12 @@ static constexpr int ENGINE_SPEED_LIMIT        = 255;
 static constexpr uint32_t ENGINE_DEADTIME_US   = 800;
 // アクティブブレーキ（両PWM同時＝短絡制動）。false なら推力0のみ（惰行）
 static constexpr bool ENGINE_ACTIVE_BRAKE_ENABLE = true;
+// killed/expired 時にブレーキを入れる（true: ブレーキ、false: 惰行停止）
+static constexpr bool DRIVE_BRAKE_ON_KILLED = true;
+// killed/expired 時のブレーキ duty（0..BRAKE_PWM_MAX）
+static constexpr uint8_t DRIVE_KILL_BRAKE_DUTY = 60;
+static_assert(DRIVE_KILL_BRAKE_DUTY <= BRAKE_PWM_MAX,
+			  "DRIVE_KILL_BRAKE_DUTY must be <= BRAKE_PWM_MAX");
 
 //------------------------------------------------------------------------------
 // 手動操作の上限（ゲームパッド）

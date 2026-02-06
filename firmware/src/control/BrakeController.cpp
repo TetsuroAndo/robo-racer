@@ -53,15 +53,18 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 							: 1.0f;
 	int pwm_max_allowed = (int)lroundf((float)cfg::BRAKE_PWM_MAX *
 									   mc::clamp< float >(ratio, 0.0f, 1.0f));
-	// (D) STOP/MARGIN/STALE で duty 上限を段階化（MARGIN は弱め、STALE は最小）
+	// (D) STOP/MARGIN/STALE で duty 上限を段階化
+	// STALE のときは active=false（推力カットのみ、ブレーキは出さない）
+	if (stop_level == StopLevel::STALE) {
+		_stop_since_ms = 0;
+		_brake_ramp = 0.0f;
+		return out; // active=false, brake_duty=0
+	}
 	switch (stop_level) {
 	case StopLevel::STOP:
-		break; // そのまま
+		break; // そのまま（最大）
 	case StopLevel::MARGIN:
 		pwm_max_allowed = std::min(pwm_max_allowed, cfg::BRAKE_PWM_MAX / 2);
-		break;
-	case StopLevel::STALE:
-		pwm_max_allowed = std::min(pwm_max_allowed, cfg::BRAKE_PWM_MIN);
 		break;
 	default:
 		break;

@@ -32,6 +32,10 @@ struct EspStatusPayload {
 	int16_t speed_mm_s_le;
 	int16_t steer_cdeg_le;
 	uint16_t age_ms_le;
+	uint8_t applied_brake_duty;
+	uint8_t stop_level;
+	uint8_t stop_requested;
+	uint8_t reserved;
 };
 #pragma pack(pop)
 

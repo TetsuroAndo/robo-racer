@@ -15,6 +15,11 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 	d->clamped = false;
 	// age_ms はここで一度だけ初期化し、以降の分岐では変更しない。
 	d->age_ms = (tsd.age_ms != 0xFFFFu) ? (float)tsd.age_ms : -1.0f;
+	// stop_requested/stop_level を初期化（diag が NULL でも安全）
+	if (diag) {
+		diag->stop_requested = false;
+		diag->stop_level = StopLevel::NONE;
+	}
 	if (!cfg::TSD20_ENABLE)
 		return speed_mm_s;
 
@@ -46,17 +51,29 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 		d->v_max = 0.0f;
 		d->v_cap = 0.0f;
 		d->clamped = true;
+		if (diag) {
+			diag->stop_requested = true;
+			diag->stop_level = StopLevel::STALE;
+		}
 		return 0;
 	}
 
 	if (cfg::TSD20_STOP_DISTANCE_MM > 0 &&
 		tsd.mm <= cfg::TSD20_STOP_DISTANCE_MM) {
 		d->reason = TSD_STOP;
+		if (diag) {
+			diag->stop_requested = true;
+			diag->stop_level = StopLevel::STOP;
+		}
 		return 0;
 	}
 
 	if (tsd.mm <= cfg::TSD20_MARGIN_MM) {
 		d->reason = TSD_MARGIN;
+		if (diag) {
+			diag->stop_requested = true;
+			diag->stop_level = StopLevel::MARGIN;
+		}
 		return 0;
 	}
 

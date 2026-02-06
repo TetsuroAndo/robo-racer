@@ -88,8 +88,8 @@ static inline void wr16(uint8_t *p, uint16_t v) {
 }
 
 // shared/proto のワイヤ構造体をそのまま利用し、サイズ一致をここでも検証する。
-static_assert(sizeof(mc::proto::StatusPayload) == 10,
-			  "StatusPayload size (wire) must be 10 bytes");
+static_assert(sizeof(mc::proto::StatusPayload) == 14,
+			  "StatusPayload size (wire) must be 14 bytes");
 static_assert(sizeof(mc::proto::ImuStatusPayload) == 12,
 			  "ImuStatusPayload size (wire) must be 12 bytes");
 static_assert(sizeof(mc::proto::Tsd20StatusPayload) == 8,
@@ -138,6 +138,10 @@ static void sendStatus_(uint32_t now_ms) {
 	wr16((uint8_t *)&p.steer_cdeg_le,
 		 (uint16_t)(int16_t)drive.appliedSteerCdeg());
 	wr16((uint8_t *)&p.age_ms_le, age_ms);
+	p.applied_brake_duty = drive.appliedBrakeDuty();
+	p.stop_level = (uint8_t)g_safety_diag.tsd.stop_level;
+	p.stop_requested = g_safety_diag.tsd.stop_requested ? 1u : 0u;
+	p.reserved = 0;
 
 	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
 	size_t out_len = 0;
@@ -341,7 +345,7 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	drive.setBrakeMode(g_abs_active || brake_out.active);
 	drive.setTargetMmS(safe.targets.speed_mm_s, now_ms);
 	drive.setTargetPwm(out.pwm_cmd, now_ms);
-	drive.setTargetBrake(brake_out.brake_duty, brake_out.active);
+	drive.setTargetBrake(brake_out.brake_duty, brake_out.active, now_ms);
 	drive.setTargetSteerCdeg(safe.targets.steer_cdeg, now_ms);
 	drive.setTtlMs(safe.targets.ttl_ms, now_ms);
 	drive.setDistMm(safe.targets.dist_mm, now_ms);

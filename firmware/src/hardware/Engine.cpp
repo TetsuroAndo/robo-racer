@@ -44,7 +44,6 @@ void Engine::setRateLimits(float rate_up, float rate_down) {
 }
 
 void Engine::control(float dt_s) {
-	_last_was_brake = false; // 推力モードに戻った
 	const uint32_t now_us = micros();
 	if (_dead_until_us != 0 && (int32_t)(now_us - _dead_until_us) < 0) {
 		if (_cur != 0) {
@@ -55,6 +54,18 @@ void Engine::control(float dt_s) {
 	}
 	if (_dead_until_us != 0)
 		_dead_until_us = 0;
+
+	// ブレーキ→推力遷移時の deadtime（前回がブレーキで、今回推力に戻る場合）
+	if (_last_was_brake && _tgt != 0) {
+		_dead_until_us = now_us + cfg::ENGINE_DEADTIME_US;
+		_cur = 0;
+		_last_dir = 0;
+		_last_was_brake = false;
+		outputSpeed(0);
+		return;
+	}
+
+	_last_was_brake = false; // 推力モードに戻った
 
 	float y = _lim.update((float)_tgt, dt_s);
 	int next = (int)lroundf(y);

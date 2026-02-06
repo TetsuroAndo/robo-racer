@@ -297,15 +297,21 @@ void Sender::handleStatus(const mc::proto::StatusPayload &payload) {
 	const int16_t steer =
 		(int16_t)mc::proto::from_le16((uint16_t)payload.steer_cdeg_le);
 	const uint16_t age_ms = mc::proto::from_le16(payload.age_ms_le);
+	const uint8_t brake_duty = payload.applied_brake_duty;
+	const uint8_t stop_level = payload.stop_level;
+	const uint8_t stop_requested = payload.stop_requested;
 	std::ostringstream ss;
 	ss << "STATUS seq=" << (unsigned)seq << " auto=" << (unsigned)auto_active
 	   << " speed_mm_s=" << speed << " steer_cdeg=" << steer
-	   << " age_ms=" << age_ms << " faults=0x" << std::hex << faults
-	   << std::dec;
+	   << " age_ms=" << age_ms << " faults=0x" << std::hex << faults << std::dec
+	   << " brake_duty=" << (unsigned)brake_duty
+	   << " stop_level=" << (unsigned)stop_level
+	   << " stop_req=" << (unsigned)stop_requested;
 	MC_LOGI("status", ss.str());
 
 	if (telemetry_) {
-		telemetry_->updateStatus(auto_active, faults, speed, steer, age_ms);
+		telemetry_->updateStatus(auto_active, faults, speed, steer, age_ms,
+								 brake_duty, stop_level, stop_requested);
 	}
 }
 

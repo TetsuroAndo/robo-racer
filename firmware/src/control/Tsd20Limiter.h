@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SensorState.h"
+#include "StopLevel.h"
 #include "Targets.h"
 #include "../comm/registry.h"
 #include "../hardware/ImuEstimator.h"
@@ -21,6 +22,10 @@ struct Tsd20Diag {
 	float v_cap = 0.0f;
 	bool clamped = false;
 	uint8_t reason = 0;
+	/// TSD20 STOP/MARGIN/AGE_STALE で速度0にされたとき true。BrakeController 用。
+	bool stop_requested = false;
+	/// stop_requested 時の理由。BrakeController で duty 段階化に使用。
+	StopLevel stop_level = StopLevel::NONE;
 };
 
 class Tsd20Limiter {

@@ -101,7 +101,10 @@ public:
 					  uint16_t faults,
 					  int16_t speed_mm_s,
 					  int16_t steer_cdeg,
-					  uint16_t age_ms);
+					  uint16_t age_ms,
+					  uint8_t brake_duty = 0,
+					  uint8_t stop_level = 0,
+					  uint8_t stop_requested = 0);
 	void updateDrops(uint32_t log_drop, uint32_t uart_drop);
 	void updateMotion(const MotionState &motion);
 	void updateTsd20(const Tsd20State &tsd);
@@ -149,6 +152,9 @@ private:
 		int16_t speed_mm_s = 0;
 		int16_t steer_cdeg = 0;
 		uint16_t age_ms = 0;
+		uint8_t brake_duty = 0;
+		uint8_t stop_level = 0;
+		uint8_t stop_requested = 0;
 		uint32_t log_drop = 0;
 		uint32_t uart_drop = 0;
 		uint64_t ts_us = 0;
@@ -215,7 +221,10 @@ inline void TelemetryEmitter::updateStatus(uint8_t auto_active,
 										   uint16_t faults,
 										   int16_t speed_mm_s,
 										   int16_t steer_cdeg,
-										   uint16_t age_ms) {
+										   uint16_t age_ms,
+										   uint8_t brake_duty,
+										   uint8_t stop_level,
+										   uint8_t stop_requested) {
 	std::lock_guard< std::mutex > lk(metrics_mtx_);
 	status_.valid = true;
 	status_.auto_active = auto_active;
@@ -223,6 +232,9 @@ inline void TelemetryEmitter::updateStatus(uint8_t auto_active,
 	status_.speed_mm_s = speed_mm_s;
 	status_.steer_cdeg = steer_cdeg;
 	status_.age_ms = age_ms;
+	status_.brake_duty = brake_duty;
+	status_.stop_level = stop_level;
+	status_.stop_requested = stop_requested;
 	status_.ts_us = mc::core::Time::us();
 }
 

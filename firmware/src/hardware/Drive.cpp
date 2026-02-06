@@ -18,9 +18,10 @@ void Drive::setTargetPwm(int16_t speed_pwm, uint32_t now_ms) {
 	_lastUpdateMs = now_ms;
 }
 
-void Drive::setTargetBrake(uint8_t brake_duty, bool active) {
+void Drive::setTargetBrake(uint8_t brake_duty, bool active, uint32_t now_ms) {
 	_tgt_brake_duty = brake_duty;
 	_brake_active = active;
+	_lastUpdateMs = now_ms;
 }
 
 void Drive::setTargetSteerCdeg(int16_t steer_cdeg, uint32_t now_ms) {
@@ -56,12 +57,19 @@ void Drive::tick(uint32_t now_ms, float dt_s, bool killed) {
 	if (killed || expired) {
 		_applied_speed_mm_s = cmd_speed;
 		_applied_pwm = 0;
-		_applied_brake_duty = 0;
 		_applied_steer_cdeg = cmd_steer;
 		_brake_released_at_ms = 0;
 		_prev_brake_active = false;
-		_engine.setTarget(0);
-		_engine.control(dt_s);
+		if (cfg::DRIVE_BRAKE_ON_KILLED && cfg::ENGINE_ACTIVE_BRAKE_ENABLE) {
+			// killed/expired 時もブレーキを入れる（安全停止）
+			_applied_brake_duty = cfg::DRIVE_KILL_BRAKE_DUTY;
+			_engine.outputBrake(cfg::DRIVE_KILL_BRAKE_DUTY);
+		} else {
+			// 惰行停止
+			_applied_brake_duty = 0;
+			_engine.setTarget(0);
+			_engine.control(dt_s);
+		}
 	} else if (_brake_active) {
 		_applied_speed_mm_s = cmd_speed;
 		_applied_pwm = 0;

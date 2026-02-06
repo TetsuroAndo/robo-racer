@@ -1,19 +1,12 @@
 #pragma once
 
 #include "AbsController.h"
+#include "StopLevel.h"
 #include "Tsd20Limiter.h"
 #include "Targets.h"
 #include "../comm/registry.h"
 #include "../hardware/ImuEstimator.h"
 #include <stdint.h>
-
-/// BrakeController 用：stop_requested の理由（duty 段階化に使用）
-enum class StopLevel : uint8_t {
-	NONE = 0,
-	STOP = 1,   // 壁寸前・最大ブレーキ
-	MARGIN = 2, // マージン内・中程度
-	STALE = 3,  // 計測古い・最小（推力カット優先）
-};
 
 struct SafetyDiag {
 	Tsd20Diag tsd{};
