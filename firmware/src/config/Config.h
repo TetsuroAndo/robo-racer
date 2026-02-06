@@ -64,14 +64,16 @@ static constexpr uint16_t TSD20_TARGET_HZ        = 100;
 static constexpr uint16_t TSD20_MARGIN_MM        = 120; // base stop margin
 static constexpr uint16_t TSD20_MARGIN_MIN_MM    = 80;  // min for v_cap calc
 static constexpr uint16_t TSD20_MARGIN_RELAX_MM  = 40;  // relax at full steer
-static constexpr uint16_t TSD20_LATENCY_MS       = 40;
+// センサ読取〜モータ減速完了までの総遅延。40msは不足しがち。
+// モータSlewRate: 255/2400≈106ms要するため、100ms以上推奨。
+static constexpr uint16_t TSD20_LATENCY_MS       = 100;
 static constexpr bool TSD20_PREDICT_ENABLE       = true;
-static constexpr uint16_t TSD20_PREDICT_MARGIN_MAX_MM = 200;
+static constexpr uint16_t TSD20_PREDICT_MARGIN_MAX_MM = 350;
 static constexpr int TSD20_PREDICT_ACCEL_MAX_MM_S2 = 8000;
 
 // Distance clamp (tune to your course)
-static constexpr uint16_t TSD20_STOP_DISTANCE_MM    = 400;
-static constexpr uint16_t TSD20_SLOWDOWN_DISTANCE_MM = 800;
+static constexpr uint16_t TSD20_STOP_DISTANCE_MM    = 500;
+static constexpr uint16_t TSD20_SLOWDOWN_DISTANCE_MM = 1000;
 
 //------------------------------------------------------------------------------
 // 自動モードのハートビート監視タイムアウト
@@ -209,7 +211,8 @@ static constexpr int ENGINE_PWM_RES_BITS       = 8;
 
 // ランプ（SlewRateLimiterは per-second）
 static constexpr float ENGINE_RATE_UP          = 1600.0f;
-static constexpr float ENGINE_RATE_DOWN        = 2400.0f;
+// 減速を速くしてブレーキ応答を改善（255→0 を約64msに短縮）
+static constexpr float ENGINE_RATE_DOWN        = 4000.0f;
 static constexpr int ENGINE_RAMP_DELAY_MS      = 10;
 static constexpr int ENGINE_SPEED_LIMIT        = 255;
 static constexpr uint32_t ENGINE_DEADTIME_US   = 800;
