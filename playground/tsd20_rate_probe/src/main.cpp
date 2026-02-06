@@ -101,6 +101,11 @@ static bool g_tsd20Ready = false;
 static uint16_t g_lastMm = 0;
 static bool g_hasLastMm = false;
 
+// 「変化」とみなすしきい値 [mm]
+// - 1mm 単位のノイズまで拾うと「常に new」になりやすいので、
+//   例えば 5mm 以上の差分だけを「意味のある変化」として扱う。
+static const uint16_t CHANGE_THRESH_MM = 5;
+
 // 「値が変化した瞬間」の統計
 static uint32_t g_lastChangeMs = 0;
 static bool g_hasLastChange = false;
@@ -123,7 +128,7 @@ static void initI2C() {
 }
 
 static void printBanner() {
-	Serial.println("=== TSD20 Rate Probe (I2C, 5ms poll) ===");
+	Serial.println("=== TSD20 Rate Probe (I2C, 5ms poll, thresh change) ===");
 	Serial.printf("Pins: SDA=GPIO%d, SCL=GPIO%d\n", PIN_TSD20_SDA,
 				  PIN_TSD20_SCL);
 	Serial.printf("I2C: addr=0x%02X freq=%lu Hz\n", TSD20_ADDR,
@@ -131,11 +136,12 @@ static void printBanner() {
 	Serial.printf("Poll interval: %lu ms (target ~%lu Hz)\n",
 				  (unsigned long)READ_INTERVAL_MS,
 				  (unsigned long)(1000u / READ_INTERVAL_MS));
-	Serial.println();
 	Serial.println(
-		"# format: "
-		"READ,<ms>,<mm>,<is_new>,<dt_change_ms>,<est_change_hz>,<ok>,<"
-		"fail>");
+		"# ポーリング周期のジッタも測定: dt_poll_us = now_us - last_poll_us");
+	Serial.println();
+	Serial.println("# format: "
+				   "READ,<ms>,<mm>,<is_new>,<dt_change_ms>,<est_change_hz>,<dt_"
+				   "poll_us>,<ok>,<fail>");
 	Serial.println(
 		"# 注意: is_new=0 が続いても、TSD20 内部更新が止まっているとは限りま"
 		"せん（同じ値を返している可能性があります）。");
@@ -183,13 +189,18 @@ void setup() {
 }
 
 void loop() {
-	static uint32_t lastPollMs = 0;
-	const uint32_t now = millis();
+	// micros() ベースでポーリング周期のジッタも計測する
+	static uint32_t lastPollUs = 0;
+	const uint32_t nowUs = micros();
 
-	if (now - lastPollMs < READ_INTERVAL_MS) {
+	// 5ms = 5000us
+	if (nowUs - lastPollUs < READ_INTERVAL_MS * 1000u) {
 		return;
 	}
-	lastPollMs = now;
+	const uint32_t dtPollUs = (lastPollUs == 0) ? 0u : (nowUs - lastPollUs);
+	lastPollUs = nowUs;
+
+	const uint32_t now = millis();
 
 	if (!g_tsd20Ready) {
 		// 検出に失敗している場合でも、無駄に I2C を叩き続けない。
@@ -212,7 +223,9 @@ void loop() {
 	double dt_change_ms = 0.0;
 	double est_change_hz = 0.0;
 
-	if (!g_hasLastMm || mm != g_lastMm) {
+	const int32_t diff = (int32_t)mm - (int32_t)g_lastMm;
+	if (!g_hasLastMm || (diff >= (int32_t)CHANGE_THRESH_MM) ||
+		(diff <= -(int32_t)CHANGE_THRESH_MM)) {
 		is_new = true;
 		if (g_hasLastChange) {
 			const uint32_t dt = now - g_lastChangeMs;
@@ -236,8 +249,9 @@ void loop() {
 	g_hasLastMm = true;
 
 	// ログ出力
-	// READ,<ms>,<mm>,<is_new>,<dt_change_ms>,<est_change_hz>,<ok>,<fail>
-	Serial.printf("READ,%lu,%u,%d,%.3f,%.3f,%lu,%lu\n", (unsigned long)now, mm,
-				  is_new ? 1 : 0, dt_change_ms, est_change_hz,
-				  (unsigned long)g_readOkCount, (unsigned long)g_readFailCount);
+	// READ,<ms>,<mm>,<is_new>,<dt_change_ms>,<est_change_hz>,<dt_poll_us>,<ok>,<fail>
+	Serial.printf("READ,%lu,%u,%d,%.3f,%.3f,%lu,%lu,%lu\n", (unsigned long)now,
+				  mm, is_new ? 1 : 0, dt_change_ms, est_change_hz,
+				  (unsigned long)dtPollUs, (unsigned long)g_readOkCount,
+				  (unsigned long)g_readFailCount);
 }
