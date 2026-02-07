@@ -79,7 +79,7 @@ enum class SweepMode : uint8_t {
 static SweepMode g_sweep_mode = SweepMode::IDLE;
 static uint8_t g_current_pwm = 0;
 static uint32_t g_last_step_ms = 0;
-static const uint32_t STEP_DWELL_MS = 800; // 各 PWM で 800ms 維持
+static const uint32_t STEP_DWELL_MS = 200; // 各 PWMの進行間隔(ms)
 
 //------------------------------------------------------------------------------
 // シリアルヘルプ
@@ -181,9 +181,7 @@ void loop() {
 			} else {
 				g_current_pwm++;
 				engineSetForward(g_current_pwm);
-				if (g_current_pwm % 20 == 0 || g_current_pwm <= 60) {
-					Serial.printf("  PWM=%u\n", g_current_pwm);
-				}
+				Serial.printf("  PWM=%u\n", g_current_pwm);
 			}
 		} else if (g_sweep_mode == SweepMode::REVERSE) {
 			if (g_current_pwm == 0) {
@@ -193,10 +191,7 @@ void loop() {
 			} else {
 				g_current_pwm--;
 				engineSetForward(g_current_pwm);
-				if (g_current_pwm % 20 == 0 ||
-					(g_current_pwm <= 60 && g_current_pwm > 0)) {
-					Serial.printf("  PWM=%u\n", g_current_pwm);
-				}
+				Serial.printf("  PWM=%u\n", g_current_pwm);
 			}
 		}
 	}
