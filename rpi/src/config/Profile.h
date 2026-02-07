@@ -64,8 +64,8 @@ inline const ProfileParams &profileParams(Profile p) {
 		// 2 FAST
 		{"FAST", 1.05f, 1.10f, 1.10f, 250, 90, 180, 0.85f, 0.20f, 1.10f,
 		 0.80f, 0.80f, 0.95f},
-		// 3 ATTACK: 左右マージン小（刺さる角を許容）
-		{"ATTACK", 1.10f, 1.20f, 1.20f, 280, 80, 160, 0.70f, 0.30f, 1.20f,
+		// 3 ATTACK
+		{"ATTACK", 1.10f, 1.20f, 1.20f, 220, 80, 160, 0.70f, 0.30f, 1.20f,
 		 0.60f, 0.60f, 0.90f},
 		// 4 SAFE_MID: SAFE 速度/マージン + 旋回ペナルティは MID と同じ
 		{"SAFE_MID", 0.1f, 0.85f, 0.85f, 180, 130, 260, 1.50f, 0.00f, 0.85f,
