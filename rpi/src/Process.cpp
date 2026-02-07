@@ -567,6 +567,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	if (path_clearance_mm > 0)
 		out_speed = std::max(out_speed, creep_i);
 
+	// 最終ハード上限: 直線クリア廊下でも絶対に profile 上限を超えない
+	out_speed = std::min(out_speed, v_max_i);
+
 	if (telemetry_) {
 		std::array< float, TELEMETRY_HEAT_BINS > heat_bins{};
 		std::array< int, TELEMETRY_COMPASS_BINS > lidar_bins{};
