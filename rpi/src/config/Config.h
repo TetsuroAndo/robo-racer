@@ -75,7 +75,7 @@ static constexpr int FTG_SMOOTH_RADIUS_BINS    = 2;   // 3〜5binの中央=2
 
 // 車幅/マージン（メートル）
 static constexpr float FTG_CAR_WIDTH_M         = 0.20f; // 20cm
-static constexpr float FTG_MARGIN_M            = 0.03f; // 必要なら調整
+static constexpr float FTG_MARGIN_M            = 0.015f; // 左右の余裕。小さくするとステア中に止まりにくい（接触リスク増）
 static constexpr float FTG_CORRIDOR_LOOKAHEAD_M = 0.60f;
 
 //------------------------------------------------------------------------------
