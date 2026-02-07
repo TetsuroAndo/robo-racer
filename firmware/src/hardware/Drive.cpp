@@ -87,8 +87,10 @@ void Drive::tick(uint32_t now_ms, float dt_s, bool killed) {
 									 cfg::BRAKE_COOLDOWN_MS;
 		// cooldown
 		// は「前進再加速」を抑えるのが目的。非常時の逆転パルス(負PWM)は通す。
-		const int16_t pwm_to_apply =
-			(in_cooldown && _tgt_pwm > 0) ? 0 : _tgt_pwm;
+		// PWM=0 にすると静止摩擦で永遠に止まるため、徐行PWMに置換
+		const int16_t pwm_to_apply = (in_cooldown && _tgt_pwm > 0)
+										 ? (int16_t)cfg::SPEED_PWM_MIN_FORWARD
+										 : _tgt_pwm;
 
 		_applied_speed_mm_s = cmd_speed;
 		_applied_pwm = pwm_to_apply;

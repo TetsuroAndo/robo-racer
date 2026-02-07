@@ -28,7 +28,7 @@ struct ControlState {
 
 	volatile int16_t target_steer_cdeg = 0;
 	volatile int16_t target_speed_mm_s = 0;
-	volatile uint16_t target_ttl_ms = 100;
+	volatile uint16_t target_ttl_ms = cfg::DRIVE_TTL_DEFAULT_MS;
 	volatile uint16_t target_dist_mm = 0;
 };
 

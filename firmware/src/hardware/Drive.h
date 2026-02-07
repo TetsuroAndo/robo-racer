@@ -35,7 +35,7 @@ private:
 	uint8_t _tgt_brake_duty = 0;
 	bool _brake_active = false;
 	int16_t _tgt_steer_cdeg = 0;
-	uint16_t _ttl_ms = 100;
+	uint16_t _ttl_ms = cfg::DRIVE_TTL_DEFAULT_MS;
 	uint16_t _dist_mm = 0;
 
 	int16_t _applied_speed_mm_s = 0;

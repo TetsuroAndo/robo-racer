@@ -24,7 +24,7 @@ AutoCommandResult AutoCommandSource::update(uint32_t now_ms,
 
 	out.targets.speed_mm_s = 0;
 	out.targets.steer_cdeg = 0;
-	out.targets.ttl_ms = 100;
+	out.targets.ttl_ms = cfg::DRIVE_TTL_DEFAULT_MS;
 	out.targets.dist_mm = 0;
 	out.fresh = false;
 	return out;

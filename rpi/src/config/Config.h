@@ -147,7 +147,8 @@ static constexpr int FTG_SPEED_WARN_CAP_MM_S     =
 // gap が見つからない時に"それでも進めるなら"の速度上限（安全側に低め）
 static constexpr int FTG_NO_GAP_SPEED_CAP_MM_S = FTG_SPEED_WARN_CAP_MM_S;
 // 停止禁止: path_clearance>0 のとき常にこの速度以上で creep（近距離でも止まらない）
-static constexpr int FTG_CREEP_SPEED_MM_S = 80;
+// デッドバンド(200)以上にして低速制御で止まらないようにする
+static constexpr int FTG_CREEP_SPEED_MM_S = 220;
 // SLOW（warn）時の slowdown factor 下限（sfが0にならないように）
 static constexpr float FTG_SLOWDOWN_FLOOR = 0.15f;
 static constexpr uint16_t FTG_IMU_MAX_AGE_MS     = 200;

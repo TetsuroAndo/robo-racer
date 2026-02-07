@@ -106,6 +106,8 @@ static constexpr uint32_t HEARTBEAT_TIMEOUT_MS = 200;
 // Drive用の監視タイムアウトと角度閾値
 //------------------------------------------------------------------------------
 
+// 10Hz運用なら 3周期分（300ms）以上推奨。ジッタで通信断扱いが頻発しないように
+static constexpr uint16_t DRIVE_TTL_DEFAULT_MS = 300;
 // ウォッチドッグ
 static constexpr uint32_t DRIVE_TIMEOUT_MS     = 250;
 
@@ -171,8 +173,8 @@ static constexpr float SPEED_KI_UNCAL          = 0.0f;
 static constexpr int SPEED_I_CLAMP             = 120;
 static constexpr int SPEED_DEADBAND_MM_S       = 200;
 static constexpr int SPEED_MIN_FWD_VEST_MM_S   = 100;
-// 前進時の最小PWM（静止摩擦克服、デッドゾーン対策）
-static constexpr int SPEED_PWM_MIN_FORWARD     = 30;
+// 前進時の最小PWM（静止摩擦克服、デッドゾーン対策、実機発進可能値）
+static constexpr int SPEED_PWM_MIN_FORWARD     = 55;
 
 //------------------------------------------------------------------------------
 // BrakeController（安全系 STOP 要求時のみ）
@@ -261,7 +263,8 @@ static constexpr uint8_t DRIVE_KILL_BRAKE_DUTY = 60;
 // RPi通信確立時: 最低PWM（0..255）、0は出さず常にこれ以上で走行
 static constexpr uint8_t DRIVE_PWM_MIN_WHEN_STOP = 32;
 // AUTO+fresh時: 速度指令0が来ても creep に丸める（保険）
-static constexpr int CREEP_SPEED_MM_S = 80;
+// デッドバンド(200)以上にして低速制御で止まらないようにする
+static constexpr int CREEP_SPEED_MM_S = 220;
 static_assert(DRIVE_KILL_BRAKE_DUTY <= BRAKE_PWM_MAX,
 			  "DRIVE_KILL_BRAKE_DUTY must be <= BRAKE_PWM_MAX");
 static_assert(TSD20_NEAR_PWM_CAP <= ENGINE_SPEED_LIMIT,

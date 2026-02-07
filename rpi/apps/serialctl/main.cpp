@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
 	uint16_t seq = 1;
 	int steer_cdeg = 0;
 	int speed_mm_s = 0;
-	int ttl_ms = 100;
+	int ttl_ms = 300; // 10Hz運用なら3周期分以上推奨
 	int dist_mm = 0;
 	int mode = 1;
 
