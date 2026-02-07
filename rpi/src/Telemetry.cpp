@@ -32,7 +32,8 @@ static const char *profileNameById(uint8_t id) {
 }
 
 static std::string colorProfile(uint8_t id) {
-	// 0=SAFE:緑, 1=MID:シアン, 2=FAST:黄, 3=ATTACK:赤
+	// 0=SAFE:緑, 1=MID:シアン, 2=FAST:黄, 3=ATTACK:赤, 4=SAFE_MID:緑,
+	// 5=SAFE_LIGHT:明緑
 	const char *code;
 	switch (id) {
 	case 0:
@@ -46,6 +47,12 @@ static std::string colorProfile(uint8_t id) {
 		break;
 	case 3:
 		code = "\x1b[31m"; // red
+		break;
+	case 4:
+		code = "\x1b[32m"; // green (SAFE 系)
+		break;
+	case 5:
+		code = "\x1b[92m"; // bright green (SAFE 系)
 		break;
 	default:
 		code = "\x1b[0m";

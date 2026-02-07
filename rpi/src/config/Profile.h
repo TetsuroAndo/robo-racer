@@ -6,12 +6,14 @@
 
 namespace cfg {
 
-// 0..3 : 守り -> 攻め
+// 0..5 : 守り -> 攻め（4,5 は SAFE 系の旋回ペナルティ違い）
 enum class Profile : uint8_t {
 	Safe = 0,
 	Mid = 1, // 現状相当（デフォルト）
 	Fast = 2,
 	Attack = 3,
+	SafeMidPenalty = 4,   // SAFE 速度/マージン + MID 同様の旋回ペナルティ
+	SafeLightPenalty = 5, // SAFE 速度/マージン + MID より軽い旋回ペナルティ
 };
 
 struct ProfileParams {
@@ -45,8 +47,8 @@ struct ProfileParams {
 inline Profile clampProfileInt(int v) {
 	if (v < 0)
 		v = 0;
-	if (v > 3)
-		v = 3;
+	if (v > 5)
+		v = 5;
 	return static_cast< Profile >(v);
 }
 
@@ -65,6 +67,12 @@ inline const ProfileParams &profileParams(Profile p) {
 		// 3 ATTACK: 左右マージン小（刺さる角を許容）
 		{"ATTACK", 1.10f, 1.20f, 1.20f, 280, 80, 160, 0.70f, 0.30f, 1.20f,
 		 0.60f, 0.60f, 0.90f},
+		// 4 SAFE_MID: SAFE 速度/マージン + 旋回ペナルティは MID と同じ
+		{"SAFE_MID", 0.1f, 0.85f, 0.85f, 180, 130, 260, 1.50f, 0.00f, 0.85f,
+		 1.00f, 1.00f, 1.20f},
+		// 5 SAFE_LIGHT: SAFE 速度/マージン + 旋回ペナルティは MID より軽い
+		{"SAFE_LIGHT", 0.1f, 0.85f, 0.85f, 180, 130, 260, 1.50f, 0.00f, 0.85f,
+		 0.80f, 0.80f, 1.20f},
 	};
 	return tbl[static_cast< uint8_t >(p)];
 }
@@ -72,12 +80,12 @@ inline const ProfileParams &profileParams(Profile p) {
 inline const char *profileName(Profile p) { return profileParams(p).name; }
 
 inline bool parseProfileToken(const std::string &s, Profile &out) {
-	// 数字 0..3 のみサポート（必要なら "safe/mid/fast/attack" も足せる）
+	// 数字 0..5 のみサポート
 	char *end = nullptr;
 	long v = std::strtol(s.c_str(), &end, 10);
 	if (!end || *end != '\0')
 		return false;
-	if (v < 0 || v > 3)
+	if (v < 0 || v > 5)
 		return false;
 	out = static_cast< Profile >(v);
 	return true;

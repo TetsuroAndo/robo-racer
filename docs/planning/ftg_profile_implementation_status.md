@@ -2,7 +2,7 @@
 
 ## 概要
 
-実行時に 0..3 のプロファイル（守り→攻め）を切り替え、Telemetry UI/JSON に現在プロファイルを表示する機能。
+実行時に 0..5 のプロファイル（守り→攻め）を切り替え、Telemetry UI/JSON に現在プロファイルを表示する機能。
 
 ## 状態
 
@@ -13,7 +13,7 @@
 | Process へのプロファイル渡し | 完了 | Process.h / Process.cpp |
 | 運転パラメータのプロファイル上書き | 完了 | Process::proc() 内 |
 | TelemetrySample への profile_id / speed_cap 追加 | 完了 | Telemetry.h |
-| UI の PROF 表示 | 完了 | 3行目に色付きで別行表示（SAFE=緑, MID=シアン, FAST=黄, ATTACK=赤） |
+| UI の PROF 表示 | 完了 | 3行目に色付きで別行表示（SAFE=緑, MID=シアン, FAST=黄, ATTACK=赤, SAFE_MID=緑, SAFE_LIGHT=明緑） |
 | JSON への profile 出力 | 完了 | profile.id, profile.name |
 
 ## 使い方
@@ -31,18 +31,24 @@
 # 攻め
 ./robo-racer 3
 
+# SAFE 系（旋回ペナルティ違い）
+./robo-racer 4   # SAFE_MID: SAFE 速度/マージン + 旋回ペナルティは MID と同じ
+./robo-racer 5   # SAFE_LIGHT: SAFE 速度/マージン + 旋回ペナルティは MID より軽い
+
 # 明示指定（先頭 positional を汚したくない場合）
-./robo-racer --profile 3
+./robo-racer --profile 5
 ```
 
 ## プロファイルパラメータ
 
 | プロファイル | 名前 | 特徴 |
 |--------------|------|------|
-| 0 | SAFE | 距離しきい値大、速度上限低(v_max_scale 0.42)、左右マージン大(1.5)、予測マージン大 |
+| 0 | SAFE | 距離しきい値大、速度上限低(v_max_scale 0.1)、左右マージン大(1.5)、旋回ペナルティ重い |
 | 1 | MID | 現状値と一致（デフォルト） |
 | 2 | FAST | 攻め寄り、steer_speed_floor 0.2、margin_scale 0.85、gap ペナルティ減少 |
 | 3 | ATTACK | 攻め、steer_speed_floor 0.3、margin_scale 0.70（刺さる角許容）、最も積極的 |
+| 4 | SAFE_MID | SAFE の速度/マージン + 旋回ペナルティは MID と同じ (1.0, 1.0) |
+| 5 | SAFE_LIGHT | SAFE の速度/マージン + 旋回ペナルティは MID より軽い (0.8, 0.8) |
 
 ## 変更ファイル一覧
 
