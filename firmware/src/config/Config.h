@@ -260,6 +260,8 @@ static constexpr bool DRIVE_BRAKE_ON_KILLED = true;
 static constexpr uint8_t DRIVE_KILL_BRAKE_DUTY = 60;
 // RPi通信確立時: 最低PWM（0..255）、0は出さず常にこれ以上で走行
 static constexpr uint8_t DRIVE_PWM_MIN_WHEN_STOP = 32;
+// AUTO+fresh時: 速度指令0が来ても creep に丸める（保険）
+static constexpr int CREEP_SPEED_MM_S = 80;
 static_assert(DRIVE_KILL_BRAKE_DUTY <= BRAKE_PWM_MAX,
 			  "DRIVE_KILL_BRAKE_DUTY must be <= BRAKE_PWM_MAX");
 static_assert(TSD20_NEAR_PWM_CAP <= ENGINE_SPEED_LIMIT,

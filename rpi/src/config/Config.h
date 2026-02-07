@@ -30,7 +30,7 @@ static constexpr int DEFAULT_LIDAR_BAUD = 460800;
 //------------------------------------------------------------------------------
 
 // タイムアウト/周期
-static constexpr uint16_t AUTO_TTL_MS            = 250;
+static constexpr uint16_t AUTO_TTL_MS            = 300;
 static constexpr uint32_t HEARTBEAT_INTERVAL_MS  = 50;
 static constexpr uint32_t STATUS_LOG_INTERVAL_MS = 1000;
 static constexpr uint32_t ACK_TIMEOUT_MS         = 50;
@@ -147,7 +147,9 @@ static constexpr int FTG_SPEED_WARN_CAP_MM_S     =
 // gap が見つからない時に"それでも進めるなら"の速度上限（安全側に低め）
 static constexpr int FTG_NO_GAP_SPEED_CAP_MM_S = FTG_SPEED_WARN_CAP_MM_S;
 // 停止禁止: path_clearance>0 のとき常にこの速度以上で creep（近距離でも止まらない）
-static constexpr int FTG_CREEP_SPEED_MM_S = 64;
+static constexpr int FTG_CREEP_SPEED_MM_S = 80;
+// SLOW（warn）時の slowdown factor 下限（sfが0にならないように）
+static constexpr float FTG_SLOWDOWN_FLOOR = 0.15f;
 static constexpr uint16_t FTG_IMU_MAX_AGE_MS     = 200;
 static constexpr float FTG_YAW_BIAS_DEG          = 0.0f;
 static constexpr float FTG_YAW_BIAS_REF_DPS      = 90.0f;
