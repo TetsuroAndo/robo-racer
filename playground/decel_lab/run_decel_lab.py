@@ -2,7 +2,6 @@
 import argparse
 import csv
 import os
-import select
 import socket
 import struct
 import time
