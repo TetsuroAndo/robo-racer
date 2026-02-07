@@ -1,5 +1,6 @@
 #include "Process.h"
 #include "config/Config.h"
+#include "config/Profile.h"
 #include "mc/core/Time.hpp"
 
 #include <algorithm>
@@ -96,7 +97,8 @@ steerAwareClearanceMm(const std::array< int32_t, cfg::FTG_BIN_COUNT > &bins,
 }
 } // namespace
 
-Process::Process(TelemetryEmitter *telemetry) : telemetry_(telemetry) {}
+Process::Process(TelemetryEmitter *telemetry, cfg::Profile profile)
+	: telemetry_(telemetry), profile_(profile) {}
 
 Process::~Process() {}
 
@@ -105,6 +107,31 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 						 const std::string &run_id,
 						 const MotionState *motion) const {
 	const uint64_t t0_us = mc::core::Time::us();
+
+	// ---- profile-derived runtime params ----
+	const cfg::ProfileParams &pf = cfg::profileParams(profile_);
+	const int th_near_mm = pf.near_obstacle_mm;
+	const int th_warn_mm = pf.warn_obstacle_mm;
+	const int th_gap_free_mm = std::max(th_warn_mm, th_near_mm + 50);
+	const float steer_speed_floor =
+		std::max(0.0f, std::min(1.0f, pf.steer_speed_floor));
+
+	const int v_min_i = cfg::FTG_SPEED_MIN_MM_S;
+	const int v_max_i =
+		(int)std::lround((float)cfg::FTG_SPEED_MAX_MM_S * pf.v_max_scale);
+	const int warn_cap_i = (int)std::lround(
+		(float)cfg::FTG_SPEED_WARN_CAP_MM_S * pf.warn_cap_scale);
+	const int no_gap_cap_i = (int)std::lround(
+		(float)cfg::FTG_NO_GAP_SPEED_CAP_MM_S * pf.no_gap_cap_scale);
+	const int creep_i = pf.creep_speed_mm_s;
+
+	const float steer_slew =
+		std::max(1.0f, cfg::FTG_STEER_SLEW_DEG_PER_S * pf.steer_slew_scale);
+	const float gap_turn_pen =
+		cfg::FTG_GAP_TURN_PENALTY * pf.gap_turn_penalty_scale;
+	const float gap_delta_pen =
+		cfg::FTG_GAP_DELTA_PENALTY * pf.gap_delta_penalty_scale;
+
 	static constexpr float kRadToDeg = 57.2957795f;
 	const float max_steer = (float)mc_config::STEER_ANGLE_MAX_DEG;
 	float yaw_bias = 0.0f;
@@ -148,7 +175,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		has_brake_cap = true;
 		const float tau = (float)cfg::FTG_PREDICT_LATENCY_MS / 1000.0f;
 		const float d_react = v_est * tau + 0.5f * a_pos * tau * tau;
-		pred_margin_mm = d_react;
+		pred_margin_mm = d_react * pf.pred_margin_scale;
 		if (pred_margin_mm > (float)cfg::FTG_PREDICT_MARGIN_MAX_MM)
 			pred_margin_mm = (float)cfg::FTG_PREDICT_MARGIN_MAX_MM;
 	}
@@ -255,13 +282,13 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	int min_angle = 0;
 
 	// delta_relax: 近距離ほど舵の急変を許す（jerk_weight と同様）
-	auto delta_relax = [](int depth_mm) -> float {
-		if (cfg::FTG_JERK_RELAX_MM <= cfg::FTG_NEAR_OBSTACLE_MM)
+	auto delta_relax = [th_near_mm](int depth_mm) -> float {
+		if (cfg::FTG_JERK_RELAX_MM <= th_near_mm)
 			return 1.0f;
 		if (depth_mm >= cfg::FTG_JERK_RELAX_MM)
 			return 1.0f;
-		float s = (float)(depth_mm - cfg::FTG_NEAR_OBSTACLE_MM) /
-				  (float)(cfg::FTG_JERK_RELAX_MM - cfg::FTG_NEAR_OBSTACLE_MM);
+		float s = (float)(depth_mm - th_near_mm) /
+				  (float)(cfg::FTG_JERK_RELAX_MM - th_near_mm);
 		if (s < 0.0f)
 			s = 0.0f;
 		else if (s > 1.0f)
@@ -303,8 +330,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 				peak_dist = d;
 				peak_angle = a;
 			}
-			const float excess =
-				std::max(0.0f, (float)(d - cfg::FTG_NEAR_OBSTACLE_MM));
+			const float excess = std::max(0.0f, (float)(d - th_near_mm));
 			const float w = std::pow(excess, cfg::FTG_GAP_WEIGHT_GAMMA);
 			w_sum += w;
 			angle_sum += w * (float)a;
@@ -322,8 +348,8 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		const float d_norm = std::fabs(target - clamped_last) /
 							 (float)mc_config::STEER_ANGLE_MAX_DEG;
 		const float dr = delta_relax(depth_mm);
-		const float pen = cfg::FTG_GAP_TURN_PENALTY * a_norm +
-						  cfg::FTG_GAP_DELTA_PENALTY * dr * (d_norm * d_norm);
+		const float pen =
+			gap_turn_pen * a_norm + gap_delta_pen * dr * (d_norm * d_norm);
 		const float score = base - pen;
 		if (score > best_score) {
 			best_score = score;
@@ -348,7 +374,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			min_corridor = d_mm;
 			min_angle = angle;
 		}
-		const bool free = (d_mm >= cfg::FTG_GAP_FREE_MM);
+		const bool free = (d_mm >= th_gap_free_mm);
 		if (free) {
 			if (!in_gap) {
 				in_gap = true;
@@ -379,7 +405,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	// Safety: ensure target stays within steering limits even transiently.
 	target_angle_f = std::max(-max_steer, std::min(max_steer, target_angle_f));
 
-	const float max_delta = cfg::FTG_STEER_SLEW_DEG_PER_S * dt_s;
+	const float max_delta = steer_slew * dt_s;
 	float applied_angle_f = target_angle_f;
 	const float delta = applied_angle_f - clamped_last;
 	if (delta > max_delta)
@@ -449,8 +475,8 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			path_clearance_mm = corridor_min_mm;
 	}
 
-	const bool warn = (path_clearance_mm > 0) &&
-					  (path_clearance_mm < cfg::FTG_WARN_OBSTACLE_MM);
+	const bool warn =
+		(path_clearance_mm > 0) && (path_clearance_mm < th_warn_mm);
 
 	int out_speed = 0;
 	if (path_clearance_mm > 0) {
@@ -467,8 +493,8 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			}
 		}
 
-		const float v_min = (float)cfg::FTG_SPEED_MIN_MM_S;
-		const float v_max = (float)cfg::FTG_SPEED_MAX_MM_S;
+		const float v_min = (float)v_min_i;
+		const float v_max = (float)v_max_i;
 		const float r_m = std::max(0.0f, d_speed_mm / 1000.0f);
 		float v_dist = v_min;
 		if (r_m <= cfg::FTG_SPEED_R_SAFE_M) {
@@ -486,8 +512,10 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			std::min(1.0f, std::fabs((float)out_angle) /
 							   (float)mc_config::STEER_ANGLE_MAX_DEG);
 		static constexpr float kPiOver2 = 1.57079632679f;
+		const float cos_factor = std::cos(steer_ratio * kPiOver2);
 		const float v_steer =
-			v_min + (v_max - v_min) * std::cos(steer_ratio * kPiOver2);
+			v_min + (v_max - v_min) * (steer_speed_floor +
+									   (1.0f - steer_speed_floor) * cos_factor);
 
 		const float v_final = std::min(v_dist, v_steer);
 		const int speed =
@@ -495,29 +523,29 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		out_speed = speed;
 
 		// turn-cap: 舵が追いつくまでの時間に対して、距離から速度上限を作る
-		const float slew = std::max(1.0f, cfg::FTG_STEER_SLEW_DEG_PER_S);
+		const float slew = steer_slew;
 		const float t_turn = std::fabs((float)out_angle - clamped_last) / slew;
 		const float avail_mm =
-			(float)std::max(0, path_clearance_mm - cfg::FTG_NEAR_OBSTACLE_MM);
+			(float)std::max(0, path_clearance_mm - th_near_mm);
 		if (avail_mm > 0.0f && t_turn > 0.0f) {
 			const float v_turn =
 				avail_mm / (t_turn + cfg::FTG_TURN_CAP_LATENCY_S);
-			const int v_cap = (int)std::lround(std::max(
-				0.0f, std::min((float)cfg::FTG_SPEED_MAX_MM_S, v_turn)));
+			const int v_cap = (int)std::lround(
+				std::max(0.0f, std::min((float)v_max_i, v_turn)));
 			if (v_cap < out_speed)
 				out_speed = v_cap;
 		}
 
 		if (warn) {
-			out_speed = std::min(out_speed, cfg::FTG_SPEED_WARN_CAP_MM_S);
+			out_speed = std::min(out_speed, warn_cap_i);
 		}
 		if (!found_gap) {
 			// gapが取れてない時は慎重に（止まらず"じわ"前進）
-			out_speed = std::min(out_speed, cfg::FTG_NO_GAP_SPEED_CAP_MM_S);
+			out_speed = std::min(out_speed, no_gap_cap_i);
 		}
 	}
 	if (out_speed > 0 && has_brake_cap && path_clearance_mm > 0) {
-		int d_cap_mm = path_clearance_mm - cfg::FTG_NEAR_OBSTACLE_MM;
+		int d_cap_mm = path_clearance_mm - th_near_mm;
 		if (d_cap_mm < 0)
 			d_cap_mm = 0;
 		float v_cap_mm_s = (a_brake_use > 0.0f)
@@ -535,7 +563,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	// 停止禁止: path_clearance>0 のとき最低 creep 速度を維持（sf=0 → cmd=0
 	// を防ぐ）
 	if (path_clearance_mm > 0)
-		out_speed = std::max(out_speed, cfg::FTG_CREEP_SPEED_MM_S);
+		out_speed = std::max(out_speed, creep_i);
 
 	if (telemetry_) {
 		std::array< float, TELEMETRY_HEAT_BINS > heat_bins{};
@@ -606,8 +634,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		std::string override_detail = "NONE";
 		if (warn) {
 			override_kind = "SLOW";
-			override_detail =
-				"SLOW<" + std::to_string(cfg::FTG_WARN_OBSTACLE_MM) + "mm";
+			override_detail = "SLOW<" + std::to_string(th_warn_mm) + "mm";
 		}
 		const bool include_candidates =
 			(override_kind != "NONE") ||
@@ -615,6 +642,8 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			 std::fabs(*best_delta) >= cfg::TELEMETRY_CANDIDATE_EVENT_DEG);
 
 		TelemetrySample sample;
+		sample.profile_id = static_cast< uint8_t >(profile_);
+		sample.speed_cap_mm_s = v_max_i;
 		sample.ts_us = mc::core::Time::us();
 		sample.run_id = run_id;
 		sample.tick = tick;
@@ -643,8 +672,8 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		sample.steer_clamp_deg = mc_config::STEER_ANGLE_MAX_DEG;
 		sample.override_kind = override_kind;
 		sample.override_detail = override_detail;
-		sample.th_stop_mm = cfg::FTG_NEAR_OBSTACLE_MM;
-		sample.th_safe_mm = cfg::FTG_WARN_OBSTACLE_MM;
+		sample.th_stop_mm = th_near_mm;
+		sample.th_safe_mm = th_warn_mm;
 		sample.scan_age_ms = std::nullopt;
 		const uint64_t t1_us = mc::core::Time::us();
 		sample.planner_latency_ms = (uint32_t)((t1_us - t0_us) / 1000);

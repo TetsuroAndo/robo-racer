@@ -30,6 +30,8 @@ struct TelemetrySample {
 	std::string run_id;
 	uint64_t tick{};
 	uint64_t scan_id{};
+	uint8_t profile_id{1};
+	int speed_cap_mm_s{0}; // sparkline などのスケール用（任意）
 	std::string mode{"UNKNOWN"};
 	std::string map_state{"UNKNOWN"};
 	std::optional< uint32_t > scan_age_ms;
