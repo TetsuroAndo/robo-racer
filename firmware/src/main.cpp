@@ -366,8 +366,8 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	if (pwm_cmd < 0)
 		pwm_cmd = 0;
 
-	// 停止禁止: DRIVE_PWM_MIN_WHEN_STOP未満 のときは最低PWM（0..255）で走行継続
-	if (pwm_cmd < (int16_t)cfg::DRIVE_PWM_MIN_WHEN_STOP &&
+	// RPi通信確立時は確定で最低PWM（0..255）で走行、0は出さない
+	if (desired.fresh && pwm_cmd < (int16_t)cfg::DRIVE_PWM_MIN_WHEN_STOP &&
 		!brake_out.brake_active && !g_state.killed)
 		pwm_cmd = (int16_t)cfg::DRIVE_PWM_MIN_WHEN_STOP;
 
