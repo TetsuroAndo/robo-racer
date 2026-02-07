@@ -366,6 +366,10 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	if (pwm_cmd < 0)
 		pwm_cmd = 0;
 
+	// 停止禁止: 0 のときは最低PWM（0..255）で走行継続
+	if (pwm_cmd == 0 && !brake_out.brake_active && !g_state.killed)
+		pwm_cmd = (int16_t)cfg::DRIVE_PWM_MIN_WHEN_STOP;
+
 	// 2) BrakeController が逆転パルス/惰行で PWM 上書きする場合
 	if (brake_out.pwm_override)
 		pwm_cmd = brake_out.pwm_cmd;

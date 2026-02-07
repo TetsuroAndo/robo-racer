@@ -18,9 +18,13 @@ SafetyResult SafetySupervisor::apply(uint32_t now_ms, float dt_s,
 		_tsd.limit(out.targets.speed_mm_s, mode, tsd, imu, imu_valid,
 				   out.targets.steer_cdeg, &d->tsd);
 
-	// TSD20 が STOP/MARGIN/AGE_STALE で速度0にしたとき BrakeController 用に
-	// stop_requested（Tsd20Limiter 内で設定済み）
-	out.stop_requested = d->tsd.stop_requested;
-	out.stop_level = d->tsd.stop_level;
+	// 停止禁止: ブレーキ要求を無効化（PWM側で最低値に置換）
+	if (out.targets.speed_mm_s <= 0) {
+		out.stop_requested = false;
+		out.stop_level = StopLevel::NONE;
+	} else {
+		out.stop_requested = d->tsd.stop_requested;
+		out.stop_level = d->tsd.stop_level;
+	}
 	return out;
 }

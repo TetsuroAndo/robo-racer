@@ -258,6 +258,8 @@ static constexpr bool ENGINE_ACTIVE_BRAKE_ENABLE = true;
 static constexpr bool DRIVE_BRAKE_ON_KILLED = true;
 // killed/expired 時のブレーキ duty（0..BRAKE_PWM_MAX）
 static constexpr uint8_t DRIVE_KILL_BRAKE_DUTY = 60;
+// 停止禁止時: 停止指示受け取り時の最低PWM（0..255、非零で最小）
+static constexpr uint8_t DRIVE_PWM_MIN_WHEN_STOP = 16;
 static_assert(DRIVE_KILL_BRAKE_DUTY <= BRAKE_PWM_MAX,
 			  "DRIVE_KILL_BRAKE_DUTY must be <= BRAKE_PWM_MAX");
 static_assert(TSD20_NEAR_PWM_CAP <= ENGINE_SPEED_LIMIT,
