@@ -264,7 +264,7 @@ static constexpr bool DRIVE_BRAKE_ON_KILLED = true;
 // killed/expired 時のブレーキ duty（0..BRAKE_PWM_MAX）
 static constexpr uint8_t DRIVE_KILL_BRAKE_DUTY = 60;
 // RPi通信確立時: 最低PWM（0..255）、0は出さず常にこれ以上で走行
-static constexpr uint8_t DRIVE_PWM_MIN_WHEN_STOP = 32;
+static constexpr uint8_t DRIVE_PWM_MIN_WHEN_STOP = 42;
 // AUTO+fresh時: 速度指令0が来ても creep に丸める（保険）
 // デッドバンド(200)以上にして低速制御で止まらないようにする
 static constexpr int CREEP_SPEED_MM_S = 220;
