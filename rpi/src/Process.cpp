@@ -532,6 +532,11 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			out_speed = v_cap;
 	}
 
+	// 停止禁止: path_clearance>0 のとき最低 creep 速度を維持（sf=0 → cmd=0
+	// を防ぐ）
+	if (path_clearance_mm > 0)
+		out_speed = std::max(out_speed, cfg::FTG_CREEP_SPEED_MM_S);
+
 	if (telemetry_) {
 		std::array< float, TELEMETRY_HEAT_BINS > heat_bins{};
 		std::array< int, TELEMETRY_COMPASS_BINS > lidar_bins{};

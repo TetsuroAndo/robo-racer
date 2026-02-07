@@ -95,7 +95,7 @@ static constexpr uint16_t TSD20_MAX_AGE_MS          = 200;
 
 // TSD20が近距離のときの「PWMスケール上限」を距離で切る（ユーザ要望: 4m 未満 => 128）
 static constexpr uint16_t TSD20_NEAR_DISTANCE_MM = 4000;
-static constexpr uint8_t TSD20_NEAR_PWM_CAP     = 255;
+static constexpr uint8_t TSD20_NEAR_PWM_CAP     = 128;
 
 //------------------------------------------------------------------------------
 // 自動モードのハートビート監視タイムアウト

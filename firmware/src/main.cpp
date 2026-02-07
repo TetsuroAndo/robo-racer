@@ -366,14 +366,15 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	if (pwm_cmd < 0)
 		pwm_cmd = 0;
 
-	// RPi通信確立時は確定で最低PWM（0..255）で走行、0は出さない
-	if (desired.fresh && pwm_cmd < (int16_t)cfg::DRIVE_PWM_MIN_WHEN_STOP &&
-		!brake_out.brake_active && !g_state.killed)
-		pwm_cmd = (int16_t)cfg::DRIVE_PWM_MIN_WHEN_STOP;
-
 	// 2) BrakeController が逆転パルス/惰行で PWM 上書きする場合
 	if (brake_out.pwm_override)
 		pwm_cmd = brake_out.pwm_cmd;
+
+	// 3) 最終段: killed/expired 以外で前進時は最低PWM floor（0は出さない）
+	if (!brake_out.pwm_override && desired.fresh && !brake_out.brake_active &&
+		!g_state.killed && pwm_cmd >= 0 &&
+		pwm_cmd < (int16_t)cfg::DRIVE_PWM_MIN_WHEN_STOP)
+		pwm_cmd = (int16_t)cfg::DRIVE_PWM_MIN_WHEN_STOP;
 
 	uint8_t brake_duty = brake_out.brake_duty;
 	bool brake_active = brake_out.brake_active;
