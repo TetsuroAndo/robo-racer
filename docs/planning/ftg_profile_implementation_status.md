@@ -13,7 +13,7 @@
 | Process へのプロファイル渡し | 完了 | Process.h / Process.cpp |
 | 運転パラメータのプロファイル上書き | 完了 | Process::proc() 内 |
 | TelemetrySample への profile_id / speed_cap 追加 | 完了 | Telemetry.h |
-| UI の PROF 表示 | 完了 | | PROF 1:MID |
+| UI の PROF 表示 | 完了 | 3行目に色付きで別行表示（SAFE=緑, MID=シアン, FAST=黄, ATTACK=赤） |
 | JSON への profile 出力 | 完了 | profile.id, profile.name |
 
 ## 使い方

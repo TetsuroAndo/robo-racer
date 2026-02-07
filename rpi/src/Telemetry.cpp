@@ -1115,11 +1115,12 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	};
 
 	const int frame_lines =
-		18 + (int)heat_rows.size() + (int)event_lines.size();
+		19 + (int)heat_rows.size() + (int)event_lines.size();
 	if (!ui_initialized_) {
 		std::cout << "\x1b[?25l"; // hide cursor
 		std::cout << top << "\n"
 				  << line(l0.str()) << "\n"
+				  << line(l0b.str()) << "\n"
 				  << line(l1.str()) << "\n"
 				  << line(top_compass) << "\n";
 		for (const auto &row : heat_rows) {
@@ -1149,6 +1150,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		std::cout << "\x1b[" << frame_lines << "A";
 		std::cout << "\x1b[2K\r" << top << "\n";
 		std::cout << "\x1b[2K\r" << line(l0.str()) << "\n";
+		std::cout << "\x1b[2K\r" << line(l0b.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l1.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(top_compass) << "\n";
 		for (const auto &row : heat_rows) {
