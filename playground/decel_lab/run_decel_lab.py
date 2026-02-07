@@ -187,7 +187,7 @@ def main() -> None:
     tsd = TsdSnap()
 
     def profile_speed(tsd_mm: int) -> int:
-        # ざっくり比較用（本番は firmware の Tsd20Limiter が主役）
+        # ざっくり比較用(本番は firmware の Tsd20Limiter が主役)
         # STOP_DISTANCE=500, SLOWDOWN=1000 想定の線形プロファイル
         stop = 500
         slow = 1000
