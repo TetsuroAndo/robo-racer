@@ -69,10 +69,10 @@ inline const ProfileParams &profileParams(Profile p) {
 		 0.60f, 0.60f, 0.90f},
 		// 4 SAFE_MID: SAFE 速度/マージン + 旋回ペナルティは MID と同じ
 		{"SAFE_MID", 0.1f, 0.85f, 0.85f, 180, 130, 260, 1.50f, 0.00f, 0.85f,
-		 1.00f, 1.00f, 1.20f},
+		 1.00f, 1.00f, 1.00f},
 		// 5 SAFE_LIGHT: SAFE 速度/マージン + 旋回ペナルティは MID より軽い
 		{"SAFE_LIGHT", 0.1f, 0.85f, 0.85f, 180, 130, 260, 1.50f, 0.00f, 0.85f,
-		 0.80f, 0.80f, 1.20f},
+		 0.60f, 0.60f, 1.00f},
 	};
 	return tbl[static_cast< uint8_t >(p)];
 }
