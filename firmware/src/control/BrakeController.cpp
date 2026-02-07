@@ -42,8 +42,17 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 	bool effective_stop = stop_requested;
 
 	if (stop_requested && !_prev_stop_requested) {
-		// stop_requested検出時に内部状態をリセット（立ち上がりエッジのみ）
-		reset_();
+		// stop_requested検出時に必要な状態のみを初期化（立ち上がりエッジのみ）
+		// reset_()を呼ばず、必要な状態のみをリセットして加速への影響を最小化
+		_phase = Phase::IDLE;
+		_phase_until_ms = 0;
+		_pulse_count = 0;
+		_pulse_limit = cfg::BRAKE_REV_MAX_PULSES;
+		_rev_on_ms = cfg::BRAKE_REV_PULSE_MS;
+		_rev_on_ms_used = cfg::BRAKE_REV_PULSE_MS;
+		_rev_v_start = 0.0f;
+		_brake_ramp = 0.0f;
+		// _stop_since_ms はリセットせず、ブレーキ解除後の再加速抑制を維持
 		_last_stop_ms = now_ms;
 		_latched_level = stop_level;
 	} else if (stop_requested) {
