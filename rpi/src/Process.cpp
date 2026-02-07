@@ -271,10 +271,10 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		if (ds.empty())
 			return;
 		std::sort(ds.begin(), ds.end());
-		const size_t q_idx = (ds.size() > 1)
-								 ? (size_t)((float)(ds.size() - 1) *
-											cfg::FTG_GAP_DEPTH_Q)
-								 : 0;
+		const size_t q_idx =
+			(ds.size() > 1)
+				? (size_t)((float)(ds.size() - 1) * cfg::FTG_GAP_DEPTH_Q)
+				: 0;
 		const int depth_mm = ds[std::min(q_idx, ds.size() - 1)];
 		float w_sum = 0.0f;
 		float angle_sum = 0.0f;
@@ -297,17 +297,16 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		}
 		const float target =
 			(w_sum > 0.0f) ? (angle_sum / w_sum) : (float)peak_angle;
-		const float depth_n = std::min(
-			1.0f, (float)depth_mm / (float)cfg::FTG_GAP_DEPTH_SAT_MM);
+		const float depth_n =
+			std::min(1.0f, (float)depth_mm / (float)cfg::FTG_GAP_DEPTH_SAT_MM);
 		const float width_n =
 			std::min(1.0f, (float)width / (float)cfg::FTG_GAP_WIDTH_REF_DEG);
 		const float base =
 			depth_n * (1.0f + cfg::FTG_GAP_WIDTH_WEIGHT * width_n);
 		const float a_norm =
 			std::fabs(target) / (float)mc_config::STEER_ANGLE_MAX_DEG;
-		const float d_norm =
-			std::fabs(target - clamped_last) /
-			(float)mc_config::STEER_ANGLE_MAX_DEG;
+		const float d_norm = std::fabs(target - clamped_last) /
+							 (float)mc_config::STEER_ANGLE_MAX_DEG;
 		const float dr = delta_relax(depth_mm);
 		const float pen = cfg::FTG_GAP_TURN_PENALTY * a_norm +
 						  cfg::FTG_GAP_DELTA_PENALTY * dr * (d_norm * d_norm);
@@ -360,9 +359,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		return ProcResult(0, 0);
 	}
 
-	// gapが無い=即停止 はやめる（誤爆源）。舵は0へ戻すが、停止判定は
-	// steer-aware clearance に任せる。
-	float target_angle_f = found_gap ? selected_target : 0.0f;
+	// gapが無い=即停止 はやめる（誤爆源）。舵は0へ戻さず進行方向を維持し、
+	// 停止判定は steer-aware clearance に任せる。
+	float target_angle_f = found_gap ? selected_target : clamped_last;
 	// Safety: ensure target stays within steering limits even transiently.
 	target_angle_f = std::max(-max_steer, std::min(max_steer, target_angle_f));
 
@@ -380,11 +379,17 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	{
 		const int out_idx = out_angle - cfg::FTG_ANGLE_MIN_DEG;
 		if (!found_gap) {
-			corridor_min_mm =
-				(min_corridor == std::numeric_limits< int32_t >::max())
-					? 0
-					: min_corridor;
-			best_angle = min_angle;
+			// 進行方向（舵維持）のコリドーを使用。スタックを避けるため舵は維持済み
+			if (out_idx >= 0 && out_idx < cfg::FTG_BIN_COUNT &&
+				corridor_min[(size_t)out_idx] > 0) {
+				corridor_min_mm = corridor_min[(size_t)out_idx];
+			} else {
+				corridor_min_mm =
+					(min_corridor == std::numeric_limits< int32_t >::max())
+						? 0
+						: min_corridor;
+			}
+			best_angle = static_cast< int >(std::lround(clamped_last));
 			best_dist = corridor_min_mm;
 		} else {
 			if (out_idx >= 0 && out_idx < cfg::FTG_BIN_COUNT) {
@@ -404,17 +409,21 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	applied_angle_f = (float)out_angle;
 
 	// steer-aware path clearance（「真横の壁」を無視できる）
+	// 現在舵と指令舵を分離保持。停止判定は指令舵側のみで行い、
+	// 指令舵に十分なクリアランスがあれば即停止せず低速復帰可能にする。
 	int path_clearance_mm = corridor_min_mm; // fallback: 旧直線コリドー
+	int c_clearance_now = 0;
+	int c_clearance_cmd = 0;
 	if (cfg::FTG_ARC_CLEARANCE_ENABLE) {
 		const float half_w_mm =
 			(cfg::FTG_CAR_WIDTH_M * 0.5f + cfg::FTG_MARGIN_M) * 1000.0f;
-		const int c_now = steerAwareClearanceMm(bins, clamped_last, half_w_mm);
-		const int c_cmd =
+		c_clearance_now = steerAwareClearanceMm(bins, clamped_last, half_w_mm);
+		c_clearance_cmd =
 			steerAwareClearanceMm(bins, applied_angle_f, half_w_mm);
-		// "今の舵で当たる/指令舵で当たる"の最悪を採用（舵が遷移中でも安全側）
-		path_clearance_mm = std::min(c_now, c_cmd);
+		// 指令舵側のクリアランスで判定（復帰可能方向が十分なら停止しない）
+		path_clearance_mm = c_clearance_cmd;
 		if (path_clearance_mm <= 0)
-			path_clearance_mm = std::max(c_now, c_cmd);
+			path_clearance_mm = c_clearance_now;
 		if (path_clearance_mm <= 0)
 			path_clearance_mm = corridor_min_mm;
 	}

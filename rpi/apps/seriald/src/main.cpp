@@ -446,14 +446,17 @@ int main(int argc, char **argv) {
 									" v_mm_s=" + std::to_string(vmm) +
 									" steer_cdeg=" + std::to_string(scd) +
 									" age_ms=" + std::to_string(age_ms) +
-									" faults=0x" + [](uint16_t x) {
+									" faults=0x" +
+									[](uint16_t x) {
 										char b[16];
 										snprintf(b, sizeof(b), "%04x", x);
 										return std::string(b);
 									}(faults) +
-									" brake_duty=" + std::to_string(applied_brake_duty) +
-									" stop_level=" + std::to_string(stop_level) +
-									" stop_req=" + std::to_string(stop_requested));
+									" brake_duty=" +
+									std::to_string(applied_brake_duty) +
+									" stop_level=" +
+									std::to_string(stop_level) + " stop_req=" +
+									std::to_string(stop_requested));
 						} else if (f.type() ==
 									   (uint8_t)mc::proto::Type::IMU_STATUS &&
 								   f.payload_len ==
@@ -478,7 +481,8 @@ int main(int argc, char **argv) {
 									mc::core::LogLevel::Info, "imu",
 									"valid=" + std::to_string(valid) +
 										" calib=" + std::to_string(calibrated) +
-										" brake_mode=" + std::to_string(brake_mode) +
+										" brake_mode=" +
+										std::to_string(brake_mode) +
 										" a_long_mm_s2=" +
 										std::to_string(a_long) +
 										" v_est_mm_s=" + std::to_string(v_est) +
