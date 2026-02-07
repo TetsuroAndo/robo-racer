@@ -47,6 +47,7 @@ private:
 	uint32_t _last_stop_ms = 0;
 	float _brake_ramp = 0.0f;
 	StopLevel _latched_level = StopLevel::NONE;
+	bool _prev_stop_requested = false;
 	void reset_();
 	void fillDebug_(BrakeControllerOutput& out, uint8_t phase) const;
 };

@@ -156,9 +156,11 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 	// 4m未満なら「PWMスケール128相当」の速度(mm/s)まで上限を被せる
 	// ここでは speed_mm_s 自体は変えず、最終cap(v_cap)にだけ反映する
 	if (speed_mm_s > 0 && tsd.mm < cfg::TSD20_NEAR_DISTANCE_MM) {
-		const float v_near =
-			(float)mc_config::SPEED_MAX_MM_S *
-			((float)cfg::TSD20_NEAR_PWM_CAP / (float)cfg::ENGINE_SPEED_LIMIT);
+		const float safe_engine_limit = (cfg::ENGINE_SPEED_LIMIT > 0)
+											? (float)cfg::ENGINE_SPEED_LIMIT
+											: 1.0f;
+		const float v_near = (float)mc_config::SPEED_MAX_MM_S *
+							 ((float)cfg::TSD20_NEAR_PWM_CAP / safe_engine_limit);
 		v_cap = std::min(v_cap, v_near);
 	}
 

@@ -159,6 +159,11 @@ def main() -> None:
     ap.add_argument("--max-sec", type=float, default=8.0)
     args = ap.parse_args()
 
+    if args.drive_hz <= 0:
+        ap.error("--drive-hz must be greater than 0")
+    if args.ping_hz <= 0:
+        ap.error("--ping-hz must be greater than 0")
+
     os.makedirs(args.outdir, exist_ok=True)
 
     ctl = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
@@ -234,7 +239,8 @@ def main() -> None:
                 imu.brake_mode = 1 if (flg & (1 << 2)) else 0
             elif ptype == TYPE_TSD20_STATUS and len(payload) == 8:
                 # Tsd20StatusPayload: <HHHBB
-                mm, age_ms, _period, _fails, flg = struct.unpack("<HHHBB", payload)
+                # mm, period, age_ms, fails, flg
+                mm, _period, age_ms, _fails, flg = struct.unpack("<HHHBB", payload)
                 tsd.mm = int(mm)
                 tsd.age_ms = int(age_ms)
                 tsd.valid = 1 if (flg & 0x02) else 0
@@ -282,7 +288,12 @@ def main() -> None:
         )
 
         # stop condition
-        if brake_started and abs(imu.v_est) <= args.stop_v and (t - brake_t0) > 0.2:
+        if (
+            brake_started
+            and imu.age_ms > 0
+            and abs(imu.v_est) <= args.stop_v
+            and (t - brake_t0) > 0.2
+        ):
             break
 
         time.sleep(0.001)

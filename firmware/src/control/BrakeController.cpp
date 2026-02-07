@@ -16,6 +16,7 @@ void BrakeController::reset_() {
 	_last_stop_ms = 0;
 	_brake_ramp = 0.0f;
 	_latched_level = StopLevel::NONE;
+	_prev_stop_requested = false;
 }
 
 void BrakeController::fillDebug_(BrakeControllerOutput &out,
@@ -40,9 +41,13 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 
 	bool effective_stop = stop_requested;
 
-	if (stop_requested) {
-		// stop_requested検出時に内部状態をリセット
+	if (stop_requested && !_prev_stop_requested) {
+		// stop_requested検出時に内部状態をリセット（立ち上がりエッジのみ）
 		reset_();
+		_last_stop_ms = now_ms;
+		_latched_level = stop_level;
+	} else if (stop_requested) {
+		// stop_requestedが継続中はリセットしない
 		_last_stop_ms = now_ms;
 		_latched_level = stop_level;
 	} else {
@@ -246,5 +251,6 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 	out.brake_duty = computeBrakeDuty();
 	out.brake_mode = true;
 	fillDebug_(out, 0);
+	_prev_stop_requested = stop_requested;
 	return out;
 }

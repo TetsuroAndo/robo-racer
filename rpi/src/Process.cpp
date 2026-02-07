@@ -255,6 +255,72 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		return s * s;
 	};
 
+	// gap スコアリングヘルパー関数
+	auto scoreGap = [&](int gap_start, int gap_end) -> void {
+		const int width = gap_end - gap_start + 1;
+		if (width < cfg::FTG_GAP_MIN_WIDTH_DEG)
+			return;
+		std::vector< int > ds;
+		ds.reserve((size_t)width);
+		for (int a = gap_start; a <= gap_end; ++a) {
+			const int a_idx = a - cfg::FTG_ANGLE_MIN_DEG;
+			const int v = corridor_min[(size_t)a_idx];
+			if (v > 0)
+				ds.push_back(v);
+		}
+		if (ds.empty())
+			return;
+		std::sort(ds.begin(), ds.end());
+		const size_t q_idx = (ds.size() > 1)
+								 ? (size_t)((float)(ds.size() - 1) *
+											cfg::FTG_GAP_DEPTH_Q)
+								 : 0;
+		const int depth_mm = ds[std::min(q_idx, ds.size() - 1)];
+		float w_sum = 0.0f;
+		float angle_sum = 0.0f;
+		int peak_angle = gap_start;
+		int peak_dist = 0;
+		for (int a = gap_start; a <= gap_end; ++a) {
+			const int a_idx = a - cfg::FTG_ANGLE_MIN_DEG;
+			const int d = corridor_min[(size_t)a_idx];
+			if (d <= 0)
+				continue;
+			if (d > peak_dist) {
+				peak_dist = d;
+				peak_angle = a;
+			}
+			const float excess =
+				std::max(0.0f, (float)(d - cfg::FTG_NEAR_OBSTACLE_MM));
+			const float w = std::pow(excess, cfg::FTG_GAP_WEIGHT_GAMMA);
+			w_sum += w;
+			angle_sum += w * (float)a;
+		}
+		const float target =
+			(w_sum > 0.0f) ? (angle_sum / w_sum) : (float)peak_angle;
+		const float depth_n = std::min(
+			1.0f, (float)depth_mm / (float)cfg::FTG_GAP_DEPTH_SAT_MM);
+		const float width_n =
+			std::min(1.0f, (float)width / (float)cfg::FTG_GAP_WIDTH_REF_DEG);
+		const float base =
+			depth_n * (1.0f + cfg::FTG_GAP_WIDTH_WEIGHT * width_n);
+		const float a_norm =
+			std::fabs(target) / (float)mc_config::STEER_ANGLE_MAX_DEG;
+		const float d_norm =
+			std::fabs(target - clamped_last) /
+			(float)mc_config::STEER_ANGLE_MAX_DEG;
+		const float dr = delta_relax(depth_mm);
+		const float pen = cfg::FTG_GAP_TURN_PENALTY * a_norm +
+						  cfg::FTG_GAP_DELTA_PENALTY * dr * (d_norm * d_norm);
+		const float score = base - pen;
+		if (score > best_score) {
+			best_score = score;
+			selected_target = target;
+			best_angle = peak_angle;
+			best_dist = depth_mm;
+			found_gap = true;
+		}
+	};
+
 	// gap 抽出・スコアリング
 	bool in_gap = false;
 	int gap_s = 0;
@@ -278,143 +344,13 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		} else {
 			if (in_gap) {
 				const int gap_e = angle - 1;
-				const int width = gap_e - gap_s + 1;
-				if (width >= cfg::FTG_GAP_MIN_WIDTH_DEG) {
-					std::vector< int > ds;
-					ds.reserve((size_t)width);
-					for (int a = gap_s; a <= gap_e; ++a) {
-						const int a_idx = a - cfg::FTG_ANGLE_MIN_DEG;
-						const int v = corridor_min[(size_t)a_idx];
-						if (v > 0)
-							ds.push_back(v);
-					}
-					if (!ds.empty()) {
-						std::sort(ds.begin(), ds.end());
-						const size_t q_idx =
-							(ds.size() > 1) ? (size_t)((float)(ds.size() - 1) *
-													   cfg::FTG_GAP_DEPTH_Q)
-											: 0;
-						const int depth_mm = ds[std::min(q_idx, ds.size() - 1)];
-						float w_sum = 0.0f;
-						float angle_sum = 0.0f;
-						int peak_angle = gap_s;
-						int peak_dist = 0;
-						for (int a = gap_s; a <= gap_e; ++a) {
-							const int a_idx = a - cfg::FTG_ANGLE_MIN_DEG;
-							const int d = corridor_min[(size_t)a_idx];
-							if (d <= 0)
-								continue;
-							if (d > peak_dist) {
-								peak_dist = d;
-								peak_angle = a;
-							}
-							const float excess = std::max(
-								0.0f, (float)(d - cfg::FTG_NEAR_OBSTACLE_MM));
-							const float w =
-								std::pow(excess, cfg::FTG_GAP_WEIGHT_GAMMA);
-							w_sum += w;
-							angle_sum += w * (float)a;
-						}
-						const float target = (w_sum > 0.0f)
-												 ? (angle_sum / w_sum)
-												 : (float)peak_angle;
-						const float depth_n = std::min(
-							1.0f,
-							(float)depth_mm / (float)cfg::FTG_GAP_DEPTH_SAT_MM);
-						const float width_n = std::min(
-							1.0f,
-							(float)width / (float)cfg::FTG_GAP_WIDTH_REF_DEG);
-						const float base =
-							depth_n *
-							(1.0f + cfg::FTG_GAP_WIDTH_WEIGHT * width_n);
-						const float a_norm =
-							std::fabs(target) /
-							(float)mc_config::STEER_ANGLE_MAX_DEG;
-						const float d_norm =
-							std::fabs(target - clamped_last) /
-							(float)mc_config::STEER_ANGLE_MAX_DEG;
-						const float dr = delta_relax(depth_mm);
-						const float pen =
-							cfg::FTG_GAP_TURN_PENALTY * a_norm +
-							cfg::FTG_GAP_DELTA_PENALTY * dr * (d_norm * d_norm);
-						const float score = base - pen;
-						if (score > best_score) {
-							best_score = score;
-							selected_target = target;
-							best_angle = peak_angle;
-							best_dist = depth_mm;
-							found_gap = true;
-						}
-					}
-				}
+				scoreGap(gap_s, gap_e);
 				in_gap = false;
 			}
 		}
 	}
 	if (in_gap) {
-		const int gap_e = cfg::FTG_ANGLE_MAX_DEG;
-		const int width = gap_e - gap_s + 1;
-		if (width >= cfg::FTG_GAP_MIN_WIDTH_DEG) {
-			std::vector< int > ds;
-			ds.reserve((size_t)width);
-			for (int a = gap_s; a <= gap_e; ++a) {
-				const int a_idx = a - cfg::FTG_ANGLE_MIN_DEG;
-				const int v = corridor_min[(size_t)a_idx];
-				if (v > 0)
-					ds.push_back(v);
-			}
-			if (!ds.empty()) {
-				std::sort(ds.begin(), ds.end());
-				const size_t q_idx = (ds.size() > 1)
-										 ? (size_t)((float)(ds.size() - 1) *
-													cfg::FTG_GAP_DEPTH_Q)
-										 : 0;
-				const int depth_mm = ds[std::min(q_idx, ds.size() - 1)];
-				float w_sum = 0.0f;
-				float angle_sum = 0.0f;
-				int peak_angle = gap_s;
-				int peak_dist = 0;
-				for (int a = gap_s; a <= gap_e; ++a) {
-					const int a_idx = a - cfg::FTG_ANGLE_MIN_DEG;
-					const int d = corridor_min[(size_t)a_idx];
-					if (d <= 0)
-						continue;
-					if (d > peak_dist) {
-						peak_dist = d;
-						peak_angle = a;
-					}
-					const float excess =
-						std::max(0.0f, (float)(d - cfg::FTG_NEAR_OBSTACLE_MM));
-					const float w = std::pow(excess, cfg::FTG_GAP_WEIGHT_GAMMA);
-					w_sum += w;
-					angle_sum += w * (float)a;
-				}
-				const float target =
-					(w_sum > 0.0f) ? (angle_sum / w_sum) : (float)peak_angle;
-				const float depth_n = std::min(
-					1.0f, (float)depth_mm / (float)cfg::FTG_GAP_DEPTH_SAT_MM);
-				const float width_n = std::min(
-					1.0f, (float)width / (float)cfg::FTG_GAP_WIDTH_REF_DEG);
-				const float base =
-					depth_n * (1.0f + cfg::FTG_GAP_WIDTH_WEIGHT * width_n);
-				const float a_norm =
-					std::fabs(target) / (float)mc_config::STEER_ANGLE_MAX_DEG;
-				const float d_norm = std::fabs(target - clamped_last) /
-									 (float)mc_config::STEER_ANGLE_MAX_DEG;
-				const float dr = delta_relax(depth_mm);
-				const float pen =
-					cfg::FTG_GAP_TURN_PENALTY * a_norm +
-					cfg::FTG_GAP_DELTA_PENALTY * dr * (d_norm * d_norm);
-				const float score = base - pen;
-				if (score > best_score) {
-					best_score = score;
-					selected_target = target;
-					best_angle = peak_angle;
-					best_dist = depth_mm;
-					found_gap = true;
-				}
-			}
-		}
+		scoreGap(gap_s, cfg::FTG_ANGLE_MAX_DEG);
 	}
 
 	if (!has_data) {

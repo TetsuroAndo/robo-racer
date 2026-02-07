@@ -509,7 +509,7 @@ void loop() {
 			(g_brakeStartMs != 0) ? (now - g_brakeStartMs) : 0;
 		const uint32_t runMs = (g_runStartMs != 0) ? (now - g_runStartMs) : 0;
 
-		Serial.printf("LOG,%lu,%s,%u,%s,%d,%lu,%lu,\n", (unsigned long)now,
+		Serial.printf("LOG,%lu,%s,%u,%s,%d,%lu,%lu\n", (unsigned long)now,
 					  stateName(g_state), (unsigned)mm, modeName(g_mode),
 					  currentPwm, (unsigned long)phaseMs, (unsigned long)runMs);
 	}

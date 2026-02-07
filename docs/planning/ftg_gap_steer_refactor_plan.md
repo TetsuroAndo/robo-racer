@@ -292,7 +292,7 @@ if (in_gap) finalize_gap(gap_s, FTG_ANGLE_MAX_DEG);
 
 #### 3.1.4 gap スコア
 
-```
+```text
 score = depth_n * (1 + FTG_GAP_WIDTH_WEIGHT * width_n) - pen
 pen = FTG_GAP_TURN_PENALTY * |target|/STEER_MAX + FTG_GAP_DELTA_PENALTY * delta_relax(depth) * (|target-last|/STEER_MAX)^2
 ```
@@ -305,7 +305,7 @@ pen = FTG_GAP_TURN_PENALTY * |target|/STEER_MAX + FTG_GAP_DELTA_PENALTY * delta_
 
 gap 内の距離重み付き中心：
 
-```
+```text
 w[angle] = max(0, corridor_min[angle] - FTG_NEAR_OBSTACLE_MM)^FTG_GAP_WEIGHT_GAMMA
 target = sum(w * angle) / sum(w)
 ```
