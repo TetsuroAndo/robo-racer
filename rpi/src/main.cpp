@@ -3,6 +3,7 @@
 #include "Sender.h"
 #include "ShmLidarReceiver.h"
 #include "config/Config.h"
+#include "config/Profile.h"
 #include "mc/core/Log.hpp"
 #include "mc/core/Path.hpp"
 #include "mc/core/Signal.hpp"
@@ -38,6 +39,7 @@ int main(int argc, char **argv) {
 	std::string log_path = cfg::DEFAULT_PROCESS_LOG;
 	std::string metrics_log_path = cfg::DEFAULT_METRICSD_LOG;
 	std::string run_id;
+	int profile_id = 1; // ./robo-racer のみの場合は 1 (Mid) をデフォルト
 	double telemetry_hz = cfg::TELEMETRY_DEFAULT_HZ;
 	TelemetryLevel telemetry_level = TelemetryLevel::Basic;
 	std::vector< std::string > positional;
@@ -47,6 +49,8 @@ int main(int argc, char **argv) {
 			log_path = argv[++i];
 		} else if (a == "--metrics-log" && i + 1 < argc) {
 			metrics_log_path = argv[++i];
+		} else if (a == "--profile" && i + 1 < argc) {
+			profile_id = std::atoi(argv[++i]);
 		} else if (a == "--telemetry-hz" && i + 1 < argc) {
 			telemetry_hz = std::atof(argv[++i]);
 		} else if (a == "--telemetry-level" && i + 1 < argc) {
@@ -66,6 +70,17 @@ int main(int argc, char **argv) {
 				  << cfg::TELEMETRY_DEFAULT_HZ << "\n";
 		telemetry_hz = cfg::TELEMETRY_DEFAULT_HZ;
 	}
+
+	// ./robo-racer 1 の "先頭数値" を profile として解釈
+	// (既存 positional: lidar_dev, lidar_baud, seriald_sock は後ろへスライド)
+	if (!positional.empty()) {
+		cfg::Profile p;
+		if (cfg::parseProfileToken(positional[0], p)) {
+			profile_id = static_cast< int >(p);
+			positional.erase(positional.begin());
+		}
+	}
+	const cfg::Profile profile = cfg::clampProfileInt(profile_id);
 
 	const char *lidar_dev = (positional.size() >= 1)
 								? positional[0].c_str()
@@ -93,7 +108,7 @@ int main(int argc, char **argv) {
 	telemetry.setMetricsLogPath(metrics_log_path);
 	telemetry.setRateHz(telemetry_hz);
 	telemetry.setLevel(telemetry_level);
-	Process process(&telemetry);
+	Process process(&telemetry, profile);
 	Sender sender(seriald_sock, &telemetry);
 
 	uint64_t last_wait_log_us = 0;

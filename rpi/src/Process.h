@@ -3,6 +3,7 @@
 #include "LidarReceiver.h"
 #include "MotionState.h"
 #include "Telemetry.h"
+#include "config/Profile.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -17,7 +18,8 @@ struct ProcResult {
 
 class Process {
 public:
-	explicit Process(TelemetryEmitter *telemetry);
+	explicit Process(TelemetryEmitter *telemetry,
+					cfg::Profile profile = cfg::Profile::Mid);
 	~Process();
 
 	ProcResult proc(const std::vector< LidarData > &lidarData,
@@ -29,6 +31,7 @@ public:
 
 private:
 	TelemetryEmitter *telemetry_;
+	cfg::Profile profile_;
 	mutable bool has_last_best_ = false;
 	mutable float last_best_angle_ = 0.0f;
 	mutable uint64_t last_proc_ts_us_ = 0;

@@ -1,6 +1,7 @@
 #include "Telemetry.h"
 
 #include "config/Config.h"
+#include "config/Profile.h"
 #include "mc/core/Log.hpp"
 #include "mc/core/Time.hpp"
 
@@ -24,6 +25,41 @@ std::string colorOverride(const std::string &ovr) {
 	if (ovr == "STOP")
 		return "\x1b[31mSTOP\x1b[0m";
 	return "\x1b[33m" + ovr + "\x1b[0m";
+}
+
+static const char *profileNameById(uint8_t id) {
+	return cfg::profileName(cfg::clampProfileInt(static_cast< int >(id)));
+}
+
+static std::string colorProfile(uint8_t id) {
+	// 0=SAFE:緑, 1=MID:シアン, 2=FAST:黄, 3=ATTACK:赤, 4=SAFE_MID:緑,
+	// 5=SAFE_LIGHT:明緑
+	const char *code;
+	switch (id) {
+	case 0:
+		code = "\x1b[32m"; // green
+		break;
+	case 1:
+		code = "\x1b[36m"; // cyan
+		break;
+	case 2:
+		code = "\x1b[33m"; // yellow
+		break;
+	case 3:
+		code = "\x1b[31m"; // red
+		break;
+	case 4:
+		code = "\x1b[32m"; // green (SAFE 系)
+		break;
+	case 5:
+		code = "\x1b[92m"; // bright green (SAFE 系)
+		break;
+	default:
+		code = "\x1b[0m";
+		break;
+	}
+	return std::string(code) + "PROF " + std::to_string((unsigned)id) + ":" +
+		   profileNameById(id) + "\x1b[0m";
 }
 
 size_t visibleLen(const std::string &s) {
@@ -306,7 +342,9 @@ void TelemetryEmitter::emitJson_(const TelemetrySample &s) {
 	telemetry << "{\"t_us\":" << s.ts_us << ",\"type\":\"telemetry\""
 			  << ",\"run_id\":\"" << s.run_id << "\",\"tick\":" << s.tick
 			  << ",\"scan_id\":" << s.scan_id << ",\"mode\":\"" << s.mode
-			  << "\",\"map_state\":\"" << s.map_state << "\""
+			  << "\",\"profile\":{\"id\":" << (unsigned)s.profile_id
+			  << ",\"name\":\"" << profileNameById(s.profile_id) << "\"}"
+			  << ",\"map_state\":\"" << s.map_state << "\""
 			  << ",\"best\":{\"ang_deg\":" << s.best_angle_deg
 			  << ",\"dist_mm\":" << s.best_dist_mm
 			  << ",\"score\":" << s.best_score << ",\"delta_deg\":"
@@ -523,9 +561,9 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 
 	Severity dist_sev = Severity::Safe;
 	if (s.path_obst_mm > 0) {
-		if (s.path_obst_mm <= cfg::FTG_NEAR_OBSTACLE_MM) {
+		if (s.path_obst_mm <= s.th_stop_mm) {
 			dist_sev = Severity::Crit;
-		} else if (s.path_obst_mm < cfg::FTG_WARN_OBSTACLE_MM) {
+		} else if (s.path_obst_mm < s.th_safe_mm) {
 			dist_sev = Severity::Warn;
 		}
 	}
@@ -592,6 +630,9 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	   << (s.run_id.size() >= 6 ? s.run_id.substr(s.run_id.size() - 6)
 								: s.run_id)
 	   << " | tick " << s.tick;
+
+	std::ostringstream l0b;
+	l0b << "  " << colorProfile(s.profile_id);
 
 	std::ostringstream l1;
 	l1 << "BADGES " << colorWrap("MAP", map_sev) << "/"
@@ -808,9 +849,11 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 
 	const std::string sp_angle =
 		sparkline(spark_best_, -90.0f, 90.0f, cfg::TELEMETRY_SPARK_LEN);
+	const float spd_max = (s.speed_cap_mm_s > 0)
+							  ? (float)s.speed_cap_mm_s
+							  : (float)cfg::FTG_SPEED_MAX_MM_S;
 	const std::string sp_speed =
-		sparkline(spark_speed_, 0.0f, (float)cfg::FTG_SPEED_MAX_MM_S,
-				  cfg::TELEMETRY_SPARK_LEN);
+		sparkline(spark_speed_, 0.0f, spd_max, cfg::TELEMETRY_SPARK_LEN);
 	const std::string sp_dist =
 		sparkline(spark_dist_, 0.0f, (float)cfg::TELEMETRY_DIST_BAR_MAX_MM,
 				  cfg::TELEMETRY_SPARK_LEN);
@@ -1079,11 +1122,12 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 	};
 
 	const int frame_lines =
-		18 + (int)heat_rows.size() + (int)event_lines.size();
+		19 + (int)heat_rows.size() + (int)event_lines.size();
 	if (!ui_initialized_) {
 		std::cout << "\x1b[?25l"; // hide cursor
 		std::cout << top << "\n"
 				  << line(l0.str()) << "\n"
+				  << line(l0b.str()) << "\n"
 				  << line(l1.str()) << "\n"
 				  << line(top_compass) << "\n";
 		for (const auto &row : heat_rows) {
@@ -1113,6 +1157,7 @@ void TelemetryEmitter::emitUi_(const TelemetrySample &s) {
 		std::cout << "\x1b[" << frame_lines << "A";
 		std::cout << "\x1b[2K\r" << top << "\n";
 		std::cout << "\x1b[2K\r" << line(l0.str()) << "\n";
+		std::cout << "\x1b[2K\r" << line(l0b.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(l1.str()) << "\n";
 		std::cout << "\x1b[2K\r" << line(top_compass) << "\n";
 		for (const auto &row : heat_rows) {
