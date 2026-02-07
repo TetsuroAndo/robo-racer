@@ -324,7 +324,7 @@ void Sender::handleImuStatus(const mc::proto::ImuStatusPayload &payload) {
 	MotionState st{};
 	st.valid = (payload.flags & (1u << 0)) != 0;
 	st.calibrated = (payload.flags & (1u << 1)) != 0;
-	st.abs_active = (payload.flags & (1u << 2)) != 0;
+	st.brake_mode = (payload.flags & (1u << 2)) != 0;
 	st.a_long_mm_s2 =
 		(int16_t)mc::proto::from_le16((uint16_t)payload.a_long_mm_s2_le);
 	st.v_est_mm_s =

@@ -41,6 +41,8 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 	bool effective_stop = stop_requested;
 
 	if (stop_requested) {
+		// stop_requested検出時に内部状態をリセット
+		reset_();
 		_last_stop_ms = now_ms;
 		_latched_level = stop_level;
 	} else {

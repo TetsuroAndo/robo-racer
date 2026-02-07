@@ -435,6 +435,9 @@ int main(int argc, char **argv) {
 							int16_t vmm = rd16s(p + 4);
 							int16_t scd = rd16s(p + 6);
 							uint16_t age_ms = rd16u(p + 8);
+							uint8_t applied_brake_duty = p[10];
+							uint8_t stop_level = p[11];
+							uint8_t stop_requested = p[12];
 
 							logger.log(
 								mc::core::LogLevel::Info, "seriald",
@@ -447,7 +450,10 @@ int main(int argc, char **argv) {
 										char b[16];
 										snprintf(b, sizeof(b), "%04x", x);
 										return std::string(b);
-									}(faults));
+									}(faults) +
+									" brake_duty=" + std::to_string(applied_brake_duty) +
+									" stop_level=" + std::to_string(stop_level) +
+									" stop_req=" + std::to_string(stop_requested));
 						} else if (f.type() ==
 									   (uint8_t)mc::proto::Type::IMU_STATUS &&
 								   f.payload_len ==
@@ -463,7 +469,7 @@ int main(int argc, char **argv) {
 							(void)reserved;
 							const bool valid = (flags & (1u << 0)) != 0;
 							const bool calibrated = (flags & (1u << 1)) != 0;
-							const bool abs_active = (flags & (1u << 2)) != 0;
+							const bool brake_mode = (flags & (1u << 2)) != 0;
 							const uint32_t now_ms = mc::core::Time::ms();
 							if (now_ms - last_imu_log_ms >=
 								seriald_cfg::IMU_LOG_INTERVAL_MS) {
@@ -472,7 +478,7 @@ int main(int argc, char **argv) {
 									mc::core::LogLevel::Info, "imu",
 									"valid=" + std::to_string(valid) +
 										" calib=" + std::to_string(calibrated) +
-										" abs=" + std::to_string(abs_active) +
+										" brake_mode=" + std::to_string(brake_mode) +
 										" a_long_mm_s2=" +
 										std::to_string(a_long) +
 										" v_est_mm_s=" + std::to_string(v_est) +

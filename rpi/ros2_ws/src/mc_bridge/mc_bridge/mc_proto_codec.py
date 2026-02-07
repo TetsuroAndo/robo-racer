@@ -71,12 +71,12 @@ def decode_packet(enc: bytes) -> Tuple[Optional[Tuple[int, int, int, bytes]], st
 
 
 def decode_status(payload: bytes):
-    if len(payload) != 10:
+    if len(payload) != 14:
         return None
-    seq_applied, auto_active, faults, speed, steer, age_ms = struct.unpack(
-        "<BBHhhH", payload
+    seq_applied, auto_active, faults, speed, steer, age_ms, applied_brake_duty, stop_level, stop_requested, reserved = struct.unpack(
+        "<BBHhhHBBBB", payload
     )
-    return seq_applied, auto_active, faults, speed, steer, age_ms
+    return seq_applied, auto_active, faults, speed, steer, age_ms, applied_brake_duty, stop_level, stop_requested, reserved
 
 
 def decode_drive(payload: bytes):

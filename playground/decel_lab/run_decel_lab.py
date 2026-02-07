@@ -119,7 +119,7 @@ class ImuSnap:
     v_est: float = 0.0
     a_long: float = 0.0
     calibrated: int = 0
-    abs_active: int = 0
+    brake_mode: int = 0
     age_ms: int = 0
 
 
@@ -231,7 +231,7 @@ def main() -> None:
                 imu.a_long = float(a_long)
                 imu.age_ms = int(age_ms)
                 imu.calibrated = 1 if (flg & (1 << 1)) else 0
-                imu.abs_active = 1 if (flg & (1 << 2)) else 0
+                imu.brake_mode = 1 if (flg & (1 << 2)) else 0
             elif ptype == TYPE_TSD20_STATUS and len(payload) == 8:
                 # Tsd20StatusPayload: <HHHBB
                 mm, age_ms, _period, _fails, flg = struct.unpack("<HHHBB", payload)
@@ -273,7 +273,7 @@ def main() -> None:
                 "tsd_valid": int(tsd.valid),
                 "tsd_mm": int(tsd.mm),
                 "imu_calib": int(imu.calibrated),
-                "imu_abs": int(imu.abs_active),
+                "imu_brake_mode": int(imu.brake_mode),
                 "v_est_mm_s": int(imu.v_est),
                 "a_long_mm_s2": int(imu.a_long),
                 "imu_age_ms": int(imu.age_ms),

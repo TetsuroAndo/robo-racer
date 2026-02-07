@@ -164,7 +164,7 @@ private:
 	struct MotionCache {
 		bool valid = false;
 		bool calibrated = false;
-		bool abs_active = false;
+		bool brake_mode = false;
 		int16_t a_long_mm_s2 = 0;
 		int16_t v_est_mm_s = 0;
 		uint16_t a_brake_cap_mm_s2 = 0;
@@ -251,7 +251,7 @@ inline void TelemetryEmitter::updateMotion(const MotionState &motion) {
 	std::lock_guard< std::mutex > lk(metrics_mtx_);
 	motion_.valid = motion.valid;
 	motion_.calibrated = motion.calibrated;
-	motion_.abs_active = motion.abs_active;
+	motion_.brake_mode = motion.brake_mode;
 	motion_.a_long_mm_s2 = motion.a_long_mm_s2;
 	motion_.v_est_mm_s = motion.v_est_mm_s;
 	motion_.a_brake_cap_mm_s2 = motion.a_brake_cap_mm_s2;

@@ -234,12 +234,14 @@ def main() -> int:
             if not pkt or pkt[0] != TYPE_STATUS:
                 continue
             _ptype, _flags, _seq, payload = pkt
-            seq_applied, auto_active, faults, speed, steer, age = struct.unpack(
-                "<BBHhhH", payload
+            if len(payload) != 14:
+                continue
+            seq_applied, auto_active, faults, speed, steer, age, applied_brake_duty, stop_level, stop_requested, reserved = struct.unpack(
+                "<BBHhhHBBBB", payload
             )
             print(
                 f"STATUS seq={seq_applied} auto={auto_active} speed={speed} "
-                f"steer={steer} age={age} faults=0x{faults:04x}"
+                f"steer={steer} age={age} faults=0x{faults:04x} brake_duty={applied_brake_duty} stop_level={stop_level} stop_req={stop_requested}"
             )
 
     finally:
