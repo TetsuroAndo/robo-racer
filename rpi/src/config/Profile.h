@@ -27,6 +27,9 @@ struct ProfileParams {
 	int near_obstacle_mm;     // 近すぎ（実質 stop 域）
 	int warn_obstacle_mm;     // 減速域
 
+	// 左右マージン（守りほど大きく、攻めほど小さく）
+	float margin_scale;       // cfg::FTG_MARGIN_M に乗算
+
 	// ステア・追従（速度低下の床、ステア追従の速さ）
 	float steer_speed_floor;  // 0.0=従来、>0 で曲がっても速度を落としすぎない
 	float steer_slew_scale;   // cfg::FTG_STEER_SLEW_DEG_PER_S に乗算
@@ -50,18 +53,18 @@ inline Profile clampProfileInt(int v) {
 inline const ProfileParams &profileParams(Profile p) {
 	// NOTE: profile 1(Mid) は現状の cfg 値に一致するようにしている
 	static const ProfileParams tbl[] = {
-		// 0 SAFE
-		{"SAFE", 0.42f, 0.85f, 0.85f, 180, 130, 260, 0.00f, 0.85f, 1.20f,
-		 1.30f, 1.20f},
+		// 0 SAFE: 左右マージン大（壁との余裕を取る）
+		{"SAFE", 0.42f, 0.85f, 0.85f, 180, 130, 260, 1.50f, 0.00f, 0.85f,
+		 1.20f, 1.30f, 1.20f},
 		// 1 MID (current)
-		{"MID", 1.00f, 1.00f, 1.00f, 220, 100, 200, 0.00f, 1.00f, 1.00f,
-		 1.00f, 1.00f},
+		{"MID", 1.00f, 1.00f, 1.00f, 220, 100, 200, 1.00f, 0.00f, 1.00f,
+		 1.00f, 1.00f, 1.00f},
 		// 2 FAST
-		{"FAST", 1.05f, 1.10f, 1.10f, 250, 90, 180, 0.20f, 1.10f, 0.80f,
-		 0.80f, 0.95f},
-		// 3 ATTACK
-		{"ATTACK", 1.10f, 1.20f, 1.20f, 280, 80, 160, 0.30f, 1.20f, 0.60f,
-		 0.60f, 0.90f},
+		{"FAST", 1.05f, 1.10f, 1.10f, 250, 90, 180, 0.85f, 0.20f, 1.10f,
+		 0.80f, 0.80f, 0.95f},
+		// 3 ATTACK: 左右マージン小（刺さる角を許容）
+		{"ATTACK", 1.10f, 1.20f, 1.20f, 280, 80, 160, 0.70f, 0.30f, 1.20f,
+		 0.60f, 0.60f, 0.90f},
 	};
 	return tbl[static_cast< uint8_t >(p)];
 }

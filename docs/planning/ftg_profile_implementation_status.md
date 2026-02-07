@@ -39,10 +39,10 @@
 
 | プロファイル | 名前 | 特徴 |
 |--------------|------|------|
-| 0 | SAFE | 距離しきい値大、速度上限低、予測マージン大 |
+| 0 | SAFE | 距離しきい値大、速度上限低(v_max_scale 0.42)、左右マージン大(1.5)、予測マージン大 |
 | 1 | MID | 現状値と一致（デフォルト） |
-| 2 | FAST | 攻め寄り、steer_speed_floor 0.2、gap ペナルティ減少 |
-| 3 | ATTACK | 攻め、steer_speed_floor 0.3、最も積極的 |
+| 2 | FAST | 攻め寄り、steer_speed_floor 0.2、margin_scale 0.85、gap ペナルティ減少 |
+| 3 | ATTACK | 攻め、steer_speed_floor 0.3、margin_scale 0.70（刺さる角許容）、最も積極的 |
 
 ## 変更ファイル一覧
 

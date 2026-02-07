@@ -251,8 +251,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			r_m = std::min(r_m, cfg::FTG_CORRIDOR_LOOKAHEAD_M);
 		}
 		const float theta_req_rad =
-			2.0f *
-			std::atan((cfg::FTG_CAR_WIDTH_M * 0.5f + cfg::FTG_MARGIN_M) / r_m);
+			2.0f * std::atan((cfg::FTG_CAR_WIDTH_M * 0.5f +
+							  cfg::FTG_MARGIN_M * pf.margin_scale) /
+							 r_m);
 		const float theta_req_deg = theta_req_rad * kRadToDeg;
 		int n = static_cast< int >(std::ceil(theta_req_deg));
 		if (n < 0)
@@ -455,8 +456,9 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	int c_clearance_now = 0;
 	int c_clearance_cmd = 0;
 	if (cfg::FTG_ARC_CLEARANCE_ENABLE) {
-		const float half_w_mm =
-			(cfg::FTG_CAR_WIDTH_M * 0.5f + cfg::FTG_MARGIN_M) * 1000.0f;
+		const float half_w_mm = (cfg::FTG_CAR_WIDTH_M * 0.5f +
+								 cfg::FTG_MARGIN_M * pf.margin_scale) *
+								1000.0f;
 		// 生binsで円弧クリアランスを計算（予測による2D座標の歪みを回避）
 		// 予測マージンは弧距離から減算し、進行方向に沿って正しく適用する
 		c_clearance_now =
