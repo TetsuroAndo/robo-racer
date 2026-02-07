@@ -28,6 +28,8 @@ ros2_ws/colcon_log/
 /training/data/bags/
 playground/decel_lab/out
 
+.claude
+
 # Created by https://www.toptal.com/developers/gitignore/api/c
 # Edit at https://www.toptal.com/developers/gitignore?templates=c
 

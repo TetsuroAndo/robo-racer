@@ -85,6 +85,10 @@ steerAwareClearanceMm(const std::array< int32_t, cfg::FTG_BIN_COUNT > &bins,
 		if (t < 0.0f)
 			continue;
 		const int s_i = (int)std::lround(t * R);
+		// 車体現在位置の側壁（arc距離が極小）を無視する。
+		// 旋回の反対側にある壁がコリドー幅に入るが、車は離れる方向なので安全。
+		if (s_i < cfg::FTG_ARC_MIN_AHEAD_MM)
+			continue;
 		if (s_i < best)
 			best = s_i;
 	}

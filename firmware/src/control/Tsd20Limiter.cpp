@@ -58,8 +58,26 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 		return 0;
 	}
 
-	if (cfg::TSD20_STOP_DISTANCE_MM > 0 &&
-		tsd.mm <= cfg::TSD20_STOP_DISTANCE_MM) {
+	// steer_ratio を先に計算（STOP距離の操舵緩和に使う）
+	const float steer_abs = std::min((float)std::abs(steer_cdeg),
+									 (float)mc_config::STEER_ANGLE_MAX_CDEG);
+	const float steer_ratio =
+		(mc_config::STEER_ANGLE_MAX_CDEG > 0)
+			? (steer_abs / (float)mc_config::STEER_ANGLE_MAX_CDEG)
+			: 0.0f;
+
+	// 操舵角に応じてSTOP距離を緩和（旋回中は前方1Dセンサーの
+	// 読み値が実際の進行方向の障害物距離を反映しないため）
+	uint16_t eff_stop = cfg::TSD20_STOP_DISTANCE_MM;
+	if (cfg::TSD20_STOP_STEER_RELAX_MM > 0 && steer_ratio > 0.0f) {
+		float es = (float)cfg::TSD20_STOP_DISTANCE_MM -
+				   (float)cfg::TSD20_STOP_STEER_RELAX_MM * steer_ratio;
+		if (es < (float)cfg::TSD20_STOP_MIN_MM)
+			es = (float)cfg::TSD20_STOP_MIN_MM;
+		eff_stop = (uint16_t)std::lround(es);
+	}
+
+	if (eff_stop > 0 && tsd.mm <= eff_stop) {
 		d->reason = TSD_STOP;
 		if (diag) {
 			diag->stop_requested = true;
@@ -68,21 +86,7 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 		return 0;
 	}
 
-	if (tsd.mm <= cfg::TSD20_MARGIN_MM) {
-		d->reason = TSD_MARGIN;
-		if (diag) {
-			diag->stop_requested = true;
-			diag->stop_level = StopLevel::MARGIN;
-		}
-		return 0;
-	}
-
-	const float steer_abs = std::min((float)std::abs(steer_cdeg),
-									 (float)mc_config::STEER_ANGLE_MAX_CDEG);
-	const float steer_ratio =
-		(mc_config::STEER_ANGLE_MAX_CDEG > 0)
-			? (steer_abs / (float)mc_config::STEER_ANGLE_MAX_CDEG)
-			: 0.0f;
+	// マージンにも操舵緩和を適用
 	const float relax = (float)cfg::TSD20_MARGIN_RELAX_MM * steer_ratio;
 	float base_margin = (float)cfg::TSD20_MARGIN_MM - relax;
 	if (base_margin < (float)cfg::TSD20_MARGIN_MIN_MM)
@@ -144,11 +148,10 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 		v_max = 0.0f;
 
 	float v_cap = std::min(v_max, (float)mc_config::SPEED_MAX_MM_S);
-	const uint16_t stop_mm = cfg::TSD20_STOP_DISTANCE_MM;
 	const uint16_t slow_mm = cfg::TSD20_SLOWDOWN_DISTANCE_MM;
-	if (slow_mm > stop_mm && tsd.mm < slow_mm) {
+	if (slow_mm > eff_stop && tsd.mm < slow_mm) {
 		const float ratio =
-			(float)(tsd.mm - stop_mm) / (float)(slow_mm - stop_mm);
+			(float)(tsd.mm - eff_stop) / (float)(slow_mm - eff_stop);
 		const float slow = mc::clamp< float >(ratio, 0.0f, 1.0f);
 		v_cap *= slow;
 	}

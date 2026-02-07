@@ -90,6 +90,9 @@ static constexpr float FTG_WHEELBASE_M = 0.257f;
 static constexpr float FTG_ARC_STRAIGHT_DEG = 2.0f;
 // クリアランスが取れないときの"十分遠い"扱い（速度が上限に張り付く値でOK）
 static constexpr int FTG_ARC_CLEARANCE_MAX_MM = 12000;
+// 円弧上でこの距離未満の障害物は「車体現在位置の側壁」として無視する。
+// 旋回中、反対側の壁が円弧コリドーに入り arc距離が極小(< 10mm)となる偽陽性を防ぐ。
+static constexpr int FTG_ARC_MIN_AHEAD_MM = 30;
 
 // 予測マージン（IMUの速度/加速度で安全側へ補正）
 static constexpr bool FTG_PREDICT_ENABLE       = true;

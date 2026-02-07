@@ -89,6 +89,10 @@ static constexpr int TSD20_PREDICT_ACCEL_MAX_MM_S2 = 8000;
 
 // Distance clamp (tune to your course)
 static constexpr uint16_t TSD20_STOP_DISTANCE_MM    = 500;
+// 操舵時のSTOP距離緩和: フル操舵でSTOP距離を最大この値だけ短縮する
+static constexpr uint16_t TSD20_STOP_STEER_RELAX_MM = 300;
+// 操舵時でもこれ未満には縮めない（絶対安全距離）
+static constexpr uint16_t TSD20_STOP_MIN_MM          = 150;
 static constexpr uint16_t TSD20_SLOWDOWN_DISTANCE_MM = 1000;
 // TSD20の距離サンプルとして「使用を許可する最大Age」。これを超えたら停止扱い。
 static constexpr uint16_t TSD20_MAX_AGE_MS          = 200;
