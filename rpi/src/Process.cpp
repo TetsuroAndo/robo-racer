@@ -163,6 +163,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		corridor_min[(size_t)i] = 0;
 	}
 
+	// 生の距離でbinsを構築（予測マージンなし）
 	for (const auto &p : lidarData) {
 		int angle = static_cast< int >(std::lround(p.angle));
 		if (angle < cfg::FTG_ANGLE_MIN_DEG || angle > cfg::FTG_ANGLE_MAX_DEG)
@@ -170,14 +171,23 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 		int dist = p.distance;
 		if (dist <= 0)
 			continue;
-		if (pred_margin_i > 0) {
-			dist -= pred_margin_i;
-			if (dist <= 0)
-				continue;
-		}
 		const int idx = angle - cfg::FTG_ANGLE_MIN_DEG;
 		if (bins[(size_t)idx] == 0 || dist < bins[(size_t)idx])
 			bins[(size_t)idx] = dist;
+	}
+
+	// 円弧クリアランス用に生のbinsを保存（予測で2D座標が歪むのを防ぐ）
+	const auto raw_bins = bins;
+
+	// corridor/gap/速度計算用に予測マージンを適用
+	if (pred_margin_i > 0) {
+		for (int i = 0; i < cfg::FTG_BIN_COUNT; ++i) {
+			if (bins[(size_t)i] > 0) {
+				bins[(size_t)i] -= pred_margin_i;
+				if (bins[(size_t)i] <= 0)
+					bins[(size_t)i] = 0;
+			}
+		}
 	}
 
 	for (int angle = cfg::FTG_ANGLE_MIN_DEG; angle <= cfg::FTG_ANGLE_MAX_DEG;
@@ -421,9 +431,16 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 	if (cfg::FTG_ARC_CLEARANCE_ENABLE) {
 		const float half_w_mm =
 			(cfg::FTG_CAR_WIDTH_M * 0.5f + cfg::FTG_MARGIN_M) * 1000.0f;
-		c_clearance_now = steerAwareClearanceMm(bins, clamped_last, half_w_mm);
+		// 生binsで円弧クリアランスを計算（予測による2D座標の歪みを回避）
+		// 予測マージンは弧距離から減算し、進行方向に沿って正しく適用する
+		c_clearance_now =
+			steerAwareClearanceMm(raw_bins, clamped_last, half_w_mm);
 		c_clearance_cmd =
-			steerAwareClearanceMm(bins, applied_angle_f, half_w_mm);
+			steerAwareClearanceMm(raw_bins, applied_angle_f, half_w_mm);
+		if (pred_margin_i > 0) {
+			c_clearance_now = std::max(0, c_clearance_now - pred_margin_i);
+			c_clearance_cmd = std::max(0, c_clearance_cmd - pred_margin_i);
+		}
 		// 指令舵側のクリアランスで判定（復帰可能方向が十分なら停止しない）
 		path_clearance_mm = c_clearance_cmd;
 		if (path_clearance_mm <= 0)
@@ -432,18 +449,11 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			path_clearance_mm = corridor_min_mm;
 	}
 
-	const bool blocked = (path_clearance_mm > 0) &&
-						 (path_clearance_mm <= cfg::FTG_NEAR_OBSTACLE_MM);
 	const bool warn = (path_clearance_mm > 0) &&
 					  (path_clearance_mm < cfg::FTG_WARN_OBSTACLE_MM);
 
-	if (blocked) {
-		// STOP時でも舵は維持（次の再開で刺さりにくくする）
-		// out_speed は後段で blocked により 0 のまま
-	}
-
 	int out_speed = 0;
-	if (!blocked && path_clearance_mm > 0) {
+	if (path_clearance_mm > 0) {
 		int d_speed_mm = path_clearance_mm;
 		const int out_idx = out_angle - cfg::FTG_ANGLE_MIN_DEG;
 		if (out_idx >= 0 && out_idx < cfg::FTG_BIN_COUNT) {
@@ -506,7 +516,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 			out_speed = std::min(out_speed, cfg::FTG_NO_GAP_SPEED_CAP_MM_S);
 		}
 	}
-	if (!blocked && out_speed > 0 && has_brake_cap && path_clearance_mm > 0) {
+	if (out_speed > 0 && has_brake_cap && path_clearance_mm > 0) {
 		int d_cap_mm = path_clearance_mm - cfg::FTG_NEAR_OBSTACLE_MM;
 		if (d_cap_mm < 0)
 			d_cap_mm = 0;
@@ -589,11 +599,7 @@ ProcResult Process::proc(const std::vector< LidarData > &lidarData,
 
 		std::string override_kind = "NONE";
 		std::string override_detail = "NONE";
-		if (path_clearance_mm <= cfg::FTG_NEAR_OBSTACLE_MM) {
-			override_kind = "STOP";
-			override_detail =
-				"STOP<=" + std::to_string(cfg::FTG_NEAR_OBSTACLE_MM) + "mm";
-		} else if (warn) {
+		if (warn) {
 			override_kind = "SLOW";
 			override_detail =
 				"SLOW<" + std::to_string(cfg::FTG_WARN_OBSTACLE_MM) + "mm";

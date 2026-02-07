@@ -82,7 +82,7 @@ BrakeControllerOutput BrakeController::update(bool stop_requested,
 	const StopLevel level = stop_requested ? stop_level : _latched_level;
 
 	const auto computeBrakeDuty = [&]() -> uint8_t {
-		const uint16_t stop_dist = cfg::TSD20_STOP_DISTANCE_MM;
+		const uint16_t stop_dist = cfg::TSD20_MARGIN_MM;
 		const float close =
 			(stop_dist > 0)
 				? mc::clamp< float >(1.0f - (float)d_mm / (float)stop_dist,
