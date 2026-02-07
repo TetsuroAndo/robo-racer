@@ -88,8 +88,17 @@ static constexpr uint16_t TSD20_PREDICT_MARGIN_MAX_MM = 350;
 static constexpr int TSD20_PREDICT_ACCEL_MAX_MM_S2 = 8000;
 
 // Distance clamp (tune to your course)
-static constexpr uint16_t TSD20_STOP_DISTANCE_MM    = 500;
+// ハードストップ廃止: 物理ベースの v_cap で減速のみ行う
 static constexpr uint16_t TSD20_SLOWDOWN_DISTANCE_MM = 1000;
+// TSD20の距離サンプルとして「使用を許可する最大Age」。これを超えたら停止扱い。
+static constexpr uint16_t TSD20_MAX_AGE_MS          = 200;
+
+// TSD20が近距離のときの「PWMスケール上限」を距離で切る（ユーザ要望: 4m 未満 => 128）
+static constexpr uint16_t TSD20_NEAR_DISTANCE_MM = 4000;
+static constexpr uint8_t TSD20_NEAR_PWM_CAP     = 128;
+// レース/デバッグ用: d_allow<=0 でも v_cap を 0 にしない（徐行 floor）
+static constexpr bool TSD20_NO_STOP_ENABLE      = true;
+static constexpr int16_t TSD20_VCAP_FLOOR_MM_S  = 200;
 
 //------------------------------------------------------------------------------
 // 自動モードのハートビート監視タイムアウト
@@ -100,6 +109,8 @@ static constexpr uint32_t HEARTBEAT_TIMEOUT_MS = 200;
 // Drive用の監視タイムアウトと角度閾値
 //------------------------------------------------------------------------------
 
+// 10Hz運用なら 3周期分（300ms）以上推奨。ジッタで通信断扱いが頻発しないように
+static constexpr uint16_t DRIVE_TTL_DEFAULT_MS = 300;
 // ウォッチドッグ
 static constexpr uint32_t DRIVE_TIMEOUT_MS     = 250;
 
@@ -155,22 +166,6 @@ static constexpr int IMU_BRAKE_DETECT_MM_S2      = 800;
 static constexpr int IMU_BRAKE_CMD_DELTA_MM_S    = 200;
 
 //------------------------------------------------------------------------------
-// ABS reverse brake
-//------------------------------------------------------------------------------
-
-static constexpr bool ABS_ENABLE                = true;
-static constexpr bool ABS_ENABLE_IN_MANUAL      = false;
-static constexpr bool ABS_REQUIRE_CALIB         = true;
-static constexpr int ABS_SPEED_MARGIN_MM_S      = 150;
-static constexpr float ENGINE_RATE_DOWN_BRAKE    = 4000.0f;
-// TSD20がこの距離以下を検出したときのみABS発動（壁なし誤発動防止）
-static constexpr uint16_t ABS_TSD_TRIGGER_MM    = 320;
-// v_cmdがこれ以上なら発動しない（減速したい状況のみ）
-static constexpr int ABS_V_CMD_MAX_MM_S         = 200;
-// v_estがこれ未満は無視（ノイズ・手動移動の誤検出防止）
-static constexpr int ABS_V_EST_MIN_MM_S         = 300;
-
-//------------------------------------------------------------------------------
 // 速度制御（speed_mm_s -> PWM）
 //------------------------------------------------------------------------------
 
@@ -181,8 +176,41 @@ static constexpr float SPEED_KI_UNCAL          = 0.0f;
 static constexpr int SPEED_I_CLAMP             = 120;
 static constexpr int SPEED_DEADBAND_MM_S       = 200;
 static constexpr int SPEED_MIN_FWD_VEST_MM_S   = 100;
-// 前進時の最小PWM（静止摩擦克服、デッドゾーン対策）
-static constexpr int SPEED_PWM_MIN_FORWARD     = 30;
+// 前進時の最小PWM（静止摩擦克服、デッドゾーン対策、実機発進可能値）
+static constexpr int SPEED_PWM_MIN_FORWARD     = 55;
+
+//------------------------------------------------------------------------------
+// BrakeController（安全系 STOP 要求時のみ）
+//------------------------------------------------------------------------------
+
+// これ以下で負PWM禁止（静止中の後退防止）
+static constexpr int BRAKE_V_EPS_MM_S = 150;
+// 負PWMの最大絶対値（IBT-2 でも強すぎないところから）
+static constexpr int BRAKE_PWM_MAX = 80;
+// 静摩擦を超える最低トルク（効かないなら上げる）
+static constexpr int BRAKE_PWM_MIN = 20;
+// STOP要求が一瞬途切れてもブレーキを保持する時間 [ms]
+static constexpr uint32_t BRAKE_HOLD_MS = 120;
+// 負PWMを一気に出さず滑らかに増やす時間 [ms]
+static constexpr uint32_t BRAKE_RAMP_MS = 150;
+// ブレーキ解除後の再加速抑制時間 [ms]。この間は推力PWMを0に抑える
+static constexpr uint32_t BRAKE_COOLDOWN_MS = 100;
+
+static constexpr uint32_t BRAKE_REV_PULSE_MS = 200;   // 逆転する時間
+static constexpr uint32_t BRAKE_REV_COAST_MS = 60;    // パルス間の惰行
+static constexpr uint8_t BRAKE_REV_MAX_PULSES = 4;    // 最大パルス回数
+static constexpr int BRAKE_REV_MIN_V_MM_S = 900;     // これ以上速いときだけ逆転を許可
+static constexpr int BRAKE_REV_EXIT_V_MM_S = 350;    // これ未満になったら逆転禁止
+
+// 逆転パルス自動調整（IMU実測でON時間・パルス回数を適応）
+static constexpr uint16_t BRAKE_REV_ON_MIN_MS = 60;
+static constexpr uint16_t BRAKE_REV_ON_MAX_MS = 260;
+static constexpr uint16_t BRAKE_REV_ON_STEP_MS = 20;
+static constexpr uint16_t BRAKE_STOP_MARGIN_MM = 60;   // d_eff = max(60, d_mm - 60)
+static constexpr float BRAKE_REV_EFF_LOW = 0.70f;      // これ未満なら弱い→ON伸ばす
+static constexpr float BRAKE_REV_EFF_HIGH = 1.30f;    // これ超なら強い→ON縮める
+static constexpr int BRAKE_REV_MIN_DV_MM_S = 120;     // dv が小さすぎると推定不安定
+static constexpr float BRAKE_REV_A_TGT_FLOOR_MM_S2 = 4000.0f;  // a_tgt の下限
 
 //------------------------------------------------------------------------------
 // ステアサーボ設定（DS3218想定）
@@ -224,8 +252,29 @@ static constexpr int ENGINE_PWM_RES_BITS       = 8;
 static constexpr float ENGINE_RATE_UP          = 1600.0f;
 // 減速を速くしてブレーキ応答を改善（255→0 を約64msに短縮）
 static constexpr float ENGINE_RATE_DOWN        = 4000.0f;
+// ブレーキモード時の減速レート（Drive::setBrakeMode 時）
+static constexpr float ENGINE_RATE_DOWN_BRAKE = 4000.0f;
 static constexpr int ENGINE_SPEED_LIMIT        = 255;
+static constexpr int BRAKE_REV_PWM             = 255;
 static constexpr uint32_t ENGINE_DEADTIME_US   = 800;
+// アクティブブレーキ（両PWM同時＝短絡制動）。false なら推力0のみ（惰行）
+static constexpr bool ENGINE_ACTIVE_BRAKE_ENABLE = true;
+// killed/expired 時にブレーキを入れる（true: ブレーキ、false: 惰行停止）
+static constexpr bool DRIVE_BRAKE_ON_KILLED = true;
+// killed/expired 時のブレーキ duty（0..BRAKE_PWM_MAX）
+static constexpr uint8_t DRIVE_KILL_BRAKE_DUTY = 60;
+// RPi通信確立時: 最低PWM（0..255）、0は出さず常にこれ以上で走行
+static constexpr uint8_t DRIVE_PWM_MIN_WHEN_STOP = 42;
+// AUTO+fresh時: 速度指令0が来ても creep に丸める（保険）
+// デッドバンド(200)以上にして低速制御で止まらないようにする
+static constexpr int CREEP_SPEED_MM_S = 220;
+// 通信断以外で目標速度を 0 にしない（floor）。killed/expired では適用しない。
+static constexpr bool DRIVE_NO_STOP_ENABLE      = true;
+static constexpr int DRIVE_CREEP_SPEED_MM_S     = 220;
+static_assert(DRIVE_KILL_BRAKE_DUTY <= BRAKE_PWM_MAX,
+			  "DRIVE_KILL_BRAKE_DUTY must be <= BRAKE_PWM_MAX");
+static_assert(TSD20_NEAR_PWM_CAP <= ENGINE_SPEED_LIMIT,
+			  "TSD20_NEAR_PWM_CAP must be <= ENGINE_SPEED_LIMIT");
 
 //------------------------------------------------------------------------------
 // 手動操作の上限（ゲームパッド）

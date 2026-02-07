@@ -90,13 +90,13 @@ RPi内IPCで運搬する payload の**フィールド/単位/意味**を凍結�
 ---
 
 ## VEHICLE_STATUS: `IPC_VEHICLE_STATUS`
-### `VehicleStatusPayload`（14 bytes）
+### `VehicleStatusPayload`（18 bytes）
 | フィールド | 型 | 単位 | 説明 |
 | --- | --- | --- | --- |
 | `ts_ms` | u32 | ms | 受信時刻（monotonic） |
 | `status` | `StatusPayload` | - | ESP32 STATUS をそのまま格納 |
 
-### `StatusPayload`（10 bytes）
+### `StatusPayload`（14 bytes）
 | フィールド | 型 | 単位 | 説明 |
 | --- | --- | --- | --- |
 | `seq_applied` | u8 | - | 最後に適用した `DRIVE.seq` 下位8bit |
@@ -105,6 +105,10 @@ RPi内IPCで運搬する payload の**フィールド/単位/意味**を凍結�
 | `speed_mm_s_le` | i16 | mm/s | 現在速度（LE） |
 | `steer_cdeg_le` | i16 | 0.01° | 現在舵角（LE） |
 | `age_ms_le` | u16 | ms | 最終DRIVE受理からの経過（LE） |
+| `applied_brake_duty` | u8 | - | 適用中のブレーキPWM duty（0..BRAKE_PWM_MAX） |
+| `stop_level` | u8 | enum | StopLevel（0=NONE, 1=STOP, 2=MARGIN, 3=STALE） |
+| `stop_requested` | u8 | bool | 停止要求（0=false, 1=true） |
+| `reserved` | u8 | - | 予約（0固定） |
 
 ---
 

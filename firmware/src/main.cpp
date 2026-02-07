@@ -1,7 +1,9 @@
 #include "config/Config.h"
 #include "control/AutoCommandSource.h"
+#include "control/BrakeController.h"
 #include "control/SafetySupervisor.h"
 #include "control/SpeedController.h"
+#include "control/StopLevel.h"
 #include "control/Targets.h"
 #include "hardware/Drive.h"
 #include "hardware/ImuEstimator.h"
@@ -28,6 +30,7 @@ static Tsd20 tsd20;
 static AutoCommandSource cmd_source;
 static SafetySupervisor safety;
 static SpeedController speed_ctl;
+static BrakeController brake_ctl;
 static mc::AsyncLogger alog;
 static mc::UartTx uart_tx;
 
@@ -38,6 +41,7 @@ static mc::proto::PacketReader reader;
 
 static mc::PeriodicTimer statusTimer(cfg::STATUS_INTERVAL_MS);
 static mc::PeriodicTimer logTimer(200);
+static mc::PeriodicTimer loopStatsTimer(1000);
 static mc::PeriodicTimer imuTimer(cfg::IMU_READ_INTERVAL_MS);
 static mc::PeriodicTimer tsdTimer(cfg::TSD20_READ_INTERVAL_MS);
 static mc::PeriodicTimer tsdInitTimer(cfg::TSD20_INIT_RETRY_MS);
@@ -48,7 +52,6 @@ static uint16_t tsd_seq = 0;
 static Tsd20State g_tsd_state{};
 static bool g_tsd_fail_logged = false;
 static uint32_t g_tsd_last_read_ms = 0;
-static uint16_t g_tsd_period_ms = 0;
 
 static bool g_imu_ready = false;
 static bool g_imu_valid = false;
@@ -56,8 +59,13 @@ static uint32_t g_imu_last_ms = 0;
 static ImuSample g_imu_sample{};
 static int16_t g_last_cmd_speed_mm_s = 0;
 
-static bool g_abs_active = false;
+static bool g_brake_mode = false;
 static float g_last_dt_s = 0.0f;
+
+static float g_loop_dt_min_s = 0.0f;
+static float g_loop_dt_max_s = 0.0f;
+static float g_loop_dt_sum_s = 0.0f;
+static uint32_t g_loop_dt_count = 0;
 
 static SafetyDiag g_safety_diag{};
 
@@ -71,14 +79,27 @@ static bool g_speed_diag_saturated = false;
 static bool g_speed_diag_active = false;
 static bool g_speed_diag_calib = false;
 
+static bool g_brake_diag_stop_req = false;
+static int16_t g_brake_diag_pwm = 0;
+static bool g_brake_diag_active = false;
+static uint8_t g_brake_diag_phase = 0;
+static uint8_t g_brake_diag_pulse_count = 0;
+static bool g_brake_diag_pwm_override = false;
+static int16_t g_brake_diag_pwm_cmd = 0;
+static float g_brake_diag_dv = 0.0f;
+static float g_brake_diag_a_eff = 0.0f;
+static float g_brake_diag_a_tgt = 0.0f;
+static float g_brake_diag_r = 0.0f;
+static bool g_brake_adapt_pending = false;
+
 static inline void wr16(uint8_t *p, uint16_t v) {
 	p[0] = (uint8_t)(v & 0xFF);
 	p[1] = (uint8_t)(v >> 8);
 }
 
 // shared/proto のワイヤ構造体をそのまま利用し、サイズ一致をここでも検証する。
-static_assert(sizeof(mc::proto::StatusPayload) == 10,
-			  "StatusPayload size (wire) must be 10 bytes");
+static_assert(sizeof(mc::proto::StatusPayload) == 14,
+			  "StatusPayload size (wire) must be 14 bytes");
 static_assert(sizeof(mc::proto::ImuStatusPayload) == 12,
 			  "ImuStatusPayload size (wire) must be 12 bytes");
 static_assert(sizeof(mc::proto::Tsd20StatusPayload) == 8,
@@ -127,6 +148,10 @@ static void sendStatus_(uint32_t now_ms) {
 	wr16((uint8_t *)&p.steer_cdeg_le,
 		 (uint16_t)(int16_t)drive.appliedSteerCdeg());
 	wr16((uint8_t *)&p.age_ms_le, age_ms);
+	p.applied_brake_duty = drive.appliedBrakeDuty();
+	p.stop_level = (uint8_t)g_safety_diag.tsd.stop_level;
+	p.stop_requested = g_safety_diag.tsd.stop_requested ? 1u : 0u;
+	p.reserved = 0;
 
 	uint8_t out[mc::proto::MAX_FRAME_ENCODED];
 	size_t out_len = 0;
@@ -167,7 +192,7 @@ static void sendImuStatus_(uint32_t now_ms) {
 		flags |= 1u << 0;
 	if (st.calibrated)
 		flags |= 1u << 1;
-	if (g_abs_active)
+	if (g_brake_mode)
 		flags |= 1u << 2;
 	p.flags = flags;
 	p.reserved = 0;
@@ -186,18 +211,10 @@ static void sendTsd20Status_(uint32_t now_ms) {
 	if (!cfg::TSD20_ENABLE)
 		return;
 
-	uint16_t age_ms = 0xFFFFu;
-	if (g_tsd_last_read_ms != 0) {
-		uint32_t age = now_ms - g_tsd_last_read_ms;
-		if (age > 0xFFFFu)
-			age = 0xFFFFu;
-		age_ms = (uint16_t)age;
-	}
-
 	mc::proto::Tsd20StatusPayload p{};
 	wr16((uint8_t *)&p.mm_le, g_tsd_state.mm);
-	wr16((uint8_t *)&p.period_ms_le, g_tsd_period_ms);
-	wr16((uint8_t *)&p.age_ms_le, age_ms);
+	wr16((uint8_t *)&p.period_ms_le, g_tsd_state.period_ms);
+	wr16((uint8_t *)&p.age_ms_le, g_tsd_state.age_ms);
 	p.fail_count = g_tsd_state.fail_count;
 	uint8_t flags = 0;
 	if (g_tsd_state.ready)
@@ -258,8 +275,9 @@ static void updateTsd20_(uint32_t now_ms) {
 	if (!g_tsd_state.ready) {
 		g_tsd_state.valid = false;
 		g_tsd_state.mm = 0;
+		g_tsd_state.age_ms = 0xFFFFu;
+		g_tsd_state.period_ms = 0;
 		g_tsd_last_read_ms = 0;
-		g_tsd_period_ms = 0;
 		return;
 	}
 
@@ -271,9 +289,13 @@ static void updateTsd20_(uint32_t now_ms) {
 		g_tsd_fail_logged = false;
 		if (g_tsd_last_read_ms != 0) {
 			const uint32_t dt = now_ms - g_tsd_last_read_ms;
-			g_tsd_period_ms = (uint16_t)mc::clamp< uint32_t >(dt, 0u, 0xFFFFu);
+			g_tsd_state.period_ms =
+				(uint16_t)mc::clamp< uint32_t >(dt, 0u, 0xFFFFu);
+		} else {
+			g_tsd_state.period_ms = 0;
 		}
 		g_tsd_last_read_ms = now_ms;
+		g_tsd_state.age_ms = 0;
 	} else {
 		if (g_tsd_state.fail_count < 0xFF)
 			g_tsd_state.fail_count++;
@@ -290,10 +312,6 @@ static void updateTsd20_(uint32_t now_ms) {
 }
 
 static void applyTargets_(uint32_t now_ms, float dt_s) {
-	const bool abs_allowed =
-		!g_state.killed &&
-		(cfg::ABS_ENABLE &&
-		 (g_state.mode == mc::Mode::AUTO || cfg::ABS_ENABLE_IN_MANUAL));
 	const ImuEstimate &imu_state = imu_est.state();
 	const bool imu_calib = g_imu_valid && imu_state.calibrated;
 	const float v_est = g_imu_valid ? imu_state.v_est_mm_s : 0.0f;
@@ -308,8 +326,7 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	}
 	const SafetyResult safe =
 		safety.apply(now_ms, dt_s, desired.targets, g_state.mode, g_tsd_state,
-					 imu_state, g_imu_valid, abs_allowed, &g_safety_diag);
-	g_abs_active = safe.brake_mode;
+					 imu_state, g_imu_valid, desired.fresh, &g_safety_diag);
 	g_last_cmd_speed_mm_s = safe.targets.speed_mm_s;
 
 	const SpeedControlOutput out = speed_ctl.update(
@@ -324,9 +341,50 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	g_speed_diag_active = out.active;
 	g_speed_diag_calib = out.calibrated;
 
-	drive.setBrakeMode(g_abs_active);
+	const BrakeControllerOutput brake_out =
+		brake_ctl.update(safe.stop_requested, safe.stop_level, g_tsd_state.mm,
+						 v_est, imu_state.a_brake_cap_mm_s2, now_ms);
+	g_brake_mode = brake_out.brake_mode || brake_out.brake_active ||
+				   brake_out.pwm_override;
+	g_brake_diag_stop_req = safe.stop_requested;
+	g_brake_diag_pwm = brake_out.brake_duty;
+	g_brake_diag_active = brake_out.brake_active || brake_out.pwm_override;
+	g_brake_diag_phase = brake_out.phase;
+	g_brake_diag_pulse_count = brake_out.pulse_count;
+	g_brake_diag_pwm_override = brake_out.pwm_override;
+	g_brake_diag_pwm_cmd = brake_out.pwm_cmd;
+	if (brake_out.adapt_event) {
+		g_brake_adapt_pending = true;
+		g_brake_diag_dv = brake_out.dv_mm_s;
+		g_brake_diag_a_eff = brake_out.a_eff_mm_s2;
+		g_brake_diag_a_tgt = brake_out.a_tgt_mm_s2;
+		g_brake_diag_r = brake_out.r_eff;
+	}
+
+	// 1) 推進PWMは「前進のみ」に限定（負PWMは通常経路で禁止）
+	int16_t pwm_cmd = out.pwm_cmd;
+	if (pwm_cmd < 0)
+		pwm_cmd = 0;
+
+	// 2) BrakeController が逆転パルス/惰行で PWM 上書きする場合
+	if (brake_out.pwm_override)
+		pwm_cmd = brake_out.pwm_cmd;
+
+	// 3) 最終段: killed/expired 以外で前進時は最低PWM floor（0は出さない）
+	if (!brake_out.pwm_override && desired.fresh && !brake_out.brake_active &&
+		!g_state.killed && pwm_cmd >= 0 &&
+		pwm_cmd < (int16_t)cfg::DRIVE_PWM_MIN_WHEN_STOP)
+		pwm_cmd = (int16_t)cfg::DRIVE_PWM_MIN_WHEN_STOP;
+
+	uint8_t brake_duty = brake_out.brake_duty;
+	bool brake_active = brake_out.brake_active;
+	if (brake_active && brake_duty > 0 && brake_duty < cfg::BRAKE_PWM_MIN)
+		brake_duty = (uint8_t)cfg::BRAKE_PWM_MIN;
+
+	drive.setBrakeMode(g_brake_mode);
 	drive.setTargetMmS(safe.targets.speed_mm_s, now_ms);
-	drive.setTargetPwm(out.pwm_cmd, now_ms);
+	drive.setTargetPwm(pwm_cmd, now_ms);
+	drive.setTargetBrake(brake_duty, brake_active, now_ms);
 	drive.setTargetSteerCdeg(safe.targets.steer_cdeg, now_ms);
 	drive.setTtlMs(safe.targets.ttl_ms, now_ms);
 	drive.setDistMm(safe.targets.dist_mm, now_ms);
@@ -338,10 +396,10 @@ void setup() {
 	Serial.begin(115200);
 	delay(200);
 
-	Serial2.begin(cfg::SERIAL_BAUD, SERIAL_8N1, cfg::SERIAL_RX_PIN,
-				  cfg::SERIAL_TX_PIN);
 	Serial2.setRxBufferSize(4096);
 	Serial2.setTxBufferSize(4096);
+	Serial2.begin(cfg::SERIAL_BAUD, SERIAL_8N1, cfg::SERIAL_RX_PIN,
+				  cfg::SERIAL_TX_PIN);
 
 	g_ctx.st = &g_state;
 	g_ctx.uart = &Serial2;
@@ -383,6 +441,7 @@ void setup() {
 	uint32_t now = millis();
 	statusTimer.reset(now);
 	logTimer.reset(now);
+	loopStatsTimer.reset(now);
 	imuTimer.reset(now);
 	tsdTimer.reset(now);
 	tsdInitTimer.reset(now);
@@ -394,15 +453,40 @@ void loop() {
 	float dt_s = (float)(now_us - last_us) / 1e6f;
 	if (dt_s < 0.0f)
 		dt_s = 0.0f;
+	const float dt_raw_s = dt_s;
 	if (dt_s > 0.05f)
 		dt_s = 0.05f;
 	last_us = now_us;
 	g_last_dt_s = dt_s;
 
+	// ループ周期統計の更新（raw dt を使う）
+	if (g_loop_dt_count == 0) {
+		g_loop_dt_min_s = dt_raw_s;
+		g_loop_dt_max_s = dt_raw_s;
+		g_loop_dt_sum_s = dt_raw_s;
+		g_loop_dt_count = 1;
+	} else {
+		if (dt_raw_s < g_loop_dt_min_s)
+			g_loop_dt_min_s = dt_raw_s;
+		if (dt_raw_s > g_loop_dt_max_s)
+			g_loop_dt_max_s = dt_raw_s;
+		g_loop_dt_sum_s += dt_raw_s;
+		g_loop_dt_count++;
+	}
+
 	uint32_t now_ms = (uint32_t)millis();
 
 	handleRx_(now_ms);
 	updateTsd20_(now_ms);
+
+	// TSD20 のデータ鮮度: 直近の読み取り時刻からの経過時間を毎ループ更新する。
+	if (g_tsd_last_read_ms != 0) {
+		uint32_t age = now_ms - g_tsd_last_read_ms;
+		age = mc::clamp< uint32_t >(age, 0u, 0xFFFFu);
+		g_tsd_state.age_ms = (uint16_t)age;
+	} else {
+		g_tsd_state.age_ms = 0xFFFFu;
+	}
 
 	if (cfg::IMU_ENABLE && g_imu_ready && imuTimer.due(now_ms)) {
 		ImuSample sample{};
@@ -425,6 +509,19 @@ void loop() {
 		sendTsd20Status_(now_ms);
 	}
 
+	// 約1秒ごとにループ周期統計をログ出力
+	if (loopStatsTimer.due(now_ms) && g_loop_dt_count > 0) {
+		const float avg_s = g_loop_dt_sum_s / (float)g_loop_dt_count;
+		alog.logf(
+			mc::LogLevel::INFO, "loop", "dt_ms min=%.3f avg=%.3f max=%.3f n=%u",
+			(double)(g_loop_dt_min_s * 1000.0f), (double)(avg_s * 1000.0f),
+			(double)(g_loop_dt_max_s * 1000.0f), (unsigned)g_loop_dt_count);
+		g_loop_dt_min_s = 0.0f;
+		g_loop_dt_max_s = 0.0f;
+		g_loop_dt_sum_s = 0.0f;
+		g_loop_dt_count = 0;
+	}
+
 	if (logTimer.due(now_ms)) {
 		const char *mode =
 			(g_state.mode == mc::Mode::MANUAL) ? "MANUAL" : "AUTO";
@@ -442,7 +539,7 @@ void loop() {
 					  (int)g_tsd_state.ready, (int)g_tsd_state.valid,
 					  (unsigned)g_tsd_state.mm,
 					  (unsigned)g_tsd_state.fail_count,
-					  (unsigned)g_tsd_period_ms, (int)tsd20.freqAck(),
+					  (unsigned)g_tsd_state.period_ms, (int)tsd20.freqAck(),
 					  (int)tsd20.iicAck());
 		}
 		if (cfg::IMU_ENABLE) {
@@ -469,36 +566,49 @@ void loop() {
 				  (double)g_speed_diag_err, (int)g_speed_diag_pwm_cmd,
 				  (int)g_speed_diag_pwm_ff, (double)g_speed_diag_i,
 				  (int)g_speed_diag_saturated);
+		alog.logf(mc::LogLevel::INFO, "brake",
+				  "stop_req=%d d_mm=%u v_est=%.1f phase=%u pulse=%u "
+				  "pwm_ovr=%d pwm_cmd=%d brake_duty=%u pwm_app=%d app_brk=%u "
+				  "v_cap=%.1f",
+				  (int)g_brake_diag_stop_req, (unsigned)g_tsd_state.mm,
+				  (double)g_speed_diag_v_est, (unsigned)g_brake_diag_phase,
+				  (unsigned)g_brake_diag_pulse_count,
+				  (int)g_brake_diag_pwm_override, (int)g_brake_diag_pwm_cmd,
+				  (unsigned)g_brake_diag_pwm, (int)drive.appliedPwm(),
+				  (unsigned)drive.appliedBrakeDuty(),
+				  (double)g_safety_diag.tsd.v_cap);
+		if (g_brake_adapt_pending) {
+			alog.logf(mc::LogLevel::INFO, "brake_adapt",
+					  "dv=%.0f a_eff=%.0f a_tgt=%.0f r=%.2f",
+					  (double)g_brake_diag_dv, (double)g_brake_diag_a_eff,
+					  (double)g_brake_diag_a_tgt, (double)g_brake_diag_r);
+			g_brake_adapt_pending = false;
+		}
 		if (cfg::TSD20_ENABLE) {
+			// tsd20 cap diagnostics, split into multiple short lines
+			// to avoid truncation while preserving all fields.
 			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
-					  "reason=%u clamp=%d margin=%.0f pred=%.0f steer=%.2f "
-					  "d_allow=%.0f d_travel=%.0f v_used=%.0f a_long=%.0f "
-					  "a_cap=%.0f tau=%.3f v_max=%.1f v_cap=%.1f",
+					  "reason=%u clamp=%d mm=%u age_ms=%.0f",
 					  (unsigned)g_safety_diag.tsd.reason,
-					  (int)g_safety_diag.tsd.clamped,
+					  (int)g_safety_diag.tsd.clamped, (unsigned)g_tsd_state.mm,
+					  (double)g_safety_diag.tsd.age_ms);
+			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
+					  "margin=%.0f pred=%.0f steer=%.2f",
 					  (double)g_safety_diag.tsd.margin_eff,
 					  (double)g_safety_diag.tsd.margin_pred,
-					  (double)g_safety_diag.tsd.steer_ratio,
+					  (double)g_safety_diag.tsd.steer_ratio);
+			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
+					  "d_allow=%.0f d_travel=%.0f v_used=%.0f a_long=%.0f",
 					  (double)g_safety_diag.tsd.d_allow,
 					  (double)g_safety_diag.tsd.d_travel,
 					  (double)g_safety_diag.tsd.v_est,
-					  (double)g_safety_diag.tsd.a_long,
+					  (double)g_safety_diag.tsd.a_long);
+			alog.logf(mc::LogLevel::INFO, "tsd20_cap",
+					  "a_cap=%.0f tau=%.3f v_max=%.1f v_cap=%.1f",
 					  (double)g_safety_diag.tsd.a_cap,
 					  (double)g_safety_diag.tsd.tau,
 					  (double)g_safety_diag.tsd.v_max,
 					  (double)g_safety_diag.tsd.v_cap);
-		}
-		if (cfg::ABS_ENABLE) {
-			alog.logf(mc::LogLevel::INFO, "abs",
-					  "reason=%u active=%d duty=%.2f v_cmd=%.1f v_est=%.1f "
-					  "a_tgt=%.0f a_cap=%.0f decel=%.0f dt=%.3f",
-					  (unsigned)g_safety_diag.abs.reason, (int)g_abs_active,
-					  (double)g_safety_diag.abs.duty,
-					  (double)g_safety_diag.abs.v_cmd,
-					  (double)g_safety_diag.abs.v_est,
-					  (double)g_safety_diag.abs.a_target,
-					  (double)g_safety_diag.abs.a_cap,
-					  (double)g_safety_diag.abs.decel, (double)g_last_dt_s);
 		}
 	}
 

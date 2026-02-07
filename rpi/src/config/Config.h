@@ -30,7 +30,7 @@ static constexpr int DEFAULT_LIDAR_BAUD = 460800;
 //------------------------------------------------------------------------------
 
 // タイムアウト/周期
-static constexpr uint16_t AUTO_TTL_MS            = 100;
+static constexpr uint16_t AUTO_TTL_MS            = 300;
 static constexpr uint32_t HEARTBEAT_INTERVAL_MS  = 50;
 static constexpr uint32_t STATUS_LOG_INTERVAL_MS = 1000;
 static constexpr uint32_t ACK_TIMEOUT_MS         = 50;
@@ -75,8 +75,24 @@ static constexpr int FTG_SMOOTH_RADIUS_BINS    = 2;   // 3〜5binの中央=2
 
 // 車幅/マージン（メートル）
 static constexpr float FTG_CAR_WIDTH_M         = 0.20f; // 20cm
-static constexpr float FTG_MARGIN_M            = 0.03f; // 必要なら調整
+static constexpr float FTG_MARGIN_M            = 0.015f; // 必要なら調整
 static constexpr float FTG_CORRIDOR_LOOKAHEAD_M = 0.60f;
+
+//------------------------------------------------------------------------------
+// Steer-aware clearance（Ackermannの円弧コリドーで「進行方向の衝突距離」を作る）
+//------------------------------------------------------------------------------
+static constexpr bool FTG_ARC_CLEARANCE_ENABLE = true;
+// out_angle（deg）と車体座標系の左右が逆なら -1.0f（「別方向向いている」症状の保険）
+static constexpr float FTG_STEER_MODEL_SIGN = 1.0f;
+// ホイールベース（要実測推奨）。TT-02系なら 0.257m 付近が多い
+static constexpr float FTG_WHEELBASE_M = 0.257f;
+// これ未満は直進矩形コリドー（|y|<=half_w）で判定
+static constexpr float FTG_ARC_STRAIGHT_DEG = 2.0f;
+// クリアランスが取れないときの"十分遠い"扱い（速度が上限に張り付く値でOK）
+static constexpr int FTG_ARC_CLEARANCE_MAX_MM = 12000;
+// 円弧上でこの距離未満の障害物は「車体現在位置の側壁」として無視する。
+// 旋回中、反対側の壁が円弧コリドーに入り arc距離が極小(< 10mm)となる偽陽性を防ぐ。
+static constexpr int FTG_ARC_MIN_AHEAD_MM = 30;
 
 // 予測マージン（IMUの速度/加速度で安全側へ補正）
 static constexpr bool FTG_PREDICT_ENABLE       = true;
@@ -103,16 +119,38 @@ static constexpr float FTG_SPEED_R_MAX_M       = 1.00f; // 100cm以上は最大�
 static constexpr float FTG_SPEED_K_M           = 0.10f; // 立ち上がり（最速）
 //数字が大きいほど加速度は下がる
 
-// コスト関数（目的関数）
+// コスト関数（目的関数）※ gap 方式では未使用、将来削除検討
 static constexpr int FTG_COST_SAFE_MM            = 500;   // ここから回避を開始
 static constexpr int FTG_JERK_RELAX_MM           = 300;   // 近距離でジャーク抑制を緩める
 static constexpr float FTG_COST_W_OBS            = 8.0f;
-static constexpr float FTG_COST_W_TURN           = 0.05f;
+static constexpr float FTG_COST_W_TURN           = 0.01f;
 static constexpr float FTG_COST_W_DELTA          = 0.3f;
 static constexpr float FTG_COST_BETA             = 4.0f;  // soft-argminの鋭さ
-static constexpr float FTG_STEER_SLEW_DEG_PER_S  = 120.0f;
+static constexpr float FTG_STEER_SLEW_DEG_PER_S  = 360.0f; // 10Hz でも 1tick で最大舵角到達可能に
+
+// Gap ベース選択
+static constexpr int FTG_GAP_FREE_MM             =
+	(FTG_WARN_OBSTACLE_MM > (FTG_NEAR_OBSTACLE_MM + 50))
+		? FTG_WARN_OBSTACLE_MM
+		: (FTG_NEAR_OBSTACLE_MM + 50);
+static constexpr int FTG_GAP_MIN_WIDTH_DEG      = 6;     // 幅がこれ未満の gap は無視
+static constexpr float FTG_GAP_DEPTH_Q          = 0.20f; // gap 深さの分位点（20%）
+static constexpr int FTG_GAP_DEPTH_SAT_MM       = 2500;  // 深さ正規化の上限（2.5m）
+static constexpr int FTG_GAP_WIDTH_REF_DEG      = 30;    // 幅の正規化基準
+static constexpr float FTG_GAP_WIDTH_WEIGHT     = 0.80f; // 幅の寄与
+static constexpr float FTG_GAP_TURN_PENALTY     = 0.12f; // |angle| への軽い罰
+static constexpr float FTG_GAP_DELTA_PENALTY    = 0.18f; // |angle-last| への軽い罰
+static constexpr float FTG_GAP_WEIGHT_GAMMA     = 2.0f;  // gap 内の角度重み w=(d-NEAR)^gamma
+static constexpr float FTG_TURN_CAP_LATENCY_S   = 0.08f; // turn-cap 用の反応遅れ
 static constexpr int FTG_SPEED_WARN_CAP_MM_S     =
 	(mc_config::SPEED_MAX_MM_S * 39) / mc_config::SPEED_INPUT_LIMIT;
+// gap が見つからない時に"それでも進めるなら"の速度上限（安全側に低め）
+static constexpr int FTG_NO_GAP_SPEED_CAP_MM_S = FTG_SPEED_WARN_CAP_MM_S;
+// 停止禁止: path_clearance>0 のとき常にこの速度以上で creep（近距離でも止まらない）
+// デッドバンド(200)以上にして低速制御で止まらないようにする
+static constexpr int FTG_CREEP_SPEED_MM_S = 220;
+// SLOW（warn）時の slowdown factor 下限（sfが0にならないように）
+static constexpr float FTG_SLOWDOWN_FLOOR = 0.15f;
 static constexpr uint16_t FTG_IMU_MAX_AGE_MS     = 200;
 static constexpr float FTG_YAW_BIAS_DEG          = 0.0f;
 static constexpr float FTG_YAW_BIAS_REF_DPS      = 90.0f;

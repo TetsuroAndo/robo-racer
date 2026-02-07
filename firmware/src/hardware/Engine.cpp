@@ -55,6 +55,18 @@ void Engine::control(float dt_s) {
 	if (_dead_until_us != 0)
 		_dead_until_us = 0;
 
+	// ブレーキ→推力遷移時の deadtime（前回がブレーキで、今回推力に戻る場合）
+	if (_last_was_brake && _tgt != 0) {
+		_dead_until_us = now_us + cfg::ENGINE_DEADTIME_US;
+		_cur = 0;
+		_last_dir = 0;
+		_last_was_brake = false;
+		outputSpeed(0);
+		return;
+	}
+
+	_last_was_brake = false; // 推力モードに戻った
+
 	float y = _lim.update((float)_tgt, dt_s);
 	int next = (int)lroundf(y);
 	next = constrain(next, -cfg::ENGINE_SPEED_LIMIT, cfg::ENGINE_SPEED_LIMIT);
@@ -76,11 +88,29 @@ void Engine::control(float dt_s) {
 	}
 }
 
+void Engine::outputBrake(uint8_t duty) {
+	_cur = 0; // 次に control() に戻る際の初期状態
+	if (cfg::ENGINE_ACTIVE_BRAKE_ENABLE) {
+		// 推力PWM→ブレーキPWM
+		// の切替時のみデッドタイムを挿入（シュートスルー防止）
+		if (!_last_was_brake) {
+			applyPWM(0, 0);
+			delayMicroseconds(cfg::ENGINE_DEADTIME_US);
+		}
+		_last_was_brake = true;
+		applyPWM(duty, duty); // 両PWM同時＝短絡制動（逆回転ではない）
+	} else {
+		_last_was_brake = false;
+		applyPWM(0, 0); // フォールバック：惰行
+	}
+}
+
 void Engine::stop() {
 	_tgt = 0;
 	_cur = 0;
 	_last_dir = 0;
 	_dead_until_us = 0;
+	_last_was_brake = false;
 	_lim.reset(0.0f);
 	applyPWM(0, 0);
 }

@@ -332,7 +332,11 @@ def test_hils_e2e_seriald_sim_esp32d(tmp_path: Path):
                     speed,
                     steer,
                     _age,
-                ) = struct.unpack("<BBHhhH", payload)
+                    _brake_duty,
+                    _stop_level,
+                    _stop_requested,
+                    _reserved,
+                ) = struct.unpack("<BBHhhHBBBB", payload)
                 if (
                     auto_active == 1
                     and speed == 200
@@ -344,9 +348,18 @@ def test_hils_e2e_seriald_sim_esp32d(tmp_path: Path):
                     break
         if status is None and last_status is not None:
             _, _, _, payload = last_status
-            seq_applied, auto_active, faults, speed, steer, _age = struct.unpack(
-                "<BBHhhH", payload
-            )
+            (
+                seq_applied,
+                auto_active,
+                faults,
+                speed,
+                steer,
+                _age,
+                _brake_duty,
+                _stop_level,
+                _stop_requested,
+                _reserved,
+            ) = struct.unpack("<BBHhhHBBBB", payload)
             last_msg = (
                 "last STATUS: auto_active="
                 + str(auto_active)
@@ -370,13 +383,22 @@ def test_hils_e2e_seriald_sim_esp32d(tmp_path: Path):
             pkt = decode_packet(recv_frame(uds, 0.2))
             if pkt and pkt[0] == TYPE_STATUS:
                 status = pkt
-                if struct.unpack("<BBHhhH", status[3])[2] & FAULT_TTL:
+                if struct.unpack("<BBHhhHBBBB", status[3])[2] & FAULT_TTL:
                     break
         assert status is not None, "no STATUS after TTL"
         _, _, _, payload = status
-        _seq_applied, _auto_active, faults, speed, steer, _age = struct.unpack(
-            "<BBHhhH", payload
-        )
+        (
+            _seq_applied,
+            _auto_active,
+            faults,
+            speed,
+            steer,
+            _age,
+            _brake_duty,
+            _stop_level,
+            _stop_requested,
+            _reserved,
+        ) = struct.unpack("<BBHhhHBBBB", payload)
         assert (faults & FAULT_TTL) != 0
         assert speed == 0
         assert steer == 0
@@ -389,13 +411,22 @@ def test_hils_e2e_seriald_sim_esp32d(tmp_path: Path):
             pkt = decode_packet(recv_frame(uds, 0.2))
             if pkt and pkt[0] == TYPE_STATUS:
                 status = pkt
-                if struct.unpack("<BBHhhH", status[3])[2] & FAULT_KILL:
+                if struct.unpack("<BBHhhHBBBB", status[3])[2] & FAULT_KILL:
                     break
         assert status is not None, "no STATUS after KILL"
         _, _, _, payload = status
-        _seq_applied, _auto_active, faults, speed, steer, _age = struct.unpack(
-            "<BBHhhH", payload
-        )
+        (
+            _seq_applied,
+            _auto_active,
+            faults,
+            speed,
+            steer,
+            _age,
+            _brake_duty,
+            _stop_level,
+            _stop_requested,
+            _reserved,
+        ) = struct.unpack("<BBHhhHBBBB", payload)
         assert (faults & FAULT_KILL) != 0
         assert speed == 0
         assert steer == 0

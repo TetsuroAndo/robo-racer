@@ -95,8 +95,12 @@ struct StatusPayload {
 	int16_t speed_mm_s_le;
 	int16_t steer_cdeg_le;
 	uint16_t age_ms_le;
+	uint8_t applied_brake_duty; // 0..BRAKE_PWM_MAX
+	uint8_t stop_level;         // StopLevel enum (0=NONE, 1=STOP, 2=MARGIN, 3=STALE)
+	uint8_t stop_requested;     // bool (0=false, 1=true)
+	uint8_t reserved;           // パディング（将来の拡張用）
 };
-static_assert(sizeof(StatusPayload) == 10, "StatusPayload must be 10 bytes");
+static_assert(sizeof(StatusPayload) == 14, "StatusPayload must be 14 bytes");
 
 // IMU_STATUS (ESP32 -> RPi)
 // As defined in firmware/src/main.cpp::ImuStatusPayload
@@ -181,8 +185,8 @@ struct VehicleStatusPayload {
 	uint32_t ts_ms;
 	StatusPayload status;
 };
-static_assert(sizeof(VehicleStatusPayload) == 14,
-			  "VehicleStatusPayload must be 14 bytes");
+static_assert(sizeof(VehicleStatusPayload) == 18,
+			  "VehicleStatusPayload must be 18 bytes");
 
 // IPC_METRICS (RPi internal)
 struct MetricsPayload {

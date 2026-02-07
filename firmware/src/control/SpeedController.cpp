@@ -12,8 +12,10 @@ int16_t SpeedController::speedToPwm_(int16_t v_target_mm_s) const {
 	int v = (int)v_target_mm_s;
 	v = mc::clamp< int >(v, -mc_config::SPEED_MAX_MM_S,
 						 mc_config::SPEED_MAX_MM_S);
-	long pwm = (long)v * 255L / (long)mc_config::SPEED_MAX_MM_S;
-	return (int16_t)mc::clamp< long >(pwm, -255, 255);
+	long pwm = (long)v * (long)cfg::ENGINE_SPEED_LIMIT /
+			   (long)mc_config::SPEED_MAX_MM_S;
+	return (int16_t)mc::clamp< long >(pwm, -cfg::ENGINE_SPEED_LIMIT,
+									  cfg::ENGINE_SPEED_LIMIT);
 }
 
 SpeedControlOutput SpeedController::update(int16_t v_target_mm_s,
@@ -60,9 +62,12 @@ SpeedControlOutput SpeedController::update(int16_t v_target_mm_s,
 	}
 
 	float pwm = (float)out.pwm_ff + kp * out.error_mm_s + _i;
-	// 前進・停止時は[0,255]、逆転時は[-255,0]。逆転はABSのみが指示する
-	const float pwm_lo = forward_target ? 0.0f : -255.0f;
-	const float pwm_hi = forward_target ? 255.0f : 0.0f;
+	// 常に [0,ENGINE_SPEED_LIMIT]。負PWM は BrakeController が専任
+	const float pwm_lo = 0.0f;
+	const float pwm_hi = (float)cfg::ENGINE_SPEED_LIMIT;
+
+	// - 低速域: 停止後の後退・壁際での“バックしだす”を禁止
+
 	float pwm_sat = mc::clamp< float >(pwm, pwm_lo, pwm_hi);
 	// 前進目標かつ低速時は最小PWMを確保（静止摩擦克服）
 	if (forward_target && v_target_mm_s > 0 &&

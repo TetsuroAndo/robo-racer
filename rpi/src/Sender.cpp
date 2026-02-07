@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <limits>
 #include <sstream>
 #include <sys/socket.h>
@@ -188,8 +189,12 @@ void Sender::poll() {
 
 void Sender::_init(const char *sock_path) {
 	if (!ipc_.connect(sock_path)) {
-		MC_LOGE("sender",
-				std::string("Failed to connect seriald socket: ") + sock_path);
+		std::string msg =
+			std::string("robo-racer: Failed to connect seriald socket: ") +
+			sock_path +
+			" (is seriald running? check /tmp/roboracer/seriald.sock)";
+		MC_LOGE("sender", msg);
+		std::cerr << msg << "\n";
 		exit(1);
 	}
 
@@ -297,15 +302,21 @@ void Sender::handleStatus(const mc::proto::StatusPayload &payload) {
 	const int16_t steer =
 		(int16_t)mc::proto::from_le16((uint16_t)payload.steer_cdeg_le);
 	const uint16_t age_ms = mc::proto::from_le16(payload.age_ms_le);
+	const uint8_t brake_duty = payload.applied_brake_duty;
+	const uint8_t stop_level = payload.stop_level;
+	const uint8_t stop_requested = payload.stop_requested;
 	std::ostringstream ss;
 	ss << "STATUS seq=" << (unsigned)seq << " auto=" << (unsigned)auto_active
 	   << " speed_mm_s=" << speed << " steer_cdeg=" << steer
-	   << " age_ms=" << age_ms << " faults=0x" << std::hex << faults
-	   << std::dec;
+	   << " age_ms=" << age_ms << " faults=0x" << std::hex << faults << std::dec
+	   << " brake_duty=" << (unsigned)brake_duty
+	   << " stop_level=" << (unsigned)stop_level
+	   << " stop_req=" << (unsigned)stop_requested;
 	MC_LOGI("status", ss.str());
 
 	if (telemetry_) {
-		telemetry_->updateStatus(auto_active, faults, speed, steer, age_ms);
+		telemetry_->updateStatus(auto_active, faults, speed, steer, age_ms,
+								 brake_duty, stop_level, stop_requested);
 	}
 }
 
@@ -313,7 +324,7 @@ void Sender::handleImuStatus(const mc::proto::ImuStatusPayload &payload) {
 	MotionState st{};
 	st.valid = (payload.flags & (1u << 0)) != 0;
 	st.calibrated = (payload.flags & (1u << 1)) != 0;
-	st.abs_active = (payload.flags & (1u << 2)) != 0;
+	st.brake_mode = (payload.flags & (1u << 2)) != 0;
 	st.a_long_mm_s2 =
 		(int16_t)mc::proto::from_le16((uint16_t)payload.a_long_mm_s2_le);
 	st.v_est_mm_s =

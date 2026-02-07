@@ -26,10 +26,9 @@ ros2_ws/colcon_log/
 /rpi/ros2_ws/log/
 /rpi/ros2_ws/colcon_log/
 /training/data/bags/
-# Accidental colcon outputs at repo root
-/build/
-/install/
-/log/
+playground/decel_lab/out
+
+.claude
 
 # Created by https://www.toptal.com/developers/gitignore/api/c
 # Edit at https://www.toptal.com/developers/gitignore?templates=c

@@ -9,6 +9,8 @@ public:
 	void setTarget(int speed_pwm);
 	void setRateLimits(float rate_up, float rate_down);
 	void stop();
+	/// アクティブブレーキ（両PWM同時＝短絡制動）。逆回転を使わない。
+	void outputBrake(uint8_t duty);
 
 	void control(float dt_s);
 
@@ -20,6 +22,7 @@ private:
 	int _tgt = 0;
 	int _last_dir = 0;
 	uint32_t _dead_until_us = 0;
+	bool _last_was_brake = false; // 推力→ブレーキ切替時のデッドタイム用
 
 	mc::SlewRateLimiter _lim{800.0f, 1200.0f, 0.0f};
 

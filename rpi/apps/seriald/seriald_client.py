@@ -153,12 +153,12 @@ def wait_for_ack(sock: socket.socket, seq: int, timeout_ms: int) -> bool:
 
 def print_frame(dec):
     ptype, flags, seq, payload = dec
-    if ptype == TYPE_STATUS and len(payload) == 10:
-        seq_applied, auto_active, faults, speed, steer, age_ms = struct.unpack(
-            "<BBHhhH", payload
+    if ptype == TYPE_STATUS and len(payload) == 14:
+        seq_applied, auto_active, faults, speed, steer, age_ms, applied_brake_duty, stop_level, stop_requested, reserved = struct.unpack(
+            "<BBHhhHBBBB", payload
         )
         print(
-            f"STATUS seq={seq_applied} auto={auto_active} speed_mm_s={speed} steer_cdeg={steer} age_ms={age_ms} faults=0x{faults:04x}"
+            f"STATUS seq={seq_applied} auto={auto_active} speed_mm_s={speed} steer_cdeg={steer} age_ms={age_ms} faults=0x{faults:04x} brake_duty={applied_brake_duty} stop_level={stop_level} stop_req={stop_requested}"
         )
     elif ptype == TYPE_LOG and len(payload) >= 1:
         lv = payload[0]
@@ -178,7 +178,8 @@ def main():
     s1 = sub.add_parser("drive")
     s1.add_argument("--steer-cdeg", type=int, required=True)
     s1.add_argument("--speed-mm-s", type=int, required=True)
-    s1.add_argument("--ttl-ms", type=int, default=100)
+    s1.add_argument("--ttl-ms", type=int, default=300,
+                    help="DRIVE TTL (min 3 cycles at 10Hz; default 300ms)")
     s1.add_argument("--dist-mm", type=int, default=0)
     s1.add_argument("--seq", type=int, default=1)
 

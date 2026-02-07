@@ -13,6 +13,13 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 	*d = Tsd20Diag{};
 	d->reason = TSD_DISABLED;
 	d->clamped = false;
+	// age_ms はここで一度だけ初期化し、以降の分岐では変更しない。
+	d->age_ms = (tsd.age_ms != 0xFFFFu) ? (float)tsd.age_ms : -1.0f;
+	// stop_requested/stop_level を初期化（diag が NULL でも安全）
+	if (diag) {
+		diag->stop_requested = false;
+		diag->stop_level = StopLevel::NONE;
+	}
 	if (!cfg::TSD20_ENABLE)
 		return speed_mm_s;
 
@@ -38,14 +45,16 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 		return speed_mm_s;
 	}
 
-	if (cfg::TSD20_STOP_DISTANCE_MM > 0 &&
-		tsd.mm <= cfg::TSD20_STOP_DISTANCE_MM) {
-		d->reason = TSD_STOP;
-		return 0;
-	}
-
-	if (tsd.mm <= cfg::TSD20_MARGIN_MM) {
-		d->reason = TSD_MARGIN;
+	if (tsd.age_ms != 0xFFFFu && tsd.age_ms > cfg::TSD20_MAX_AGE_MS) {
+		d->reason = TSD_AGE_STALE;
+		d->tau = -1.0f;
+		d->v_max = 0.0f;
+		d->v_cap = 0.0f;
+		d->clamped = true;
+		if (diag) {
+			diag->stop_requested = true;
+			diag->stop_level = StopLevel::STALE;
+		}
 		return 0;
 	}
 
@@ -55,6 +64,10 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 		(mc_config::STEER_ANGLE_MAX_CDEG > 0)
 			? (steer_abs / (float)mc_config::STEER_ANGLE_MAX_CDEG)
 			: 0.0f;
+
+	// ハードストップ廃止 — 物理ベースの v_cap（制動距離）で減速する。
+	// 距離が近くても即停止せず、速度を落として走行を継続する。
+
 	const float relax = (float)cfg::TSD20_MARGIN_RELAX_MM * steer_ratio;
 	float base_margin = (float)cfg::TSD20_MARGIN_MM - relax;
 	if (base_margin < (float)cfg::TSD20_MARGIN_MIN_MM)
@@ -79,7 +92,14 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 	else if (a > a_max)
 		a = a_max;
 
-	const float tau = (float)cfg::TSD20_LATENCY_MS / 1000.0f;
+	// ベースとなるシステム遅延（センサ内部＋配線遅延など）
+	const float tau_base = (float)cfg::TSD20_LATENCY_MS / 1000.0f;
+	// 実際の鮮度 (Age) を秒に変換し、ベース遅延に加算する。
+	float tau = tau_base;
+	if (tsd.age_ms != 0xFFFFu) {
+		const float age_s = (float)tsd.age_ms / 1000.0f;
+		tau += age_s;
+	}
 	const float d_allow_base = (float)tsd.mm - base_margin;
 	float margin_pred = 0.0f;
 	if (cfg::TSD20_PREDICT_ENABLE && d_allow_base > 0.0f) {
@@ -109,14 +129,32 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 		v_max = 0.0f;
 
 	float v_cap = std::min(v_max, (float)mc_config::SPEED_MAX_MM_S);
-	const uint16_t stop_mm = cfg::TSD20_STOP_DISTANCE_MM;
 	const uint16_t slow_mm = cfg::TSD20_SLOWDOWN_DISTANCE_MM;
-	if (slow_mm > stop_mm && tsd.mm < slow_mm) {
+	const uint16_t margin_mm = (uint16_t)std::lround(base_margin);
+	if (slow_mm > margin_mm && tsd.mm < slow_mm) {
 		const float ratio =
-			(float)(tsd.mm - stop_mm) / (float)(slow_mm - stop_mm);
+			(float)(tsd.mm - margin_mm) / (float)(slow_mm - margin_mm);
 		const float slow = mc::clamp< float >(ratio, 0.0f, 1.0f);
 		v_cap *= slow;
 	}
+
+	// 4m未満なら「PWMスケール128相当」の速度(mm/s)まで上限を被せる
+	// ここでは speed_mm_s 自体は変えず、最終cap(v_cap)にだけ反映する
+	if (speed_mm_s > 0 && tsd.mm < cfg::TSD20_NEAR_DISTANCE_MM) {
+		const float safe_engine_limit = (cfg::ENGINE_SPEED_LIMIT > 0)
+											? (float)cfg::ENGINE_SPEED_LIMIT
+											: 1.0f;
+		const float v_near =
+			(float)mc_config::SPEED_MAX_MM_S *
+			((float)cfg::TSD20_NEAR_PWM_CAP / safe_engine_limit);
+		v_cap = std::min(v_cap, v_near);
+	}
+
+	// レース/デバッグ用: d_allow<=0 由来の v_cap=0 を徐行へ持ち上げる
+	// 通信断/TSD20_MAX_AGE は別 branch で return 0 するためここは通らない
+	if (cfg::TSD20_NO_STOP_ENABLE)
+		v_cap = std::max(v_cap, (float)cfg::TSD20_VCAP_FLOOR_MM_S);
+
 	d->d_allow = d_allow;
 	d->margin_eff = margin_eff;
 	d->margin_pred = margin_pred;

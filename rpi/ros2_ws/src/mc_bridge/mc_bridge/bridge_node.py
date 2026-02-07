@@ -453,6 +453,10 @@ class BridgeNode(Node):
                                 msg.speed_mm_s,
                                 msg.steer_cdeg,
                                 msg.age_ms,
+                                _,  # applied_brake_duty (未使用)
+                                _,  # stop_level (未使用)
+                                _,  # stop_requested (未使用)
+                                _,  # reserved (未使用)
                             ) = dec
                             self._status_pub.publish(msg)
                         elif ptype == TYPE_DRIVE:

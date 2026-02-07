@@ -11,7 +11,10 @@ AutoCommandResult AutoCommandSource::update(uint32_t now_ms,
 		auto_mode && (st.last_cmd_ms != 0) &&
 		((uint32_t)(now_ms - st.last_cmd_ms) <= (uint32_t)st.target_ttl_ms);
 	if (cmd_fresh && hb_fresh && !st.killed) {
-		out.targets.speed_mm_s = st.target_speed_mm_s;
+		int16_t speed = st.target_speed_mm_s;
+		if (speed <= 0)
+			speed = (int16_t)cfg::CREEP_SPEED_MM_S;
+		out.targets.speed_mm_s = speed;
 		out.targets.steer_cdeg = st.target_steer_cdeg;
 		out.targets.ttl_ms = st.target_ttl_ms;
 		out.targets.dist_mm = st.target_dist_mm;
@@ -21,7 +24,7 @@ AutoCommandResult AutoCommandSource::update(uint32_t now_ms,
 
 	out.targets.speed_mm_s = 0;
 	out.targets.steer_cdeg = 0;
-	out.targets.ttl_ms = 100;
+	out.targets.ttl_ms = cfg::DRIVE_TTL_DEFAULT_MS;
 	out.targets.dist_mm = 0;
 	out.fresh = false;
 	return out;

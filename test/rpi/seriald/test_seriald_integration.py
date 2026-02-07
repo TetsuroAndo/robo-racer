@@ -299,7 +299,7 @@ def test_seriald_uart_ipc_roundtrip(tmp_path: Path):
         assert payload == mode_payload
 
         # UART -> IPC (STATUS)
-        status_payload = struct.pack("<BBHhhH", 0x22, 1, 0x0002, -10, 25, 100)
+        status_payload = struct.pack("<BBHhhHBBBB", 0x22, 1, 0x0002, -10, 25, 100, 0, 0, 0, 0)
         status_frame = build_packet(TYPE_STATUS, 0x33, status_payload, 0)
         print(
             "[INFO] send UART->IPC STATUS",

@@ -50,6 +50,7 @@ train = [
 dev = [
     "pytest",
     "ruff",                     # 高速なlinter/formatter
+    "intelhex",                 # PlatformIO esp32 ビルド時の esptool 依存
 ]
 
 [tool.pytest.ini_options]

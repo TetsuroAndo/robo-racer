@@ -211,15 +211,19 @@ class StatusFrame:
     speed_mm_s: int
     steer_cdeg: int
     age_ms: int
+    applied_brake_duty: int
+    stop_level: int
+    stop_requested: int
+    reserved: int
 
 
 def decode_status(payload: bytes) -> StatusFrame | None:
-    if len(payload) != 10:
+    if len(payload) != 14:
         return None
-    seq_applied, auto_active, faults, speed, steer, age = struct.unpack(
-        "<BBHhhH", payload
+    seq_applied, auto_active, faults, speed, steer, age, applied_brake_duty, stop_level, stop_requested, reserved = struct.unpack(
+        "<BBHhhHBBBB", payload
     )
-    return StatusFrame(seq_applied, auto_active, faults, speed, steer, age)
+    return StatusFrame(seq_applied, auto_active, faults, speed, steer, age, applied_brake_duty, stop_level, stop_requested, reserved)
 
 
 @contextmanager

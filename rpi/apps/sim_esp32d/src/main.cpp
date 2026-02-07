@@ -101,6 +101,10 @@ bool send_status(mc::serial::Uart &uart, SimState &st, uint32_t now_ms,
 	wr16(payload + 4, (uint16_t)speed_now);
 	wr16(payload + 6, (uint16_t)steer_now);
 	wr16(payload + 8, age_ms);
+	payload[10] = 0; // applied_brake_duty
+	payload[11] = 0; // stop_level
+	payload[12] = 0; // stop_requested
+	payload[13] = 0; // reserved
 
 	uint8_t frame[mc::proto::MAX_FRAME_ENCODED];
 	size_t frame_len = 0;

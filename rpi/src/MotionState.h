@@ -5,7 +5,7 @@
 struct MotionState {
 	bool valid = false;
 	bool calibrated = false;
-	bool abs_active = false;
+	bool brake_mode = false;
 	int16_t a_long_mm_s2 = 0;
 	int16_t v_est_mm_s = 0;
 	uint16_t a_brake_cap_mm_s2 = 0;
