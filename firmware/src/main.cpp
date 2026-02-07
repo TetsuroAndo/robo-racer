@@ -396,10 +396,10 @@ void setup() {
 	Serial.begin(115200);
 	delay(200);
 
-	Serial2.begin(cfg::SERIAL_BAUD, SERIAL_8N1, cfg::SERIAL_RX_PIN,
-				  cfg::SERIAL_TX_PIN);
 	Serial2.setRxBufferSize(4096);
 	Serial2.setTxBufferSize(4096);
+	Serial2.begin(cfg::SERIAL_BAUD, SERIAL_8N1, cfg::SERIAL_RX_PIN,
+				  cfg::SERIAL_TX_PIN);
 
 	g_ctx.st = &g_state;
 	g_ctx.uart = &Serial2;
