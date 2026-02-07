@@ -51,7 +51,7 @@ inline const ProfileParams &profileParams(Profile p) {
 	// NOTE: profile 1(Mid) は現状の cfg 値に一致するようにしている
 	static const ProfileParams tbl[] = {
 		// 0 SAFE
-		{"SAFE", 0.85f, 0.85f, 0.85f, 180, 130, 260, 0.00f, 0.85f, 1.20f,
+		{"SAFE", 0.42f, 0.85f, 0.85f, 180, 130, 260, 0.00f, 0.85f, 1.20f,
 		 1.30f, 1.20f},
 		// 1 MID (current)
 		{"MID", 1.00f, 1.00f, 1.00f, 220, 100, 200, 0.00f, 1.00f, 1.00f,
