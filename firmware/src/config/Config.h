@@ -96,6 +96,9 @@ static constexpr uint16_t TSD20_MAX_AGE_MS          = 200;
 // TSD20が近距離のときの「PWMスケール上限」を距離で切る（ユーザ要望: 4m 未満 => 128）
 static constexpr uint16_t TSD20_NEAR_DISTANCE_MM = 4000;
 static constexpr uint8_t TSD20_NEAR_PWM_CAP     = 128;
+// レース/デバッグ用: d_allow<=0 でも v_cap を 0 にしない（徐行 floor）
+static constexpr bool TSD20_NO_STOP_ENABLE      = true;
+static constexpr int16_t TSD20_VCAP_FLOOR_MM_S  = 200;
 
 //------------------------------------------------------------------------------
 // 自動モードのハートビート監視タイムアウト
@@ -265,6 +268,9 @@ static constexpr uint8_t DRIVE_PWM_MIN_WHEN_STOP = 32;
 // AUTO+fresh時: 速度指令0が来ても creep に丸める（保険）
 // デッドバンド(200)以上にして低速制御で止まらないようにする
 static constexpr int CREEP_SPEED_MM_S = 220;
+// 通信断以外で目標速度を 0 にしない（floor）。killed/expired では適用しない。
+static constexpr bool DRIVE_NO_STOP_ENABLE      = true;
+static constexpr int DRIVE_CREEP_SPEED_MM_S     = 220;
 static_assert(DRIVE_KILL_BRAKE_DUTY <= BRAKE_PWM_MAX,
 			  "DRIVE_KILL_BRAKE_DUTY must be <= BRAKE_PWM_MAX");
 static_assert(TSD20_NEAR_PWM_CAP <= ENGINE_SPEED_LIMIT,

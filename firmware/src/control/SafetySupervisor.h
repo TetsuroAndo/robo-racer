@@ -21,10 +21,11 @@ struct SafetyResult {
 
 class SafetySupervisor {
 public:
+	/// comm_ok: 通信有効（fresh）のとき true。false なら floor 非適用で停止許可。
 	SafetyResult apply(uint32_t now_ms, float dt_s, const Targets &desired,
 				  mc::Mode mode, const Tsd20State &tsd,
 				  const ImuEstimate &imu, bool imu_valid,
-				  SafetyDiag *diag);
+				  bool comm_ok, SafetyDiag *diag);
 
 private:
 	Tsd20Limiter _tsd;

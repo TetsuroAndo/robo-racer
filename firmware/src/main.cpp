@@ -326,7 +326,7 @@ static void applyTargets_(uint32_t now_ms, float dt_s) {
 	}
 	const SafetyResult safe =
 		safety.apply(now_ms, dt_s, desired.targets, g_state.mode, g_tsd_state,
-					 imu_state, g_imu_valid, &g_safety_diag);
+					 imu_state, g_imu_valid, desired.fresh, &g_safety_diag);
 	g_last_cmd_speed_mm_s = safe.targets.speed_mm_s;
 
 	const SpeedControlOutput out = speed_ctl.update(

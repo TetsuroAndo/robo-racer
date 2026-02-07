@@ -150,6 +150,11 @@ int16_t Tsd20Limiter::limit(int16_t speed_mm_s, mc::Mode mode,
 		v_cap = std::min(v_cap, v_near);
 	}
 
+	// レース/デバッグ用: d_allow<=0 由来の v_cap=0 を徐行へ持ち上げる
+	// 通信断/TSD20_MAX_AGE は別 branch で return 0 するためここは通らない
+	if (cfg::TSD20_NO_STOP_ENABLE)
+		v_cap = std::max(v_cap, (float)cfg::TSD20_VCAP_FLOOR_MM_S);
+
 	d->d_allow = d_allow;
 	d->margin_eff = margin_eff;
 	d->margin_pred = margin_pred;
